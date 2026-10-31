@@ -1,0 +1,22 @@
+# Abhängigkeiten
+node_modules/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Laufzeitdaten
+tokens.json
+raids.json
+whitelist.json
+subgoal_cache.json
+events.json
+effect_mode.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# System
+.DS_Store

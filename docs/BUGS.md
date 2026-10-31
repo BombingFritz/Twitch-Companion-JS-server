@@ -1,0 +1,10 @@
+# Fehlerhistorie
+
+| Symptom | Ursache | Fix | Regel zur Vermeidung |
+|---|---|---|---|
+| Shoutouts kamen unzuverlässig oder gar nicht | Chat-Befehl `/shoutout` statt API | `POST /helix/chat/shoutouts`, Scope `moderator:manage:shoutouts` | Shoutouts nur über die Helix-API senden |
+| `Cannot find module 'ws'` beim Start | `node_modules` fehlt im kopierten Ordner (z. B. Backup) | `npm install` im jeweiligen Ordner | `node_modules` wird nicht mitkopiert; nach jedem Kopieren Abhängigkeiten installieren |
+| `invalid subscription type and version` | Falscher Typ `channel.stream.online` | Umbenannt auf `stream.online` (benötigt keine Autorisierung) | Typ-Namen gegen die Twitch-EventSub-Referenz prüfen |
+| Konsolenbefehle wie `whitelist list` als „unbekannter Befehl“ abgelehnt | Doppelt escapte Regex `/\\s+/` statt `/\s+/` und doppelt escapte `\n` in Logs | Regex korrigiert, Escapes durch `console.log('')` ersetzt | Vor jeder Auslieferung `node --check server.js` |
+| Log-Spam durch Polling | Widgets pollen, jede Anfrage wurde geloggt | `logIfChanged()` und entrauschter HTTP-Logger | Wiederholte Meldungen über `logIfChanged()` |
+| Sub- und Gift-Effekte feuern Sekunden vor der Chat-Ankündigung und teils doppelt | Effekte hingen an `channel.subscribe`, `channel.subscription.message` und `channel.subscription.gift`; laut Code-Kommentar treffen diese oft vor der Chat-Ankündigung ein. Twitch-seitige Ursache: [UNGEKLÄRT] | Effekte nur aus `channel.chat.notification`, Gift-Bomb als ein Effekt, Entdoppelung über `message_id` und Zeitfenster | Neue Effekt-Auslöser an der Chat-Ankündigung ausrichten; nie mehrere Event-Typen für dasselbe Ereignis in `scheduleEffect` einspeisen |
