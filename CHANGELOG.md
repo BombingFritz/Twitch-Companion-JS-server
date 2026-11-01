@@ -21,8 +21,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Entdoppelung über `message_id`, Sub- und Follow-Zeitfenster.
 - `package.json` mit `npm start`, `npm run check`, `engines.node >= 18`, dazu `package-lock.json`.
 - Konstanten `EVENTSUB_WS_URL` und `EVENTSUB_RECONNECT_DELAY_MS`.
+- `/token` liefert zusätzlich `client_id`, damit Widgets keine IDs selbst pflegen müssen.
+- Umgebungsvariable `CORS_ORIGINS` (erlaubte Widget-Herkünfte, `*` als Notschalter), Anzeige in Startmeldung und `/status` (`allowed_origins`).
+- `/token` loggt einmal je Herkunft, an welche Widget-Herkunft der Token ausgegeben wurde.
 
 ### Changed
+- Alle Antworten mit `Cache-Control: no-store`, damit OBS-Browser-Sources keine alten Antworten (z. B. von `/token`) aus dem Cache verwenden.
+- ADR 0003 präzisiert: Widgets dürfen mit dem Server-Token Helix direkt aufrufen.
 - Shoutouts vom Chat-Befehl auf `POST /helix/chat/shoutouts` umgestellt.
 - Sub- und Gift-Effekte werden nicht mehr von `channel.subscribe`, `channel.subscription.message` und `channel.subscription.gift` ausgelöst, sondern von `channel.chat.notification`. Ein Gift-Bomb erzeugt einen Effekt.
 - Die frühen Sub-Events aktualisieren nur noch den Sub-Goal-Cache.
@@ -36,6 +41,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Log-Spam bei Polling reduziert.
 - Doppelte und zu frühe Sub-/Gift-Effekte (siehe Changed).
 - `session_reconnect`: neue Verbindung erhält Event-Handler, alte wird erst nach dem Welcome geschlossen, kein doppelter Neuaufbau mehr (siehe docs/BUGS.md).
+
+### Security
+- CORS nicht mehr für alle Herkünfte offen: Browser-Anfragen fremder Webseiten werden mit 403 abgelehnt. Vorher konnte jede im Browser des Streaming-PCs geöffnete Webseite den Access-Token über `localhost:3000/token` lesen.
+- `/token` antwortet nur noch auf lokale Aufrufe über `localhost`/`127.0.0.1` (kein Abruf aus dem LAN, Schutz vor DNS-Rebinding). Siehe ADR 0013.
+- Hinweis: Neuere OBS-Versionen sperren Widgets, die als „Lokale Datei“ eingebunden sind, den Zugriff auf `localhost`. Widgets per URL `file:///…` einbinden (docs/BUGS.md).
 
 ### Hinweis
 - Die 40-Tage-Aktivitätsprüfung für Shoutouts existiert nur in einem anderen Branch und ist hier nicht enthalten.

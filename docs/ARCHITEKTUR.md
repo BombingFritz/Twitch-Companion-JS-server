@@ -44,14 +44,20 @@ Konsole (readline) --> server.js
 
 ## 4. HTTP-Endpoints
 
-Alle GET. CORS für alle Origins.
+Alle GET. Alle Antworten mit `Cache-Control: no-store`.
+
+Zugriffsschutz (ADR 0013):
+- Browser-Anfragen mit `Origin`-Header werden nur von erlaubten Herkünften angenommen, sonst `403 {error, origin}`, bevor ein Endpoint etwas ausführt. Standard: `http://absolute` (OBS-Browser-Source mit „Lokale Datei“) und `null` (Datei per `file://`), dazu immer `http://localhost:<PORT>` und `http://127.0.0.1:<PORT>`. Änderbar über `CORS_ORIGINS`; `*` stellt das alte Verhalten (jede Herkunft) wieder her.
+- Anfragen ohne `Origin` (Stream Deck, Home Assistant, Adresszeile des Browsers) sind nicht betroffen.
+- OBS-Widgets werden per URL `file:///…` eingebunden (Herkunft `null`), nicht als „Lokale Datei“: Neuere OBS-Versionen sperren Anfragen von `http://absolute` an `localhost`, bevor sie den Server erreichen.
+- `/token` antwortet nur auf Aufrufe vom selben Rechner (Loopback-Adresse) mit Host `localhost`, `127.0.0.1` oder `[::1]`, sonst `403`. Der Host-Check verhindert DNS-Rebinding.
 
 | Pfad | Antwort | Fehler |
 |---|---|---|
 | `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen) | – |
 | `/callback?code=` | Tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden | 400 ohne `code`, 500 bei Fehler |
-| `/token` | `{access_token, broadcaster_id}` | 401 `{error, hint}` |
-| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length}`; ohne Tokens `{authenticated:false, message}` | – |
+| `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
+| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins}`; ohne Tokens `{authenticated:false, message}` | – |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
@@ -123,6 +129,9 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `FOLLOW_DEDUPE_WINDOW_MS` | 60000 | Follow-Effekt pro Nutzer |
 | `EVENTSUB_WS_URL` | `wss://eventsub.wss.twitch.tv/ws` | Standard-URL für frische EventSub-Verbindungen |
 | `EVENTSUB_RECONNECT_DELAY_MS` | 5000 | Wartezeit vor Neuaufbau nach Verbindungsende |
+| `DEFAULT_CORS_ORIGINS` | `['http://absolute', 'null']` | Erlaubte Browser-Herkünfte, wenn `CORS_ORIGINS` leer ist |
+| `LOOPBACK_ADDRESSES` | `127.0.0.1`, `::1`, `::ffff:127.0.0.1` | Erlaubte Absender-Adressen für `/token` |
+| `LOOPBACK_HOSTNAMES` | `localhost`, `127.0.0.1`, `[::1]` | Erlaubte Host-Header für `/token` |
 | Viewer-Schwelle Raid-Shoutout | 3 (inline, `viewers >= 3`) | |
 | Shoutout-Verzögerung nach Begrüßung | 2000 ms (inline) | |
 | Zusatztext Begrüßung | `viewers > 50` (inline) | |
@@ -158,4 +167,4 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 ## 9. Umgebungsvariablen
 
-`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`. Vorlage: `.env.example`.
+`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft). Vorlage: `.env.example`.

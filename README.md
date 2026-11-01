@@ -14,7 +14,7 @@ Node.js/Express-Dienst für Twitch-OAuth2 mit automatischem Token-Refresh. Er h�
 
 ## Features
 
-- OAuth2 mit Auto-Refresh, Token-Ausgabe an Widgets (`/token`)
+- OAuth2 mit Auto-Refresh, Token-Ausgabe an Widgets (`/token` mit Token, Client-ID und Broadcaster-ID; nur lokal und für erlaubte Widget-Herkünfte, siehe ADR 0013)
 - Predictions-API und Sub-Goal-Counter für Widgets
 - Raid-Begrüßung mit Warteschlange, Quartals-Leaderboard, `!raidstats`
 - Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist)
