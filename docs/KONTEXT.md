@@ -54,7 +54,7 @@ Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand 
 | Flavor-KI-Widgets | thematische KI-Interaktion | Idee / angefangen |
 
 Widget-Prinzipien laut Kontext:
-- Widgets holen den Access-Token über `/token` und rufen danach Twitch Helix direkt auf oder nutzen Server-Endpoints. Das widerspricht teilweise ADR 0003, siehe OFFEN.md.
+- Widgets holen Access-Token, Client-ID und Broadcaster-ID über `/token` und rufen danach Twitch Helix direkt auf oder nutzen Server-Endpoints (ADR 0003, präzisiert; Zugriffsschutz in ADR 0013).
 - Twitch-Credentials liegen nie im Widget-Frontend.
 - Flüchtiger Zustand darf im Widget liegen. Daten, die über einen Stream hinaus gelten oder korrigierbar sein sollen, kommen später persistent in den Server oder gezielt in den Browser-Speicher.
 

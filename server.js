@@ -7,7 +7,6 @@ const WebSocket = require('ws');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
 
 const {
   CLIENT_ID,
@@ -16,6 +15,7 @@ const {
   PORT = 3000,
   SCOPES,
   HA_WEBHOOK_URL,
+  CORS_ORIGINS,
 } = process.env;
 
 const TOKEN_FILE = './tokens.json';
@@ -40,6 +40,13 @@ const FOLLOW_DEDUPE_WINDOW_MS = 60 * 1000;        // Follow/Unfollow/Follow dess
 // EventSub-WebSocket
 const EVENTSUB_WS_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const EVENTSUB_RECONNECT_DELAY_MS = 5000;         // Neuaufbau nach unerwartetem Verbindungsende
+
+// Zugriffsschutz (siehe ADR 0013)
+// Standard-Herkünfte für Widgets, wenn CORS_ORIGINS in der .env leer ist:
+// 'http://absolute' = OBS-Browser-Source mit "Lokale Datei", 'null' = Datei per file:// geöffnet.
+const DEFAULT_CORS_ORIGINS = ['http://absolute', 'null'];
+const LOOPBACK_ADDRESSES = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];  // /token nur von diesem Rechner
+const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];      // erlaubte Host-Header für /token
 
 // ═══════════════════════════════════════════════════════════════════
 // LOGGING-HILFSFUNKTIONEN (reduziert Log-Spam bei wiederholten/Polling-Ereignissen)
@@ -84,6 +91,61 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// ZUGRIFFSSCHUTZ – Browser-Herkunft (CORS), Caching, /token nur lokal
+// ═══════════════════════════════════════════════════════════════════
+
+// CORS_ORIGINS leer: Standard-Herkünfte. '*': jede Herkunft (altes Verhalten,
+// nur als Notschalter gedacht). localhost/127.0.0.1 auf dem eigenen Port sind immer erlaubt.
+const corsAllowAll = (CORS_ORIGINS || '').trim() === '*';
+const allowedOrigins = new Set([
+  ...(CORS_ORIGINS && CORS_ORIGINS.trim() && !corsAllowAll
+    ? CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+    : DEFAULT_CORS_ORIGINS),
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`
+]);
+
+// Anfragen ohne Origin-Header (Stream Deck, Home Assistant, Adresszeile des
+// Browsers) sind nicht betroffen.
+function isAllowedOrigin(origin) {
+  return corsAllowAll || !origin || allowedOrigins.has(origin);
+}
+
+// Browser-Anfragen von fremden Webseiten werden abgelehnt, bevor ein Endpoint
+// etwas ausführt oder Daten herausgibt.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isAllowedOrigin(origin)) return next();
+  logIfChanged(
+    `origin-blocked:${origin}`,
+    `[Zugriffsschutz] Anfrage von fremder Herkunft "${origin}" abgelehnt (${req.method} ${req.path}). Eigenes Widget? Herkunft in CORS_ORIGINS (.env) eintragen.`,
+    'warn'
+  );
+  res.status(403).json({ error: 'Herkunft nicht erlaubt', origin });
+});
+
+app.use(cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin)) }));
+
+// Alle Antworten sind Live-Daten. Ohne diesen Header kann z. B. eine
+// OBS-Browser-Source eine alte /token-Antwort aus dem Cache verwenden.
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
+function isLoopbackRequest(req) {
+  return LOOPBACK_ADDRESSES.includes(req.socket.remoteAddress);
+}
+
+// Prüft den Host-Header. Schützt vor DNS-Rebinding: Eine fremde Domain, die auf
+// 127.0.0.1 zeigt, käme sonst als "gleiche Herkunft" an CORS vorbei.
+function hasLoopbackHost(req) {
+  const host = (req.headers.host || '').toLowerCase();
+  const hostname = host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
+  return LOOPBACK_HOSTNAMES.includes(hostname);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // HILFSFUNKTIONEN – TOKENS
@@ -619,12 +681,25 @@ app.get('/callback', async (req, res) => {
 });
 
 app.get('/token', async (req, res) => {
+  // Den Access-Token nur an Aufrufer auf diesem Rechner über localhost/127.0.0.1 herausgeben.
+  if (!isLoopbackRequest(req) || !hasLoopbackHost(req)) {
+    logIfChanged(
+      `token-denied:${req.socket.remoteAddress}|${req.headers.host}`,
+      `[Zugriffsschutz] /token abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Erlaubt sind nur lokale Aufrufe über localhost oder 127.0.0.1.`,
+      'warn'
+    );
+    return res.status(403).json({ error: 'Token nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  }
+
   try {
     const accessToken = await getValidAccessToken();
     const tokens = loadTokens();
+    // Einmal je Herkunft loggen, damit sichtbar wird, welche Origin die Widgets tatsächlich senden.
+    logIfChanged(`token-origin:${req.headers.origin || '-'}`, `[Token] Ausgabe an Widget-Herkunft: ${req.headers.origin || '(keine Origin)'}`);
     res.json({
       access_token: accessToken,
-      broadcaster_id: tokens.broadcaster_id
+      broadcaster_id: tokens.broadcaster_id,
+      client_id: CLIENT_ID
     });
   } catch (err) {
     console.error('Token-Endpoint Fehler:', err.message);
@@ -776,7 +851,8 @@ app.get('/status', (req, res) => {
     raid_queue_length: raidQueue.length,
     whitelist_count: Object.keys(loadWhitelist()).length,
     effect_mode: effectMode,
-    effect_queue_length: effectQueue.length
+    effect_queue_length: effectQueue.length,
+    allowed_origins: corsAllowAll ? '*' : [...allowedOrigins]
   });
 });
 
@@ -1550,6 +1626,7 @@ app.listen(PORT_NUM, () => {
   console.log(`Status: http://localhost:${PORT_NUM}/status`);
   console.log('═════════════════════════════════════════════');
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
+  console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
   console.log('═════════════════════════════════════════════');
 
   const tokens = loadTokens();
