@@ -2,6 +2,7 @@
 
 ## Vor jeder Änderung
 - Lies docs/ARCHITEKTUR.md und docs/adr/.
+- Lies docs/KONTEXT.md für die Einordnung im Stream-Ökosystem (Home Assistant, OBS-Widgets, Stream Deck).
 - Lies die passende Spec in docs/specs/.
 - Bei Konflikt mit einem ADR: nachfragen, nicht umgehen.
 - Der Code ist die Wahrheit. Weicht die Doku ab: melden, nicht stillschweigend glätten.
@@ -16,6 +17,12 @@
 - Konstanten oben in `server.js` definieren, nicht inline.
 - Wiederholte Log-Zeilen über `logIfChanged()` ausgeben.
 - Widgets erhalten nie Client-Secrets.
+- Neue Hardware und Lichtlogik gehören nach Home Assistant, nicht in den Server. Der Server liefert nur `type` und `meta`.
+
+## Arbeitsweise
+- Kleine, testbare Schritte statt großer Umbauten. Ein Commit je logischer Änderung.
+- Vor jeder Weiterentwicklung den Stand im GitHub-Repository prüfen. Branches, Entity-Namen, Webhooks und Scopes können sich ändern und werden nicht aus dem Gedächtnis übernommen.
+- Produktive Endpoints (Twitch-Chat, Home Assistant) beim Testen nicht ansprechen. Tests laufen mit Attrappen und in einem eigenen Arbeitsverzeichnis, damit die Laufzeit-JSON-Dateien nicht verändert werden.
 
 ## Pflicht-Checks
 - `node --check server.js` vor jeder Auslieferung.
@@ -25,5 +32,6 @@
 
 ## Verbote
 - Keine Secrets ausgeben oder committen (`.env`, `tokens.json`). Nur Platzhalter wie `<CLIENT_SECRET>`.
+- Keine privaten Netzwerkadressen oder Webhook-IDs in Repo oder Doku, nur Platzhalter wie `<HA_HOST>`.
 - Nichts erfinden: Unklares als `[UNGEKLÄRT]` markieren und nachfragen.
 - Laufzeit-JSON-Dateien nicht ins Repository.

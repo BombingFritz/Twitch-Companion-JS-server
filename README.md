@@ -24,6 +24,7 @@ Node.js/Express-Dienst für Twitch-OAuth2 mit automatischem Token-Refresh. Er h�
 ## Dokumentation
 
 - [AGENTS.md](AGENTS.md) – Regeln für KI-Assistenten
+- [docs/KONTEXT.md](docs/KONTEXT.md) – Einordnung im Stream-Ökosystem
 - [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) – Ist-Zustand
 - [docs/adr/](docs/adr/) – Architekturentscheidungen
 - [docs/specs/](docs/specs/) – Feature-Specs

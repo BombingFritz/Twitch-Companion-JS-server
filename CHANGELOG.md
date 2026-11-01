@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Die frühen Sub-Events aktualisieren nur noch den Sub-Goal-Cache.
 - Projekt umbenannt in „Twitch Companion JS server“ (README, Startmeldung, `package.json`).
 - `.env.example` mit Erklärung jedes Scopes.
+- Doku: `docs/KONTEXT.md` (Einordnung im Ökosystem), Arbeitsweise in AGENTS.md, Abgleich mit dem Gesamtkontext in OFFEN.md.
 
 ### Fixed
 - Falscher EventSub-Typ `channel.stream.online` durch `stream.online` ersetzt.
