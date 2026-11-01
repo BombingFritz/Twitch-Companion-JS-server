@@ -45,6 +45,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 ### Security
 - CORS nicht mehr für alle Herkünfte offen: Browser-Anfragen fremder Webseiten werden mit 403 abgelehnt. Vorher konnte jede im Browser des Streaming-PCs geöffnete Webseite den Access-Token über `localhost:3000/token` lesen.
 - `/token` antwortet nur noch auf lokale Aufrufe über `localhost`/`127.0.0.1` (kein Abruf aus dem LAN, Schutz vor DNS-Rebinding). Siehe ADR 0013.
+- Hinweis: Neuere OBS-Versionen sperren Widgets, die als „Lokale Datei“ eingebunden sind, den Zugriff auf `localhost`. Widgets per URL `file:///…` einbinden (docs/BUGS.md).
 
 ### Hinweis
 - Die 40-Tage-Aktivitätsprüfung für Shoutouts existiert nur in einem anderen Branch und ist hier nicht enthalten.

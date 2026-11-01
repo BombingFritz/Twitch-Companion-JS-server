@@ -49,6 +49,7 @@ Alle GET. Alle Antworten mit `Cache-Control: no-store`.
 Zugriffsschutz (ADR 0013):
 - Browser-Anfragen mit `Origin`-Header werden nur von erlaubten Herkünften angenommen, sonst `403 {error, origin}`, bevor ein Endpoint etwas ausführt. Standard: `http://absolute` (OBS-Browser-Source mit „Lokale Datei“) und `null` (Datei per `file://`), dazu immer `http://localhost:<PORT>` und `http://127.0.0.1:<PORT>`. Änderbar über `CORS_ORIGINS`; `*` stellt das alte Verhalten (jede Herkunft) wieder her.
 - Anfragen ohne `Origin` (Stream Deck, Home Assistant, Adresszeile des Browsers) sind nicht betroffen.
+- OBS-Widgets werden per URL `file:///…` eingebunden (Herkunft `null`), nicht als „Lokale Datei“: Neuere OBS-Versionen sperren Anfragen von `http://absolute` an `localhost`, bevor sie den Server erreichen.
 - `/token` antwortet nur auf Aufrufe vom selben Rechner (Loopback-Adresse) mit Host `localhost`, `127.0.0.1` oder `[::1]`, sonst `403`. Der Host-Check verhindert DNS-Rebinding.
 
 | Pfad | Antwort | Fehler |

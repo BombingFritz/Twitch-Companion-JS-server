@@ -12,7 +12,9 @@
 
 **Verworfene Alternativen:**
 - Server nur an `127.0.0.1` binden: hätte Home Assistant den Zugriff auf `/api/homeassistant/events` aus dem LAN genommen [UNGEKLÄRT, ob genutzt].
-- Widgets vom Server ausliefern (gleiche Herkunft): robuster, aber jede OBS-Browser-Source müsste auf eine URL umgestellt werden. Bleibt Option, falls neuere OBS-Versionen Anfragen von `http://absolute` an `localhost` sperren („Local Network Access“).
+- Widgets vom Server ausliefern (gleiche Herkunft): robuster, aber größere Strukturänderung. Abwägung und Auslöser siehe OFFEN.md (K1). Vorerst bewusst nicht umgesetzt.
 - Geheimer Schlüssel je Widget: zusätzliche Konfiguration in jeder Browser-Source.
 
-**Konsequenzen:** Anfragen ohne `Origin` (Stream Deck, Home Assistant) funktionieren unverändert. Eigene Widgets mit anderer Herkunft müssen in `CORS_ORIGINS` eingetragen werden; der Server loggt abgelehnte Herkünfte einmal je Herkunft. Herkunft `null` bleibt erlaubt, bis ein Live-Test die tatsächliche OBS-Herkunft zeigt; `null` senden auch abgeschottete iframes fremder Seiten. GET-Endpoints können über Einbindungen ohne `Origin` (z. B. `<img>`) weiterhin ausgelöst werden.
+**Nachtrag (01.11.2026, OBS-Test):** Die aktuelle OBS-Version sperrt Anfragen von „Lokale Datei“-Seiten (`http://absolute`) an `localhost` selbst („Local Network Access“), sie erreichen den Server gar nicht. Widgets werden deshalb per URL `file:///…` eingebunden (Herkunft `null`). `null` muss damit dauerhaft erlaubt bleiben; `http://absolute` bleibt für ältere OBS-Versionen in der Liste.
+
+**Konsequenzen:** Anfragen ohne `Origin` (Stream Deck, Home Assistant) funktionieren unverändert. Eigene Widgets mit anderer Herkunft müssen in `CORS_ORIGINS` eingetragen werden; der Server loggt abgelehnte Herkünfte einmal je Herkunft. Herkunft `null` bleibt erlaubt, weil die Widgets per `file:///` eingebunden werden; `null` senden auch abgeschottete iframes fremder Seiten (kleine Restlücke, schließbar nur durch Auslieferung der Widgets über den Server). GET-Endpoints können über Einbindungen ohne `Origin` (z. B. `<img>`) weiterhin ausgelöst werden.
