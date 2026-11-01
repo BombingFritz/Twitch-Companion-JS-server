@@ -1,6 +1,6 @@
 # Architektur (Ist-Zustand)
 
-Einzelne Datei `server.js`. Laufzeit: Node.js, Express, `ws`, `axios`, `dotenv`, `cors`, `readline`.
+Einzelne Datei `server.js`. Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
 
 ## 1. Datenfluss
 
@@ -28,7 +28,7 @@ Konsole (readline) --> server.js
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `handleChatNotification` |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `sendShoutout` |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
-| Sessions | RAM: `shoutedOutThisSession`, `eventSubWs` |
+| Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
 | Konsole | `printConsoleHelp`, `rl.on('line', …)` |
 
 ## 3. Persistierte Dateien (Arbeitsverzeichnis)
@@ -92,7 +92,14 @@ Alle Subscriptions werden bei `session_welcome` angelegt, Reihenfolge wie unten.
 | `channel.chat.notification` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatNotification` |
 | `channel.follow` | 2 | `broadcaster_user_id`, `moderator_user_id` (Broadcaster) | `scheduleEffect('follow')` |
 
-Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` wird ignoriert. Bei Verbindungsende wird nach 5 s neu verbunden.
+Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` wird ignoriert.
+
+### Verbindungsverwaltung
+
+- `eventSubWs` ist die aktive Verbindung. Nur ihr Ende löst einen Neuaufbau aus.
+- `session_reconnect`: `connectEventSub(reconnect_url)` öffnet eine zweite Verbindung. Die alte bleibt offen, bis die neue `session_welcome` erhält. Dann wird die neue aktiv und die alte geschlossen. Subscriptions werden dabei nicht neu angelegt, Twitch überträgt sie auf die neue Session.
+- Scheitert die Reconnect-Verbindung vor dem Welcome, bleibt die alte aktiv.
+- Unerwartetes Ende der aktiven Verbindung: nach `EVENTSUB_RECONNECT_DELAY_MS` frische Verbindung zu `EVENTSUB_WS_URL` mit neuen Subscriptions. Es ist höchstens ein Neuaufbau geplant (`eventSubReconnectTimer`); `/callback` während der Wartezeit ersetzt ihn.
 
 ### Effekt-Auslöser
 
@@ -114,6 +121,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `EVENT_MESSAGE_ID_TTL_MS` | 600000 | Merkdauer von `message_id` |
 | `SUB_DEDUPE_WINDOW_MS` | 60000 | Sub-Effekt pro Nutzer |
 | `FOLLOW_DEDUPE_WINDOW_MS` | 60000 | Follow-Effekt pro Nutzer |
+| `EVENTSUB_WS_URL` | `wss://eventsub.wss.twitch.tv/ws` | Standard-URL für frische EventSub-Verbindungen |
+| `EVENTSUB_RECONNECT_DELAY_MS` | 5000 | Wartezeit vor Neuaufbau nach Verbindungsende |
 | Viewer-Schwelle Raid-Shoutout | 3 (inline, `viewers >= 3`) | |
 | Shoutout-Verzögerung nach Begrüßung | 2000 ms (inline) | |
 | Zusatztext Begrüßung | `viewers > 50` (inline) | |

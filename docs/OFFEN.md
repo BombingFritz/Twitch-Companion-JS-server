@@ -3,11 +3,10 @@
 ## Priorität 1
 - Ungemergter Branch: 40-Tage-Aktivitätsprüfung für Shoutouts (`getRecentStreamInfo()` über `/helix/videos`, `SHOUTOUT_ACTIVITY_WINDOW_DAYS=40`, Chat-Nachricht mit Datum und Spiel). Fehlt in diesem Code. Zusammenführen mit der Effekt-Queue steht aus.
 - Feldnamen in `handleChatNotification` (`chatter_is_anonymous`, `sub.is_gift`, `resub.is_gift`, `source_broadcaster_user_id`) sind gegen reale Twitch-Events nicht belegt [UNGEKLÄRT]. Gegen echte Subs/Gifts prüfen.
-- `session_reconnect`: Der Code öffnet eine neue WebSocket-Verbindung ohne Event-Handler. Wirkung [UNGEKLÄRT]. Der Reconnect läuft zusätzlich über das `close`-Ereignis der alten Verbindung.
-- Aktualität: Der Server wird parallel in mehreren Diskussionen weiterentwickelt. Vor jeder Weiterentwicklung klären, welcher Stand gilt.
+- Aktualität: Der Server wird parallel in mehreren Diskussionen weiterentwickelt. Vor jeder Weiterentwicklung klären, welcher Stand gilt. Ab jetzt gilt das GitHub-Repository als maßgeblicher Stand.
+- EventSub-Keepalive: `session_keepalive` wird nicht ausgewertet. Bricht die Verbindung still ab (ohne `close`), bemerkt der Server das nicht [UNGEKLÄRT, ob in der Praxis aufgetreten].
 
 ## Priorität 2
-- `package.json` und Node-Mindestversion fehlen in den Unterlagen [UNGEKLÄRT].
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
 - Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung; `/token` gibt den Access-Token heraus; CORS ist offen. Bewertung: [UNGEKLÄRT].
 - Funktionsdetails der Widgets (`polling-soundChat2-2.html`, `bFCoinFlipV9_final.html`) sind nicht dokumentiert. Die Anhänge `pollingWidget.html` und `Creator-Overlay.html` sind nicht ausgewertet.

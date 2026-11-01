@@ -37,6 +37,10 @@ const EVENT_MESSAGE_ID_TTL_MS = 10 * 60 * 1000;   // Twitch-Wiederzustellungen d
 const SUB_DEDUPE_WINDOW_MS = 60 * 1000;           // Sicherheitsnetz: derselbe Nutzer nicht mehrfach als Sub-Effekt
 const FOLLOW_DEDUPE_WINDOW_MS = 60 * 1000;        // Follow/Unfollow/Follow desselben Nutzers
 
+// EventSub-WebSocket
+const EVENTSUB_WS_URL = 'wss://eventsub.wss.twitch.tv/ws';
+const EVENTSUB_RECONNECT_DELAY_MS = 5000;         // Neuaufbau nach unerwartetem Verbindungsende
+
 // ═══════════════════════════════════════════════════════════════════
 // LOGGING-HILFSFUNKTIONEN (reduziert Log-Spam bei wiederholten/Polling-Ereignissen)
 // ═══════════════════════════════════════════════════════════════════
@@ -780,7 +784,8 @@ app.get('/status', (req, res) => {
 // EVENTSUB – RAID-BEGRÜSSUNG, SHOUTOUTS, FOLLOWS, SUBS & MOD-BEFEHL
 // ═══════════════════════════════════════════════════════════════════
 
-let eventSubWs = null;
+let eventSubWs = null;               // aktive EventSub-Verbindung (die, deren Ende einen Neuaufbau auslöst)
+let eventSubReconnectTimer = null;   // geplanter Neuaufbau nach Verbindungsende
 
 let lastRaidstatsCommandAt = 0;
 let lastRaidGreetingSentAt = 0;
@@ -826,15 +831,39 @@ function wasRecentlyTriggered(map, key, windowMs) {
   return false;
 }
 
-async function connectEventSub() {
-  eventSubWs = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+// Baut eine EventSub-Verbindung auf.
+// - Ohne URL: frische Verbindung, nach session_welcome werden alle Subscriptions angelegt.
+// - Mit reconnectUrl (aus session_reconnect): Twitch überträgt die bestehenden
+//   Subscriptions selbst auf die neue Session. Die alte Verbindung bleibt aktiv, bis die
+//   neue ihr session_welcome erhalten hat, und wird erst dann geschlossen. Ihr
+//   close-Ereignis löst dann keinen zusätzlichen Neuaufbau aus.
+function connectEventSub(reconnectUrl = null) {
+  const isReconnect = Boolean(reconnectUrl);
+  const ws = new WebSocket(isReconnect ? reconnectUrl : EVENTSUB_WS_URL);
 
-  eventSubWs.on('message', async (data) => {
+  if (!isReconnect) {
+    if (eventSubReconnectTimer) {
+      clearTimeout(eventSubReconnectTimer);
+      eventSubReconnectTimer = null;
+    }
+    eventSubWs = ws;
+  }
+
+  ws.on('message', async (data) => {
     const msg = JSON.parse(data);
     const msgType = msg.metadata.message_type;
 
     if (msgType === 'session_welcome') {
       const sessionId = msg.payload.session.id;
+
+      if (isReconnect) {
+        const oldWs = eventSubWs;
+        eventSubWs = ws;
+        console.log('EventSub-Reconnect abgeschlossen, Session:', sessionId, '– Subscriptions von Twitch übernommen');
+        if (oldWs && oldWs !== ws) oldWs.close();
+        return;
+      }
+
       console.log('EventSub WebSocket verbunden, Session:', sessionId);
       await subscribeToRaid(sessionId);
       await subscribeToChat(sessionId);
@@ -898,18 +927,29 @@ async function connectEventSub() {
 
     if (msgType === 'session_reconnect') {
       const newUrl = msg.payload.session.reconnect_url;
-      console.log('EventSub Reconnect angefordert...');
-      eventSubWs.close();
-      eventSubWs = new WebSocket(newUrl);
+      console.log('EventSub Reconnect angefordert – verbinde mit neuer URL, alte Verbindung bleibt bis zum Welcome offen...');
+      connectEventSub(newUrl);
     }
   });
 
-  eventSubWs.on('close', () => {
-    console.log('EventSub WebSocket geschlossen, reconnect in 5s...');
-    setTimeout(connectEventSub, 5000);
+  ws.on('close', () => {
+    // Nur das Ende der aktiven Verbindung löst einen Neuaufbau aus. Alte Verbindungen
+    // nach einem Reconnect oder ein gescheiterter Reconnect-Versuch werden ignoriert;
+    // im letzteren Fall bleibt die bisherige Verbindung aktiv.
+    if (ws !== eventSubWs) {
+      console.log('Vorherige EventSub-Verbindung geschlossen (kein Neuaufbau nötig)');
+      return;
+    }
+    eventSubWs = null;
+    if (eventSubReconnectTimer) return;
+    console.log(`EventSub WebSocket geschlossen, reconnect in ${EVENTSUB_RECONNECT_DELAY_MS / 1000}s...`);
+    eventSubReconnectTimer = setTimeout(() => {
+      eventSubReconnectTimer = null;
+      if (!eventSubWs) connectEventSub();
+    }, EVENTSUB_RECONNECT_DELAY_MS);
   });
 
-  eventSubWs.on('error', (err) => {
+  ws.on('error', (err) => {
     console.error('EventSub WS Fehler:', err.message);
   });
 }
@@ -1503,7 +1543,7 @@ const PORT_NUM = parseInt(PORT);
 app.listen(PORT_NUM, () => {
   console.log('');
   console.log('═════════════════════════════════════════════');
-  console.log('Twitch Predictions & Raid-Begrüßung Server');
+  console.log('Twitch Companion JS server');
   console.log('═════════════════════════════════════════════');
   console.log(`Server läuft auf: http://localhost:${PORT_NUM}`);
   console.log(`Login: http://localhost:${PORT_NUM}/login`);
