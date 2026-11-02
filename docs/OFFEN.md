@@ -30,6 +30,13 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 ## Geplant: BdU-Chat (`!BdU`)
 Spezifiziert in `docs/specs/bdu-chat.md`, ADR 0014 (Plan vom 02.11.2026, noch kein Code). Gegenstück im Repository `BombingFritz/Uboat-Widget` (Version 1.1.0). Vor der Umsetzung zu bestätigen: Dauer der Funkstille bei Tageskontingent, optionale Tagesobergrenze, Verhalten bei mehreren verbundenen Widgets.
 
+## Idee: Widgets melden sich beim Server an (Nutzer, 02.11.2026)
+Noch nicht entschieden, nicht spezifiziert.
+- Ziel: Der Server weiß, welche Widgets laufen, wann eines ausfällt oder beim Verbindungsaufbau scheitert; umgekehrt sehen die Widgets den Zustand des Servers. Übersicht über die Stabilität an einer Stelle (Konsole, `/status`), Timings gezielter einstellen, Fehler früher sehen.
+- Anknüpfungspunkt: Der BdU-Chat (ADR 0014) bringt die erste dauerhafte Widget-Verbindung (Server-Sent Events). Der Server sieht damit schon, ob das Enigma-Widget verbunden ist. Daraus ließe sich ein gemeinsames Muster für alle Widgets machen, z. B. Anmeldung mit Name und Version, Lebenszeichen, Fehlermeldungen des Widgets an den Server, Übersicht „zuletzt gesehen“ je Widget.
+- Weniger Abfragen bringt die Anmeldung allein nicht: SpargelPoll fragt Twitch selbst per REST ab (dortiges ADR 0002). Einsparen ließe sich das erst, wenn der Server Ereignisse (z. B. Umfragen per EventSub) an die Widgets weiterreicht. Das berührt ADRs in den Widget-Repositories.
+- Zu klären: welche Widgets (SpargelPoll, Coinflip, Enigma, weitere), was „Fehler“ jeweils heißt, ob Widgets auf Server-Ausfälle anders reagieren sollen als heute (Start-Wiederholung), Darstellung der Übersicht.
+
 ## Priorität 2
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
 - Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung. Fremde Webseiten werden per Herkunftsprüfung abgelehnt, Einbindungen ohne `Origin` nicht (siehe K1). Bewertung: [UNGEKLÄRT].
