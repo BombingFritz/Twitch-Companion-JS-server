@@ -1,6 +1,6 @@
 # ADR 0014: BdU-Chat-Befehl, Antwort über das Enigma-Widget
 
-**Status:** Angenommen als Plan; Nutzer bestätigt (02.11.2026). Noch nicht umgesetzt.
+**Status:** Angenommen; Nutzer bestätigt (02.11.2026). Umgesetzt (Gegenstück: Enigma-Widget 1.2.0).
 
 **Kontext:** Zuschauer sollen dem KI-BdU aus dem Enigma-Widget (Repository `BombingFritz/Uboat-Widget`) per Chat Funksprüche schicken. Die KI, der Prompt und der Funkverlauf liegen im Widget (Browser, `localStorage`). Gegenstück: ADR 0004 und `docs/specs/chat-modus.md` im Widget-Repository.
 
