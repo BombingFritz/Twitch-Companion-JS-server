@@ -7,12 +7,12 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 ### Erkennung
 - `channel.chat.message`, Text beginnt mit `!bdu` (Groß-/Kleinschreibung egal) gefolgt von Leerzeichen und Text. Eigene Funktion `handleBduCommand(evt)`, Aufruf neben `handleChatCommand`.
 - Text nach dem Befehl trimmen und auf `BDU_MAX_INPUT_CHARS` (200) kürzen. Leerer Text: ignorieren, nichts zählen.
-- Nachrichten aus fremdem Shared-Chat-Kanal ignorieren [UNGEKLÄRT, Feldname wie in `handleChatNotification` prüfen].
+- Nachrichten aus fremdem Shared-Chat-Kanal ignorieren (`source_broadcaster_user_id`, wie in `handleChatNotification`).
 
 ### Prüfreihenfolge (erste zutreffende Regel gilt)
 1. **Kein Widget verbunden** (keine offene Events-Verbindung): ignorieren. Nichts zählen, keine Warnung.
 2. **Funkstille aktiv:** ignorieren, keine Ausgabe.
-3. **Tagesobergrenze erreicht** (optional, `BDU_DAILY_LIMIT`, 0 = aus) [ZU BESTÄTIGEN, Vorschlag 60]: ignorieren.
+3. **Tagesobergrenze erreicht** (`BDU_DAILY_LIMIT` = 60 je Kalendertag in Ortszeit des Servers, 0 = aus): ignorieren.
 4. **Globales Limit:** Seit der letzten angenommenen Anfrage sind weniger als `BDU_GLOBAL_COOLDOWN_MS` (3 min) vergangen → Verstoß.
 5. **Nutzerlimit:** Der Nutzer (`chatter_user_id`) hat in den letzten `BDU_USER_WINDOW_MS` (30 min) schon `BDU_USER_MAX` (3) angenommene Anfragen → Verstoß.
 6. Sonst: **annehmen.** Zeitpunkt für globales und Nutzerlimit speichern (auch wenn die KI später scheitert), Anfrage `{id, text}` mit neuer `id` per Events an das Widget, Zuordnung `id → message_id` merken.
@@ -30,14 +30,14 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 
 ### Funkstille (betrifft nur den Chat)
 - Auslöser: `status: "quota"` vom Widget.
-- Dauer: 30 min (`BDU_SILENCE_MS`). Deutet der Fehlertext auf das Tageskontingent hin (z. B. „per day“), bis zum nächsten `stream.online` bzw. Neustart [ZU BESTÄTIGEN].
+- Dauer: 30 min (`BDU_SILENCE_MS`). Deutet der Fehlertext auf das Tageskontingent hin (z. B. „per day“), bis zum nächsten `stream.online` bzw. Neustart. Erkennung über den Fehlertext („per day“, „PerDay“, „daily“).
 - Beim Start einmal posten: „BdU befiehlt Funkstille bis HH:MM Uhr – Meldungen werden nicht beantwortet.“ (Ortszeit des Servers; beim Tageskontingent „bis auf Weiteres“).
 - Erneuter Auslöser direkt nach Ablauf: Funkstille verlängern, ohne neue Ansage.
 
 ### Server-Sent Events (`GET /api/bdu/stream`)
 - Nur Loopback (Muster `/token`, ADR 0013), Herkunftsprüfung wie bei allen Browser-Anfragen.
 - Ereignis `request` mit `{id, text}`; Kommentarzeile alle 30 s gegen Verbindungsabbruch.
-- Mehrere Verbindungen: Anfrage nur an die zuletzt verbundene [ZU BESTÄTIGEN].
+- Mehrere Verbindungen: Anfrage nur an die zuletzt verbundene.
 
 ### Konstanten (oben in `server.js`)
 `BDU_MAX_INPUT_CHARS = 200`, `BDU_GLOBAL_COOLDOWN_MS = 3 min`, `BDU_USER_WINDOW_MS = 30 min`, `BDU_USER_MAX = 3`, `BDU_WARNING_COOLDOWN_MS = 10 min`, `BDU_ANSWER_TIMEOUT_MS = 120 s`, `BDU_SILENCE_MS = 30 min`, `BDU_REPLY_PREFIX = 'FT vom BdU: '`, Texte für Warnung und Funkstille.
@@ -71,4 +71,4 @@ Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Fu
 `server.js`: neue Konstanten, `handleBduCommand`, Helfer für Limits/Funkstille/Chat-Post, `GET /api/bdu/stream`, `POST /api/bdu/answer`, `express.json()`, Aufruf in `channel.chat.message`, `stream.online` (Funkstille Tageskontingent beenden), `/status`, Konsolenbefehle.
 
 ## Status
-geplant. Umsetzung zusammen mit Widget 1.1.0.
+umgesetzt, zusammen mit Enigma-Widget 1.2.0. Test mit Attrappen (EventSub per lokalem WebSocket, Helix-Aufrufe protokolliert, steuerbare Uhr, eigenes Arbeitsverzeichnis): 35/35 Akzeptanzprüfungen; Ende-zu-Ende mit dem Widget im Headless-Chromium: 18/18. Gegen echtes Twitch und im Stream noch nicht erprobt. Offene Feldfrage: `source_broadcaster_user_id` für Shared Chat ist wie bei `handleChatNotification` nicht gegen reale Events belegt [UNGEKLÄRT].

@@ -9,6 +9,7 @@ Widget --GET /token, /api/...--> server.js --> Twitch Helix API
 Twitch --EventSub WebSocket--> server.js
 server.js --scheduleEffect()--> effectQueue --POST--> HA_WEBHOOK_URL
 Chat "!raidstats" --> server.js --> Leaderboard in Twitch-Chat
+Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST /api/bdu/answer--> server.js --> "FT vom BdU: …" im Chat
 Konsole (readline) --> server.js
 ```
 
@@ -27,6 +28,7 @@ Konsole (readline) --> server.js
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `handleChatNotification` |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `sendShoutout` |
+| BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount` |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
 | Konsole | `printConsoleHelp`, `rl.on('line', …)` |
@@ -44,7 +46,7 @@ Konsole (readline) --> server.js
 
 ## 4. HTTP-Endpoints
 
-Alle GET. Alle Antworten mit `Cache-Control: no-store`.
+Alle GET außer `POST /api/bdu/answer` (ADR 0014). Alle Antworten mit `Cache-Control: no-store`.
 
 Zugriffsschutz (ADR 0013):
 - Browser-Anfragen mit `Origin`-Header werden nur von erlaubten Herkünften angenommen, sonst `403 {error, origin}`, bevor ein Endpoint etwas ausführt. Standard: `http://absolute` (OBS-Browser-Source mit „Lokale Datei“) und `null` (Datei per `file://`), dazu immer `http://localhost:<PORT>` und `http://127.0.0.1:<PORT>`. Änderbar über `CORS_ORIGINS`; `*` stellt das alte Verhalten (jede Herkunft) wieder her.
@@ -57,13 +59,15 @@ Zugriffsschutz (ADR 0013):
 | `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen) | – |
 | `/callback?code=` | Tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden | 400 ohne `code`, 500 bei Fehler |
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
-| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins}`; ohne Tokens `{authenticated:false, message}` | – |
+| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, bdu_widget_connected, bdu_silence_until}` (`bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“); ohne Tokens `{authenticated:false, message}` | – |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
 | `/api/effects/mode/:mode` | Setzt Modus (`auto`/`manual`/`off`), `{ok:true, mode}` | 400 `{error}` |
 | `/api/effects/mode` | `{mode, queueLength, pendingConfirmation: {type,count} oder null}` | – |
 | `/api/effects/confirm` | `{ok, message}`; bestätigt den wartenden Effekt im Modus `manual` | – |
+| `/api/bdu/stream` | Server-Sent Events für das Enigma-Widget: `retry: 5000`, Ereignis `hello`, Ereignis `request` mit `{id, text}`, Kommentar-Ping alle 30 s. Nur lokal (wie `/token`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
+| `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet „FT vom BdU: …“ als Reply, `quota` startet Funkstille; Antwort `{ok}`. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
 
 ## 5. Konsolenbefehle
 
@@ -79,6 +83,8 @@ Zugriffsschutz (ADR 0013):
 | `events show` | Letzte 10 Log-Einträge anzeigen |
 | `effects mode <auto\|manual\|off>` | Effekt-Modus setzen und speichern |
 | `effects show` | Modus, Queue-Länge, wartende Bestätigung anzeigen |
+| `bdu show` | BdU-Chat: Widget verbunden, Funkstille, offene Anfragen, Tageszähler, nächste mögliche Annahme |
+| `bdu silence off` | BdU-Chat: Funkstille sofort aufheben |
 | `help` | Befehlsübersicht (auch beim Start) |
 
 Es gibt keinen Konsolenbefehl zum Bestätigen eines Effekts.
@@ -90,7 +96,7 @@ Alle Subscriptions werden bei `session_welcome` angelegt, Reihenfolge wie unten.
 | Typ | Version | Condition | Verarbeitung |
 |---|---|---|---|
 | `channel.raid` | 1 | `to_broadcaster_user_id` | `enqueueRaidEvent` |
-| `channel.chat.message` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatCommand`, `handleWhitelistShoutout` |
+| `channel.chat.message` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatCommand`, `handleBduCommand`, `handleWhitelistShoutout` |
 | `stream.online` | 1 | `broadcaster_user_id` | `shoutedOutThisSession` leeren, `refreshSubGoalCache` |
 | `channel.subscribe` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
 | `channel.subscription.gift` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
@@ -131,7 +137,18 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `EVENTSUB_RECONNECT_DELAY_MS` | 5000 | Wartezeit vor Neuaufbau nach Verbindungsende |
 | `DEFAULT_CORS_ORIGINS` | `['http://absolute', 'null']` | Erlaubte Browser-Herkünfte, wenn `CORS_ORIGINS` leer ist |
 | `LOOPBACK_ADDRESSES` | `127.0.0.1`, `::1`, `::ffff:127.0.0.1` | Erlaubte Absender-Adressen für `/token` |
-| `LOOPBACK_HOSTNAMES` | `localhost`, `127.0.0.1`, `[::1]` | Erlaubte Host-Header für `/token` |
+| `LOOPBACK_HOSTNAMES` | `localhost`, `127.0.0.1`, `[::1]` | Erlaubte Host-Header für `/token` und die BdU-Endpoints |
+| `BDU_COMMAND` | `!bdu` | Chat-Befehl (Groß-/Kleinschreibung egal) |
+| `BDU_MAX_INPUT_CHARS` | 200 | Kürzung des Textes nach dem Befehl |
+| `BDU_GLOBAL_COOLDOWN_MS` | 180000 | Abstand zwischen angenommenen Anfragen |
+| `BDU_USER_WINDOW_MS` / `BDU_USER_MAX` | 1800000 / 3 | Anfragen je Nutzer im Zeitfenster |
+| `BDU_WARNING_COOLDOWN_MS` | 600000 | Abstand zwischen Warnungen |
+| `BDU_ANSWER_TIMEOUT_MS` | 120000 | Wartezeit auf die Antwort des Widgets |
+| `BDU_SILENCE_MS` | 1800000 | Funkstille nach Minutenlimit der KI |
+| `BDU_DAILY_LIMIT` | 60 | Angenommene Anfragen je Kalendertag (0 = aus) |
+| `BDU_SSE_PING_MS` | 30000 | Lebenszeichen auf der Events-Verbindung |
+| `BDU_REPLY_PREFIX` / `BDU_CHAT_MAX_CHARS` | `FT vom BdU: ` / 500 | Präfix und Twitch-Längengrenze |
+| `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
 | Viewer-Schwelle Raid-Shoutout | 3 (inline, `viewers >= 3`) | |
 | Shoutout-Verzögerung nach Begrüßung | 2000 ms (inline) | |
 | Zusatztext Begrüßung | `viewers > 50` (inline) | |

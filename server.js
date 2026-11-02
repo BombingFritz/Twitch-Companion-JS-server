@@ -48,6 +48,21 @@ const DEFAULT_CORS_ORIGINS = ['http://absolute', 'null'];
 const LOOPBACK_ADDRESSES = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];  // /token nur von diesem Rechner
 const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];      // erlaubte Host-Header für /token
 
+// BdU-Chat (!BdU, siehe ADR 0014 und docs/specs/bdu-chat.md)
+const BDU_COMMAND = '!bdu';
+const BDU_MAX_INPUT_CHARS = 200;                  // Text nach "!BdU" wird darauf gekürzt
+const BDU_GLOBAL_COOLDOWN_MS = 3 * 60 * 1000;     // höchstens eine angenommene Anfrage je 3 Minuten
+const BDU_USER_WINDOW_MS = 30 * 60 * 1000;        // je Nutzer ...
+const BDU_USER_MAX = 3;                           // ... höchstens 3 angenommene Anfragen in 30 Minuten
+const BDU_WARNING_COOLDOWN_MS = 10 * 60 * 1000;   // Warnung bei Limit-Verstoß höchstens einmal je 10 Minuten
+const BDU_ANSWER_TIMEOUT_MS = 120 * 1000;         // Widget hält Anfragen bis 60 s für den Kaleu zurück
+const BDU_SILENCE_MS = 30 * 60 * 1000;            // Funkstille nach erschöpftem KI-Kontingent (Minutenlimit)
+const BDU_DAILY_LIMIT = 60;                       // angenommene Chat-Anfragen je Kalendertag (0 = keine Grenze)
+const BDU_SSE_PING_MS = 30 * 1000;                // Lebenszeichen auf der Events-Verbindung
+const BDU_REPLY_PREFIX = 'FT vom BdU: ';
+const BDU_CHAT_MAX_CHARS = 500;                   // Twitch-Limit je Chat-Nachricht
+const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
+
 // ═══════════════════════════════════════════════════════════════════
 // LOGGING-HILFSFUNKTIONEN (reduziert Log-Spam bei wiederholten/Polling-Ereignissen)
 // ═══════════════════════════════════════════════════════════════════
@@ -710,6 +725,67 @@ app.get('/token', async (req, res) => {
   }
 });
 
+// ── BdU-Chat: Verbindung des Enigma-Widgets (Server-Sent Events) ──
+function isLocalWidgetRequest(req, label) {
+  if (isLoopbackRequest(req) && hasLoopbackHost(req)) return true;
+  logIfChanged(
+    `bdu-denied:${label}:${req.socket.remoteAddress}|${req.headers.host}`,
+    `[Zugriffsschutz] ${label} abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Nur lokale Aufrufe über localhost oder 127.0.0.1.`,
+    'warn'
+  );
+  return false;
+}
+
+app.get('/api/bdu/stream', (req, res) => {
+  if (!isLocalWidgetRequest(req, '/api/bdu/stream')) {
+    return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Connection': 'keep-alive'
+  });
+  res.write('retry: 5000\n\n');
+  res.write(`event: hello\ndata: ${JSON.stringify({ server: 'twitch-companion-js-server', bduChat: true })}\n\n`);
+  const client = { res, connectedAt: Date.now(), origin: req.headers.origin || '-' };
+  client.ping = setInterval(() => res.write(': ping\n\n'), BDU_SSE_PING_MS);
+  bduClients.push(client);
+  console.log(`[BdU] Enigma-Widget verbunden (Herkunft: ${client.origin}, verbunden: ${bduClients.length})`);
+  req.on('close', () => {
+    clearInterval(client.ping);
+    const i = bduClients.indexOf(client);
+    if (i >= 0) bduClients.splice(i, 1);
+    console.log(`[BdU] Enigma-Widget getrennt (verbunden: ${bduClients.length})`);
+  });
+});
+
+// ── BdU-Chat: Antwort des Widgets ──
+app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) => {
+  if (!isLocalWidgetRequest(req, '/api/bdu/answer')) {
+    return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  }
+  const { id, status, text, error } = req.body || {};
+  const pending = bduPending.get(id);
+  if (!pending) {
+    console.log(`[BdU] Antwort zu unbekannter oder abgelaufener Anfrage ${id} verworfen`);
+    return res.status(404).json({ ok: false, error: 'Anfrage unbekannt oder abgelaufen' });
+  }
+  bduPending.delete(id);
+  clearTimeout(pending.timer);
+
+  if (status === 'ok' && typeof text === 'string' && text.trim()) {
+    await sendBduChatMessage(BDU_REPLY_PREFIX + text.trim(), pending.messageId);
+    console.log(`[BdU] Antwort an @${pending.userLogin} gepostet (${Math.round((Date.now() - pending.acceptedAt) / 1000)} s nach Annahme)`);
+    return res.json({ ok: true });
+  }
+  if (status === 'quota') {
+    startBduSilence(String(error || ''));
+    return res.json({ ok: true, silenceUntil: bduSilenceUntil });
+  }
+  console.log(`[BdU] Widget meldet Fehler zur Anfrage von @${pending.userLogin}: ${error || status || 'unbekannt'} – keine Antwort im Chat`);
+  res.json({ ok: true });
+});
+
 app.get('/api/twitch/prediction/current', async (req, res) => {
   try {
     const accessToken = await getValidAccessToken();
@@ -852,7 +928,9 @@ app.get('/status', (req, res) => {
     whitelist_count: Object.keys(loadWhitelist()).length,
     effect_mode: effectMode,
     effect_queue_length: effectQueue.length,
-    allowed_origins: corsAllowAll ? '*' : [...allowedOrigins]
+    allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
+    bdu_widget_connected: bduClients.length > 0,
+    bdu_silence_until: bduSilenceUntil ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null
   });
 });
 
@@ -963,12 +1041,17 @@ function connectEventSub(reconnectUrl = null) {
 
       if (subType === 'channel.chat.message') {
         await handleChatCommand(msg.payload.event);
+        handleBduCommand(msg.payload.event);
         await handleWhitelistShoutout(msg.payload.event);
       }
 
       if (subType === 'stream.online') {
         shoutedOutThisSession.clear();
         console.log('Stream gestartet – Whitelist-Shoutout-Tracking für diese Session zurückgesetzt');
+        if (bduSilenceUntil === Infinity) {
+          bduSilenceUntil = 0;
+          console.log('[BdU] Stream gestartet – Funkstille (Tageskontingent) aufgehoben');
+        }
         await refreshSubGoalCache();
       }
 
@@ -1286,6 +1369,159 @@ async function handleChatCommand(evt) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// BDU-CHAT – Funksprüche aus dem Chat an das Enigma-Widget (ADR 0014)
+// Der Server erkennt "!BdU …", prüft Limits und Funkstille und postet die
+// Antwort. Die Antwort selbst erzeugt das Widget mit seiner KI und seinem Kontext.
+// ═══════════════════════════════════════════════════════════════════
+
+const bduClients = [];                  // offene Events-Verbindungen der Widgets (zuletzt verbundenes erhält Anfragen)
+const bduPending = new Map();           // id -> { messageId, userLogin, acceptedAt, timer }
+const bduAcceptedByUser = new Map();    // user_id -> [Zeitpunkte angenommener Anfragen]
+let bduLastAcceptedAt = 0;
+let bduLastWarningAt = 0;
+let bduSilenceUntil = 0;                // 0 = keine Funkstille, Infinity = bis Streamstart
+let bduSilenceEndedAt = 0;              // Ende der letzten Funkstille (für Verlängerung ohne neue Ansage)
+let bduDailyKey = '';
+let bduDailyCount = 0;
+let bduRequestCounter = 0;
+
+function isBduSilenceActive(now = Date.now()) {
+  if (!bduSilenceUntil) return false;
+  if (now < bduSilenceUntil) return true;
+  bduSilenceEndedAt = bduSilenceUntil;
+  bduSilenceUntil = 0;
+  console.log('[BdU] Funkstille beendet – Chat-Anfragen werden wieder angenommen');
+  return false;
+}
+
+function bduDailyLimitReached(now = Date.now()) {
+  if (!BDU_DAILY_LIMIT) return false;
+  const key = new Date(now).toDateString();
+  if (key !== bduDailyKey) { bduDailyKey = key; bduDailyCount = 0; }
+  return bduDailyCount >= BDU_DAILY_LIMIT;
+}
+
+function formatClock(ts) {
+  return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Postet eine Nachricht als Broadcaster, optional als Antwort auf eine Chat-Nachricht.
+async function sendBduChatMessage(text, replyToMessageId) {
+  const message = text.length > BDU_CHAT_MAX_CHARS ? text.slice(0, BDU_CHAT_MAX_CHARS - 1) + '…' : text;
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+    const body = { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message };
+    if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
+    const response = await axios.post('https://api.twitch.tv/helix/chat/messages', body,
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
+    const result = response.data?.data?.[0];
+    if (result && result.is_sent === false) {
+      console.warn(`[BdU] Twitch hat die Nachricht nicht gesendet (${result.drop_reason?.message || 'ohne Grund'}): ${message}`);
+    }
+  } catch (err) {
+    console.error('[BdU] Fehler beim Senden in den Chat:', err.response?.data || err.message, '– Text:', message);
+  }
+}
+
+// Funkstille nach erschöpftem KI-Kontingent. Betrifft nur den Chat.
+function startBduSilence(errorText) {
+  const now = Date.now();
+  const daily = /per ?day|perday|daily|täglich/i.test(errorText);
+  const until = daily ? Infinity : now + BDU_SILENCE_MS;
+  const wasActive = isBduSilenceActive(now);
+  // Direkt nach einer abgelaufenen Funkstille erneut ausgelöst: still verlängern, keine zweite Ansage
+  const extendQuietly = wasActive || (bduSilenceEndedAt && now - bduSilenceEndedAt < BDU_SILENCE_MS);
+  bduSilenceUntil = Math.max(bduSilenceUntil || 0, until);
+  // Offene Anfragen verfallen
+  for (const [id, p] of bduPending) { clearTimeout(p.timer); bduPending.delete(id); }
+  console.log(`[BdU] KI-Kontingent erschöpft (${daily ? 'Tageslimit' : 'Minutenlimit'}) – Funkstille ${daily ? 'bis zum nächsten Streamstart' : 'bis ' + formatClock(bduSilenceUntil)}. Meldung: ${errorText || '-'}`);
+  if (extendQuietly) {
+    console.log('[BdU] Funkstille verlängert, keine erneute Ansage im Chat');
+    return;
+  }
+  const text = daily
+    ? 'BdU befiehlt Funkstille bis auf Weiteres – Meldungen werden nicht beantwortet.'
+    : `BdU befiehlt Funkstille bis ${formatClock(bduSilenceUntil)} Uhr – Meldungen werden nicht beantwortet.`;
+  sendBduChatMessage(text);
+}
+
+// Erkennt "!BdU <Text>" und reicht angenommene Anfragen an das Enigma-Widget weiter.
+// Limits gelten für alle Nutzer, ausdrücklich ohne Ausnahme für Mods und Broadcaster (ADR 0014).
+function handleBduCommand(evt) {
+  const raw = (evt.message?.text || '').trim();
+  const lower = raw.toLowerCase();
+  if (!(lower === BDU_COMMAND || lower.startsWith(BDU_COMMAND + ' '))) return;
+
+  // Shared Chat: Nachrichten aus fremden Kanälen ignorieren
+  if (evt.source_broadcaster_user_id && evt.source_broadcaster_user_id !== evt.broadcaster_user_id) return;
+
+  const text = raw.slice(BDU_COMMAND.length).trim().slice(0, BDU_MAX_INPUT_CHARS);
+  if (!text) return;
+
+  const login = evt.chatter_user_login || evt.chatter_user_name || 'unbekannt';
+  const now = Date.now();
+
+  // 1. Kein Widget verbunden: still ignorieren, nichts zählen
+  if (bduClients.length === 0) {
+    console.log(`[BdU] !BdU von @${login} ignoriert – kein Enigma-Widget verbunden`);
+    return;
+  }
+  // 2. Funkstille
+  if (isBduSilenceActive(now)) {
+    console.log(`[BdU] !BdU von @${login} ignoriert – Funkstille`);
+    return;
+  }
+  // 3. Tagesobergrenze
+  if (bduDailyLimitReached(now)) {
+    console.log(`[BdU] !BdU von @${login} ignoriert – Tagesobergrenze (${BDU_DAILY_LIMIT}) erreicht`);
+    return;
+  }
+  // 4./5. Globales Limit und Nutzerlimit
+  const userKey = evt.chatter_user_id || login;
+  const recent = (bduAcceptedByUser.get(userKey) || []).filter(t => now - t < BDU_USER_WINDOW_MS);
+  bduAcceptedByUser.set(userKey, recent);
+  const globalBlocked = now - bduLastAcceptedAt < BDU_GLOBAL_COOLDOWN_MS;
+  const userBlocked = recent.length >= BDU_USER_MAX;
+  if (globalBlocked || userBlocked) {
+    const reason = globalBlocked
+      ? `globales Limit (noch ${Math.ceil((BDU_GLOBAL_COOLDOWN_MS - (now - bduLastAcceptedAt)) / 1000)} s)`
+      : `Nutzerlimit (${BDU_USER_MAX} in ${BDU_USER_WINDOW_MS / 60000} min)`;
+    if (now - bduLastWarningAt >= BDU_WARNING_COOLDOWN_MS) {
+      bduLastWarningAt = now;
+      console.log(`[BdU] !BdU von @${login} abgelehnt – ${reason}, Warnung gepostet`);
+      sendBduChatMessage(BDU_WARNING_TEXT, evt.message_id);
+    } else {
+      console.log(`[BdU] !BdU von @${login} abgelehnt – ${reason}, keine Warnung (letzte vor ${Math.round((now - bduLastWarningAt) / 1000)} s)`);
+    }
+    return;
+  }
+
+  // 6. Annehmen: zählt sofort, auch wenn die KI später scheitert
+  bduLastAcceptedAt = now;
+  recent.push(now);
+  bduDailyCount++;
+  const id = `bdu-${now}-${++bduRequestCounter}`;
+  const timer = setTimeout(() => {
+    if (bduPending.delete(id)) console.log(`[BdU] Keine Antwort des Widgets binnen ${BDU_ANSWER_TIMEOUT_MS / 1000} s – Anfrage von @${login} verworfen`);
+  }, BDU_ANSWER_TIMEOUT_MS);
+  bduPending.set(id, { messageId: evt.message_id, userLogin: login, acceptedAt: now, timer });
+  const client = bduClients[bduClients.length - 1];
+  client.res.write(`event: request\ndata: ${JSON.stringify({ id, text })}\n\n`);
+  console.log(`[BdU] !BdU von @${login} angenommen (${id}, heute ${bduDailyCount}${BDU_DAILY_LIMIT ? '/' + BDU_DAILY_LIMIT : ''}): ${text}`);
+}
+
+function printBduStatus() {
+  const now = Date.now();
+  const silence = isBduSilenceActive(now)
+    ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : `bis ${formatClock(bduSilenceUntil)}`)
+    : 'nein';
+  const nextFree = Math.max(0, Math.ceil((BDU_GLOBAL_COOLDOWN_MS - (now - bduLastAcceptedAt)) / 1000));
+  bduDailyLimitReached(now);
+  console.log(`[BdU] Widget verbunden: ${bduClients.length > 0 ? 'ja (' + bduClients.length + ')' : 'nein'} | Funkstille: ${silence} | offene Anfragen: ${bduPending.size} | heute angenommen: ${bduDailyCount}${BDU_DAILY_LIMIT ? '/' + BDU_DAILY_LIMIT : ''} | nächste Annahme frühestens in ${nextFree} s`);
+}
+
 async function handleWhitelistShoutout(evt) {
   const chatterId = evt.chatter_user_id;
   const chatterName = evt.chatter_user_login;
@@ -1470,6 +1706,8 @@ function printConsoleHelp() {
   console.log(' events show                - Letzte 10 Follow/Sub/Gift-Ereignisse anzeigen');
   console.log(' effects mode <auto|manual|off> - Effekt-Modus setzen');
   console.log(' effects show               - Aktuellen Effekt-Modus & Queue-Status anzeigen');
+  console.log(' bdu show                   - BdU-Chat: Widget-Verbindung, Funkstille, Limits anzeigen');
+  console.log(' bdu silence off            - BdU-Chat: Funkstille sofort aufheben');
   console.log(' help                       - Diese Hilfe anzeigen');
   console.log('');
 }
@@ -1605,6 +1843,22 @@ rl.on('line', async (input) => {
     }
 
     console.log('Nutzung: effects mode <auto|manual|off> | effects show');
+    return;
+  }
+
+  if (cmd === 'bdu') {
+    const sub = (parts[1] || '').toLowerCase();
+    if (sub === 'show') {
+      printBduStatus();
+      return;
+    }
+    if (sub === 'silence' && (parts[2] || '').toLowerCase() === 'off') {
+      bduSilenceUntil = 0;
+      bduSilenceEndedAt = 0;
+      console.log('[BdU] Funkstille aufgehoben');
+      return;
+    }
+    console.log('Nutzung: bdu show | bdu silence off');
     return;
   }
 
