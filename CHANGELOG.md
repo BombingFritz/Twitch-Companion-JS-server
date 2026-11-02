@@ -25,6 +25,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Umgebungsvariable `CORS_ORIGINS` (erlaubte Widget-Herkünfte, `*` als Notschalter), Anzeige in Startmeldung und `/status` (`allowed_origins`).
 - `/token` loggt einmal je Herkunft, an welche Widget-Herkunft der Token ausgegeben wurde.
 
+### Documentation
+- Plan für den BdU-Chat-Befehl `!BdU`: ADR 0014, `docs/specs/bdu-chat.md`, Eintrag in `docs/OFFEN.md` (noch kein Code).
+
 ### Changed
 - Alle Antworten mit `Cache-Control: no-store`, damit OBS-Browser-Sources keine alten Antworten (z. B. von `/token`) aus dem Cache verwenden.
 - ADR 0003 präzisiert: Widgets dürfen mit dem Server-Token Helix direkt aufrufen.
