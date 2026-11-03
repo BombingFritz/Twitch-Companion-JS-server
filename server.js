@@ -435,6 +435,19 @@ function saveEffectMode(mode) {
 let effectMode = loadEffectMode();       // Startet mit dem zuletzt gespeicherten Modus
 let pendingManualConfirmation = null;    // { job, resolve } während im Manuell-Modus gewartet wird
 
+// Setzt den Effekt-Modus (HTTP-Endpoint und Konsole). Beim Wechsel auf OFF wird eine
+// wartende Bestätigung verworfen, damit /api/effects/confirm den Effekt nicht trotzdem
+// auslöst (OFFEN.md, K3). Kein Eintrag im Event-Log, wie bei den übrigen verworfenen Jobs.
+function setEffectMode(mode) {
+  effectMode = mode;
+  saveEffectMode(mode);
+  console.log(`Effekt-Modus geändert auf: ${mode.toUpperCase()}`);
+  if (mode === 'off' && pendingManualConfirmation) {
+    console.log(`[Effekt-Modus: OFF] Wartende Bestätigung für ${pendingManualConfirmation.job.type} (${pendingManualConfirmation.job.count}x) verworfen.`);
+    pendingManualConfirmation.resolve('off');
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // EFFEKT-QUEUE – Follows/Subs/Gifts gebündelt & geordnet auslösen
 // ═══════════════════════════════════════════════════════════════════
@@ -497,7 +510,8 @@ async function triggerEffect(job) {
 async function runManualConfirmation(job) {
   console.log(`[Effekt-Modus: MANUELL] Warte auf Bestätigung für ${job.type} (${job.count}x) – 30 Sekunden Zeit...`);
 
-  const confirmed = await new Promise((resolve) => {
+  // true = bestätigt, false = Timeout, 'off' = per setEffectMode('off') verworfen
+  const outcome = await new Promise((resolve) => {
     pendingManualConfirmation = { job, resolve };
     setTimeout(() => {
       if (pendingManualConfirmation && pendingManualConfirmation.job === job) {
@@ -509,9 +523,9 @@ async function runManualConfirmation(job) {
 
   pendingManualConfirmation = null;
 
-  if (confirmed) {
+  if (outcome === true) {
     await triggerEffect(job);
-  } else {
+  } else if (outcome === false) {
     appendEvent(job.type, { ...job.meta, count: job.count, skippedManualTimeout: true });
   }
 }
@@ -878,9 +892,7 @@ app.get('/api/effects/mode/:mode', (req, res) => {
   if (!['auto', 'manual', 'off'].includes(mode)) {
     return res.status(400).json({ error: 'Ungültiger Modus. Erlaubt: auto, manual, off' });
   }
-  effectMode = mode;
-  saveEffectMode(mode);
-  console.log(`Effekt-Modus geändert auf: ${mode.toUpperCase()}`);
+  setEffectMode(mode);
   res.json({ ok: true, mode });
 });
 
@@ -1831,9 +1843,7 @@ rl.on('line', async (input) => {
         console.log('Nutzung: effects mode <auto|manual|off>');
         return;
       }
-      effectMode = newMode;
-      saveEffectMode(newMode);
-      console.log(`Effekt-Modus geändert auf: ${newMode.toUpperCase()}`);
+      setEffectMode(newMode);
       return;
     }
 

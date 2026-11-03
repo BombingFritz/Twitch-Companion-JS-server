@@ -8,4 +8,4 @@
 
 **Verworfene Alternativen:** [UNGEKLÄRT]
 
-**Konsequenzen:** Zustandsändernde Aktionen laufen über GET ohne Authentifizierung. Bestätigen geht nur per HTTP, nicht per Konsole.
+**Konsequenzen:** Zustandsändernde Aktionen laufen über GET ohne Authentifizierung. Bestätigen geht nur per HTTP, nicht per Konsole. `off` ist als Notschalter gedacht (z. B. bei Spam- oder Bot-Attacken): Der Wechsel auf `off` verwirft auch eine gerade wartende Bestätigung, ohne Eintrag im Event-Log, damit das Log bei einer Attacke nicht überläuft (Nachtrag Nov. 2026, OFFEN.md K3).
