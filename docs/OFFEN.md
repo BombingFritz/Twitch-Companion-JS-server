@@ -27,11 +27,24 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 - **K7 Startskript und Konsole:** Der Server liest Konsolenbefehle über `stdin`. Startet das Startskript ihn ohne sichtbares Konsolenfenster, sind Whitelist- und Effekt-Befehle nicht erreichbar [UNGEKLÄRT, wie das Skript startet].
 - **K8 Test- und Live-Daten:** Alle JSON-Dateien liegen im Arbeitsverzeichnis, einen Testmodus gibt es nicht. Ein Testlauf im Projektordner würde echte Raid-Statistik und Event-Log verändern und echte Chat-Nachrichten senden. Das passt zur Entwicklungsrichtung „Stream-, Langzeit- und Testdaten trennen“, ist aber noch nicht umgesetzt.
 
-## BdU-Chat (`!BdU`) – umgesetzt, Live-Test ausstehend
+## BdU-Chat (`!BdU`) – umgesetzt, Livestream-Test ausstehend
 Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2.0 (`BombingFritz/Uboat-Widget`). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
-- Offen: Test mit echtem Twitch-Chat und Stream; `reply_parent_message_id` und `is_sent`/`drop_reason` gegen echte Antworten prüfen.
+- Mit echtem Twitch-Chat erprobt (03.11.2026): Erkennung, Weitergabe an das Widget und Antwort als Reply funktionieren (`reply_parent_message_id` bestätigt). Stolperstein: Widget-Quelle in OBS noch als „Lokale Datei“, dann kommt keine Verbindung an (Server meldet „kein Enigma-Widget verbunden“); Lösung `file:///`.
+- Offen: Livestream-Test mit echtem Publikum (Limits, Warnung, Funkstille unter Last).
 - Zustand im RAM: Limits und Funkstille beginnen nach einem Neustart neu.
 - Erste dauerhafte Widget-Verbindung des Servers; Anknüpfungspunkt für die Idee „Widgets melden sich an“ (nächster Abschnitt).
+
+## Geplant: Bot-Account „DerBdu“ für BdU-Antworten (Nutzer, 03.11.2026)
+Ziel: Antworten, Warnung und Funkstille-Ansage des BdU erscheinen nicht als Broadcaster, sondern vom eigenen Bot-Konto „DerBdu“. Reihenfolge laut Nutzer: nach dem Livestream-Test und dem Release Enigma-Widget 1.2.0.
+- Partner-Vorteil: Twitch-Partner können bis zu zwei dauerhafte Bot-Abos (Stufe 3) anfordern; der Nutzer klärt das für „DerBdu“ mit dem Support. Das Abo regelt nur Emotes und Abo-Abzeichen, nicht die technische Anbindung.
+- Technischer Plan (Vorschlag, noch nicht entschieden):
+  - Senden über die Helix-API „Send Chat Message“ mit App-Access-Token (Client-Credentials) und `sender_id` = Bot. Damit zeigt Twitch das „Chat Bot“-Abzeichen; mit Nutzer-Token des Bots erscheint es nicht.
+  - Voraussetzungen: Bot-Konto erteilt einmalig `user:bot` (und `user:write:chat`); für den Kanal `channel:bot` oder der Bot ist Moderator (`/mod DerBdu`, empfohlen).
+  - Neue Adresse `/login-bot` für die einmalige Freigabe (über die bestehende `/callback`-Redirect-URL), Bot-ID/-Name in eigener Laufzeitdatei (z. B. `bot.json`, in `.gitignore`).
+  - `sendBduChatMessage` nutzt den Bot, Rückfall auf den Broadcaster, wenn kein Bot eingerichtet ist oder Twitch ablehnt; Anzeige in `/status` und `bdu show`.
+  - Eigenes ADR, Spec, Test mit Attrappen. Am Enigma-Widget ändert sich nichts.
+- Offene Frage an den Nutzer: nur BdU-Nachrichten über den Bot (Vorschlag) oder auch Raid-Begrüßung und `!raidstats`?
+- Quellen: Twitch Developer Forum „Introducing the Chat Bot badge and chat identity for chatbots“ (28.08.2025); Twitch-Doku „Authenticating and EventSub“ (Chat).
 
 ## Idee: Widgets melden sich beim Server an (Nutzer, 02.11.2026)
 Noch nicht entschieden, nicht spezifiziert.
