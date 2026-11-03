@@ -1,6 +1,6 @@
 # ADR 0007: EventSub über WebSocket
 
-**Status:** Akzeptiert (aus dem Code abgeleitet)
+**Status:** Akzeptiert (aus dem Code abgeleitet); Konsequenzen präzisiert (Nov. 2026, Reconnect-Fix)
 
 **Kontext:** Der Server läuft lokal (`http://localhost`).
 
@@ -8,4 +8,4 @@
 
 **Verworfene Alternativen:** [UNGEKLÄRT]
 
-**Konsequenzen:** Subscriptions müssen bei jeder neuen Session neu angelegt werden. Während einer Trennung gehen Ereignisse verloren [UNGEKLÄRT, Twitch-Verhalten nicht im Material].
+**Konsequenzen:** Bei einer frischen Verbindung (Start, `/callback`, Neuaufbau nach Verbindungsende) müssen alle Subscriptions neu angelegt werden. Bei einem von Twitch angeforderten `session_reconnect` überträgt Twitch die Subscriptions selbst auf die neue Session; sie werden nicht neu angelegt (siehe ARCHITEKTUR.md, „Verbindungsverwaltung“). Während einer Trennung gehen Ereignisse verloren [UNGEKLÄRT, Twitch-Verhalten nicht im Material]. Ein stiller Verbindungsabbruch ohne `close` wird nicht erkannt, weil `session_keepalive` nicht ausgewertet wird (OFFEN.md, Priorität 1).
