@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 ## [Unreleased]
 
 ### Added
+- `AuthServer.bat` (Windows-Start im eigenen Konsolenfenster, bisher nur lokal) im Repository, Titel und Banner mit neuem Namen; `.gitattributes` sorgt für CRLF-Zeilenenden.
 - BdU-Chat `!BdU <Text>` (ADR 0014, `docs/specs/bdu-chat.md`): Server prüft Limits (1 Anfrage je 3 min, 3 je Nutzer in 30 min, Warnung „Funkverkehr einschränken, Feind peilt ein!“ höchstens 1× je 10 min, Tagesobergrenze 60), reicht angenommene Anfragen per Server-Sent Events (`GET /api/bdu/stream`) an das Enigma-Widget weiter und postet dessen Antwort (`POST /api/bdu/answer`) als „FT vom BdU: …“ (Reply). Funkstille bei erschöpftem KI-Kontingent (30 min bzw. bis Streamstart) mit einmaliger Ansage. Beide Endpoints nur lokal. Konsole `bdu show`, `bdu silence off`; `/status` mit `bdu_widget_connected`, `bdu_silence_until`. Getestet mit Attrappen (35/35) und Ende-zu-Ende mit dem Widget (18/18); Live-Test ausstehend.
 - OAuth2-Login (`/login`, `/callback`), Token-Speicher und Auto-Refresh mit 5-Minuten-Puffer, `/token`, `/status`.
 - Predictions-API `/api/twitch/prediction/current`.
