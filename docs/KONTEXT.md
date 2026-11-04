@@ -34,7 +34,7 @@ Physische Eingaben (ESP32/ESPHome, Zugschnurcontroller) und Lichteffekte vom Str
 | WLED-Controller | per Startskript | nur indirekt über Home Assistant |
 | Stream Deck | bei Stream oder Arbeit | ruft Effekt-Endpoints auf |
 
-Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand OBS und der WLED-Controller. So initialisieren die OBS-Browser-Widgets zuverlässig. Den Server selbst startet `AuthServer.bat` aus diesem Repository (Windows, eigenes Konsolenfenster im Projektordner). Wie OBS und der WLED-Controller danach gestartet werden (eigenes Skript oder Stream-Deck-Mehrfachaktion, Wartezeiten), liegt außerhalb dieses Repositorys [UNGEKLÄRT].
+Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand OBS und der WLED-Controller. So initialisieren die OBS-Browser-Widgets zuverlässig. Den Server selbst startet `AuthServer.bat` aus diesem Repository (Windows, eigenes Konsolenfenster im Projektordner). Die Gesamtreihenfolge mit den Wartezeiten steuert ein Skript auf dem Stream Deck: Es startet `AuthServer.bat`, danach OBS und den WLED-Controller (Nutzer, 04.11.2026). Das Stream-Deck-Skript liegt nicht in diesem Repository; Wartezeiten [UNGEKLÄRT].
 
 ## Nachbarsysteme und Schnittstellen
 
