@@ -8,6 +8,8 @@ Bestimmte Streamer beim ersten Chat-Beitrag je Session automatisch shouten.
 - Verwaltung nur über Konsolenbefehle (siehe docs/ARCHITEKTUR.md).
 - `handleWhitelistShoutout` prüft jede Chat-Nachricht. Ein gelisteter Nutzer wird einmal je Session geshoutet, `shoutedOutThisSession` merkt das.
 - `stream.online` leert `shoutedOutThisSession`.
+- Ein Raid-Shoutout trägt den Raider ebenfalls in `shoutedOutThisSession` ein (siehe Spec Shoutout).
+- Ein Shoutout vor dem Streamstart scheitert bei Twitch (400, Kanal nicht live). Der Nutzer bleibt trotzdem als geshoutet markiert, damit nicht jede weitere Nachricht einen neuen Versuch auslöst; nach `stream.online` folgt der Shoutout bei seiner nächsten Nachricht.
 
 ## Nicht-Ziele
 - Kein HTTP-Endpoint zur Verwaltung.

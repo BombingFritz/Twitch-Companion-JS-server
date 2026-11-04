@@ -12,7 +12,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 ### Prüfreihenfolge (erste zutreffende Regel gilt)
 1. **Kein Widget verbunden** (keine offene Events-Verbindung): ignorieren. Nichts zählen, keine Warnung.
 2. **Funkstille aktiv:** ignorieren, keine Ausgabe.
-3. **Tagesobergrenze erreicht** (`BDU_DAILY_LIMIT` = 60 je Kalendertag in Ortszeit des Servers, 0 = aus): ignorieren.
+3. **Tagesobergrenze erreicht** (`BDU_DAILY_LIMIT` = 60 je Kalendertag in Ortszeit des Servers, 0 = aus): ignorieren. Bei einem Stream über Mitternacht beginnt der Zähler um 0:00 neu; das ist so gewollt (Nutzer, 04.11.2026).
 4. **Globales Limit:** Seit der letzten angenommenen Anfrage sind weniger als `BDU_GLOBAL_COOLDOWN_MS` (3 min) vergangen → Verstoß.
 5. **Nutzerlimit:** Der Nutzer (`chatter_user_id`) hat in den letzten `BDU_USER_WINDOW_MS` (30 min) schon `BDU_USER_MAX` (3) angenommene Anfragen → Verstoß.
 6. Sonst: **annehmen.** Zeitpunkt für globales und Nutzerlimit speichern (auch wenn die KI später scheitert), Anfrage `{id, text}` mit neuer `id` per Events an das Widget, Zuordnung `id → message_id` merken.

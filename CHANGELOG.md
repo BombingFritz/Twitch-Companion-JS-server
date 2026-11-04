@@ -30,6 +30,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Plan für den BdU-Chat-Befehl `!BdU`: ADR 0014, `docs/specs/bdu-chat.md`, Eintrag in `docs/OFFEN.md` (noch kein Code).
 
 ### Changed
+- Shoutout-Ablehnungen „Kanal nicht live“ (400) und „Twitch-Wartezeit“ (429) als kurzer Hinweis statt als Fehlerausgabe; `sendShoutout` liefert `true`/`false`.
+- Startanzeige: abgelaufener Token als „abgelaufen – wird beim ersten Zugriff automatisch erneuert“ statt negativer Minuten; neue Zeile, ob `HA_WEBHOOK_URL` eingetragen ist (ohne die Adresse).
 - Alle Antworten mit `Cache-Control: no-store`, damit OBS-Browser-Sources keine alten Antworten (z. B. von `/token`) aus dem Cache verwenden.
 - ADR 0003 präzisiert: Widgets dürfen mit dem Server-Token Helix direkt aufrufen.
 - Shoutouts vom Chat-Befehl auf `POST /helix/chat/shoutouts` umgestellt.
@@ -40,6 +42,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Doku: `docs/KONTEXT.md` (Einordnung im Ökosystem), Arbeitsweise in AGENTS.md, Abgleich mit dem Gesamtkontext in OFFEN.md.
 
 ### Fixed
+- Kein zweiter Shoutout mehr für einen Raider, der danach im Chat schreibt und auf der Whitelist steht (Twitch lehnte mit 429 ab, Livestream 03.11.2026). Der Raid-Shoutout trägt den Raider in `shoutedOutThisSession` ein; scheitert er, darf die Whitelist es erneut versuchen.
 - Falscher EventSub-Typ `channel.stream.online` durch `stream.online` ersetzt.
 - Konsolenbefehle durch korrigierte Regex und bereinigte Escapes wieder erkannt.
 - Log-Spam bei Polling reduziert.

@@ -3,6 +3,7 @@
 ## Priorität 1
 - Ungemergter Branch: 40-Tage-Aktivitätsprüfung für Shoutouts (`getRecentStreamInfo()` über `/helix/videos`, `SHOUTOUT_ACTIVITY_WINDOW_DAYS=40`, Chat-Nachricht mit Datum und Spiel). Fehlt in diesem Code. Zusammenführen mit der Effekt-Queue steht aus.
 - Feldnamen in `handleChatNotification` (`chatter_is_anonymous`, `sub.is_gift`, `resub.is_gift`, `source_broadcaster_user_id`) sind gegen reale Twitch-Events nicht belegt [UNGEKLÄRT]. Gegen echte Subs/Gifts prüfen.
+  - **Teilweise belegt (Livestream 03.11.2026):** `notice_type` `resub` (6×) und `sub_gift` ohne `community_gift_id` (1×) lösten je genau einen Effekt aus; beim Einzel-Gift kein zusätzlicher Sub-Effekt für den Empfänger; die Lichter reagierten. Weiter offen: `chatter_is_anonymous`, `is_gift`, `community_sub_gift` (Gift-Bomb), `source_broadcaster_user_id`.
 - Aktualität: Der Server wird parallel in mehreren Diskussionen weiterentwickelt. Vor jeder Weiterentwicklung klären, welcher Stand gilt. Ab jetzt gilt das GitHub-Repository als maßgeblicher Stand.
 - EventSub-Keepalive: `session_keepalive` wird nicht ausgewertet. Bricht die Verbindung still ab (ohne `close`), bemerkt der Server das nicht [UNGEKLÄRT, ob in der Praxis aufgetreten].
 
@@ -25,12 +26,15 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 - **K5 Stream-Deck-Steuerung schon umgesetzt:** Laut Kontext sind Modus-Umschaltung und Bestätigung per Stream Deck „geplant“. Die Endpoints gibt es bereits (ADR 0010). Offen ist, ob die Stream-Deck-Tasten schon eingerichtet sind; danach den Kontext aktualisieren.
 - **K6 Name:** Der Kontext nennt den Server noch „Node.js Auth Server“. Bei der nächsten Überarbeitung des Kontexts „Twitch Companion JS server“ verwenden.
 - **K7 Startskript und Konsole:** Der Server liest Konsolenbefehle über `stdin`. Startet das Startskript ihn ohne sichtbares Konsolenfenster, sind Whitelist- und Effekt-Befehle nicht erreichbar [UNGEKLÄRT, wie das Skript startet].
+  - Stand 04.11.2026: Das Startskript gibt vor dem Server noch „Twitch Auth Server wird gestartet...“ aus (alter Name, K6). Es liegt nicht in diesem Repository; Ablage, Dateiname und Betriebssystem [UNGEKLÄRT]. Ziel: als Vorlage ohne private Pfade ins Repository aufnehmen (z. B. `scripts/`).
 - **K8 Test- und Live-Daten:** Alle JSON-Dateien liegen im Arbeitsverzeichnis, einen Testmodus gibt es nicht. Ein Testlauf im Projektordner würde echte Raid-Statistik und Event-Log verändern und echte Chat-Nachrichten senden. Das passt zur Entwicklungsrichtung „Stream-, Langzeit- und Testdaten trennen“, ist aber noch nicht umgesetzt.
 
-## BdU-Chat (`!BdU`) – umgesetzt, Livestream-Test ausstehend
+## BdU-Chat (`!BdU`) – umgesetzt, erster Livestream-Test 03.11.2026
 Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2.0 (`BombingFritz/Uboat-Widget`). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
 - Mit echtem Twitch-Chat erprobt (03.11.2026): Erkennung, Weitergabe an das Widget und Antwort als Reply funktionieren (`reply_parent_message_id` bestätigt). Stolperstein: Widget-Quelle in OBS noch als „Lokale Datei“, dann kommt keine Verbindung an (Server meldet „kein Enigma-Widget verbunden“); Lösung `file:///`.
-- Offen: Livestream-Test mit echtem Publikum (Limits, Warnung, Funkstille unter Last).
+- Livestream-Test 03.11.2026: 6 Anfragen (5 vom Broadcaster, 1 aus dem Publikum), Antworten nach 1–3 s, keine Fehler. Limits, Warnung und Funkstille wurden nicht erreicht, also unter Last weiter unerprobt. Rückmeldung: wenig genutzt, aber Lob für die Idee.
+- Das Widget trennt sich beim Ein-/Ausblenden der Quelle bzw. bei manchen Szenenwechseln und verbindet sich neu (OBS lädt die Quelle neu). Erwartet, kein Fehler; in der Zwischenzeit wird `!BdU` still ignoriert.
+- Tageszähler je Kalendertag bleibt (Nutzer, 04.11.2026): Bei Streams über Mitternacht gelten 60 vor und 60 nach 0:00.
 - Zustand im RAM: Limits und Funkstille beginnen nach einem Neustart neu.
 - Erste dauerhafte Widget-Verbindung des Servers; Anknüpfungspunkt für die Idee „Widgets melden sich an“ (nächster Abschnitt).
 
