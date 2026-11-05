@@ -41,6 +41,8 @@ const FOLLOW_DEDUPE_WINDOW_MS = 60 * 1000;        // Follow/Unfollow/Follow dess
 // EventSub-WebSocket
 const EVENTSUB_WS_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const EVENTSUB_RECONNECT_DELAY_MS = 5000;         // Neuaufbau nach unerwartetem Verbindungsende
+const EVENTSUB_KEEPALIVE_DEFAULT_S = 10;          // falls session_welcome keinen keepalive_timeout_seconds liefert
+const EVENTSUB_KEEPALIVE_GRACE_MS = 5000;         // Zuschlag auf das Keepalive-Intervall, bevor die Verbindung als tot gilt
 
 // Zugriffsschutz (siehe ADR 0013)
 // Standard-Herkünfte für Widgets, wenn CORS_ORIGINS in der .env leer ist:
@@ -1018,9 +1020,35 @@ function connectEventSub(reconnectUrl = null) {
     eventSubWs = ws;
   }
 
+  // Keepalive: Twitch schickt spätestens alle keepalive_timeout_seconds eine Nachricht
+  // (Ereignis oder session_keepalive). Bleibt jede Nachricht aus, ist die Verbindung still
+  // abgebrochen (ohne close). Dann wird sie hart getrennt; das close-Ereignis löst für die
+  // aktive Verbindung den üblichen Neuaufbau aus.
+  let keepaliveTimer = null;
+  let keepaliveTimeoutMs = null;   // erst nach session_welcome bekannt
+  function armKeepalive() {
+    if (keepaliveTimeoutMs === null) return;
+    clearTimeout(keepaliveTimer);
+    keepaliveTimer = setTimeout(() => {
+      const seconds = Math.round(keepaliveTimeoutMs / 1000);
+      if (ws === eventSubWs) {
+        console.warn(`EventSub: seit ${seconds} s keine Nachricht (weder Ereignis noch Keepalive) – Verbindung gilt als abgebrochen und wird neu aufgebaut`);
+      } else {
+        console.warn(`EventSub: nicht aktive Verbindung seit ${seconds} s ohne Nachricht – wird geschlossen`);
+      }
+      ws.terminate();
+    }, keepaliveTimeoutMs);
+  }
+
   ws.on('message', async (data) => {
     const msg = JSON.parse(data);
     const msgType = msg.metadata.message_type;
+
+    if (msgType === 'session_welcome') {
+      const keepaliveSeconds = msg.payload.session.keepalive_timeout_seconds || EVENTSUB_KEEPALIVE_DEFAULT_S;
+      keepaliveTimeoutMs = keepaliveSeconds * 1000 + EVENTSUB_KEEPALIVE_GRACE_MS;
+    }
+    armKeepalive();   // jede Nachricht zählt als Lebenszeichen
 
     if (msgType === 'session_welcome') {
       const sessionId = msg.payload.session.id;
@@ -1107,6 +1135,7 @@ function connectEventSub(reconnectUrl = null) {
   });
 
   ws.on('close', () => {
+    clearTimeout(keepaliveTimer);
     // Nur das Ende der aktiven Verbindung löst einen Neuaufbau aus. Alte Verbindungen
     // nach einem Reconnect oder ein gescheiterter Reconnect-Versuch werden ignoriert;
     // im letzteren Fall bleibt die bisherige Verbindung aktiv.

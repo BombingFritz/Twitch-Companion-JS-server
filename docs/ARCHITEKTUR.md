@@ -114,6 +114,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 - `session_reconnect`: `connectEventSub(reconnect_url)` öffnet eine zweite Verbindung. Die alte bleibt offen, bis die neue `session_welcome` erhält. Dann wird die neue aktiv und die alte geschlossen. Subscriptions werden dabei nicht neu angelegt, Twitch überträgt sie auf die neue Session.
 - Scheitert die Reconnect-Verbindung vor dem Welcome, bleibt die alte aktiv.
 - Unerwartetes Ende der aktiven Verbindung: nach `EVENTSUB_RECONNECT_DELAY_MS` frische Verbindung zu `EVENTSUB_WS_URL` mit neuen Subscriptions. Es ist höchstens ein Neuaufbau geplant (`eventSubReconnectTimer`); `/callback` während der Wartezeit ersetzt ihn.
+- Keepalive: Jede Verbindung merkt sich nach `session_welcome` das Intervall `keepalive_timeout_seconds` (fehlt es: `EVENTSUB_KEEPALIVE_DEFAULT_S`). Jede Nachricht (Ereignis, `session_keepalive`, Reconnect) setzt die Frist neu. Kommt länger als Intervall plus `EVENTSUB_KEEPALIVE_GRACE_MS` nichts, wird die Verbindung hart getrennt (`terminate`). Bei der aktiven Verbindung folgt der übliche Neuaufbau, eine nicht aktive wird nur geschlossen.
 
 ### Effekt-Auslöser
 
@@ -137,6 +138,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `FOLLOW_DEDUPE_WINDOW_MS` | 60000 | Follow-Effekt pro Nutzer |
 | `EVENTSUB_WS_URL` | `wss://eventsub.wss.twitch.tv/ws` | Standard-URL für frische EventSub-Verbindungen |
 | `EVENTSUB_RECONNECT_DELAY_MS` | 5000 | Wartezeit vor Neuaufbau nach Verbindungsende |
+| `EVENTSUB_KEEPALIVE_DEFAULT_S` | 10 | Keepalive-Intervall, falls `session_welcome` keines liefert |
+| `EVENTSUB_KEEPALIVE_GRACE_MS` | 5000 | Zuschlag, bevor eine stille Verbindung als abgebrochen gilt |
 | `DEFAULT_CORS_ORIGINS` | `['http://absolute', 'null']` | Erlaubte Browser-Herkünfte, wenn `CORS_ORIGINS` leer ist |
 | `LOOPBACK_ADDRESSES` | `127.0.0.1`, `::1`, `::ffff:127.0.0.1` | Erlaubte Absender-Adressen für `/token` |
 | `LOOPBACK_HOSTNAMES` | `localhost`, `127.0.0.1`, `[::1]` | Erlaubte Host-Header für `/token` und die BdU-Endpoints |
