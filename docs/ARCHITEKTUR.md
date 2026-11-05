@@ -27,7 +27,7 @@ Konsole (readline) --> server.js
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `handleChatNotification` |
-| Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe` (ADR 0015), `sendChatMessage`, `sendShoutout` |
+| Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage`, `sendShoutout` |
 | BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
@@ -43,6 +43,7 @@ Konsole (readline) --> server.js
 | `subgoal_cache.json` | `{current, target, title, goalId, status, lastUpdated}` |
 | `events.json` | Array, max. 200 Einträge: `{type, ...meta, count, timestamp[, skippedManualTimeout]}` |
 | `effect_mode.json` | `{mode}` mit `auto`, `manual` oder `off`; fehlt die Datei oder ist ungültig: `auto` |
+| `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
 
 ## 4. HTTP-Endpoints
 
@@ -78,6 +79,7 @@ Zugriffsschutz (ADR 0013):
 | `whitelist add @<name>` | ID per API auflösen |
 | `whitelist remove <id>` | Eintrag entfernen |
 | `whitelist list` | Whitelist anzeigen |
+| `whitelist checks` | Letzte 20 Auffälligkeiten der Aktivitätsprüfung (live beim Chatten, inaktiv, unklar) |
 | `subgoal refresh` | Sub-Goal von Twitch laden |
 | `subgoal show` | Gecachten Stand anzeigen |
 | `events show` | Letzte 10 Log-Einträge anzeigen |
@@ -132,6 +134,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `SHOUTOUT_ACTIVITY_WINDOW_DAYS` | 40 | Whitelist-Shoutout nur bei Aktivität in diesem Zeitraum (ADR 0015) |
 | `SHOUTOUT_ACTIVITY_STRICT` | `false` | Testphase: bei unklarer Aktivität (kein Video, API-Fehler) trotzdem Shoutout; später `true` |
 | `WHITELIST_SHOUTOUT_DELAY_MS` | 2000 | Abstand zwischen Chat-Hinweis und Whitelist-Shoutout |
+| `WHITELIST_CHECKS_MAX` | 500 | Einträge in `whitelist_checks.json` |
 | `EFFECT_BURST_WINDOW_MS` | 2500 | Bündelungsfenster je Effekt-Typ, Timer startet bei jedem Ereignis neu |
 | `EFFECT_MIN_GAP_MS` | 4000 | Abstand zwischen zwei Effekten |
 | `EFFECT_MANUAL_CONFIRM_TIMEOUT_MS` | 30000 | Wartezeit auf Bestätigung im Modus `manual` |

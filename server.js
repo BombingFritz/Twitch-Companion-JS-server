@@ -25,6 +25,7 @@ const WHITELIST_FILE = './whitelist.json';
 const SUBGOAL_FILE = './subgoal_cache.json';
 const EVENTLOG_FILE = './events.json';
 const EFFECT_MODE_FILE = './effect_mode.json';
+const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
@@ -32,6 +33,7 @@ const RAID_YEARLY_FROM_YEAR = 2027;               // Raid-Statistik ab diesem Ja
 const SHOUTOUT_ACTIVITY_WINDOW_DAYS = 40;         // Whitelist-Shoutout nur, wenn der Kanal in diesem Zeitraum aktiv war (ADR 0015)
 const SHOUTOUT_ACTIVITY_STRICT = false;           // Testphase: Aktivität unklar (API-Fehler, kein Video) -> trotzdem Shoutout; später true
 const WHITELIST_SHOUTOUT_DELAY_MS = 2000;         // Abstand zwischen Chat-Hinweis und Whitelist-Shoutout (wie beim Raid)
+const WHITELIST_CHECKS_MAX = 500;                 // so viele Einträge behält whitelist_checks.json
 
 const EFFECT_BURST_WINDOW_MS = 2500;
 const EFFECT_MIN_GAP_MS = 4000;
@@ -342,6 +344,47 @@ function printWhitelist() {
   entries.forEach(([id, name]) => console.log(` - @${name} (ID: ${id})`));
 }
 
+// Prüfprotokoll der Whitelist-Shoutouts (ADR 0015): nur Auffälligkeiten (live beim Chatten,
+// nicht aktiv, nicht feststellbar). Grundlage, um die Whitelist zu überarbeiten, später Teil des Stream-Berichts.
+function loadWhitelistChecks() {
+  if (!fs.existsSync(WHITELIST_CHECKS_FILE)) return [];
+  try { return JSON.parse(fs.readFileSync(WHITELIST_CHECKS_FILE, 'utf8')); } catch { return []; }
+}
+
+function saveWhitelistChecks(list) {
+  fs.writeFileSync(WHITELIST_CHECKS_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
+
+function recordWhitelistCheck(entry) {
+  const list = loadWhitelistChecks();
+  list.push({ timestamp: new Date().toISOString(), ...entry });
+  saveWhitelistChecks(list.slice(-WHITELIST_CHECKS_MAX));
+}
+
+const WHITELIST_CHECK_LABELS = {
+  live: 'war selbst live und hat hier gechattet – kein Shoutout',
+  inaktiv: `in den letzten ${SHOUTOUT_ACTIVITY_WINDOW_DAYS} Tagen nicht aktiv – kein Shoutout`,
+  unklar: 'Aktivität nicht feststellbar'
+};
+
+function printWhitelistChecks(limit = 20) {
+  const list = loadWhitelistChecks().slice(-limit);
+  if (list.length === 0) {
+    console.log('Keine Auffälligkeiten bei Whitelist-Shoutouts erfasst.');
+    return;
+  }
+  console.log(`Letzte ${list.length} Auffälligkeiten bei Whitelist-Shoutouts:`);
+  list.forEach(e => {
+    const details = [
+      e.game ? `Spiel: ${e.game}` : null,
+      e.lastActiveAt ? `zuletzt aktiv: ${formatDateDe(e.lastActiveAt)}` : null,
+      e.result === 'unklar' ? (e.shoutout ? 'Shoutout trotzdem (Testphase)' : 'kein Shoutout') : null,
+      e.error ? `Fehler: ${e.error}` : null
+    ].filter(Boolean).join(', ');
+    console.log(` - [${new Date(e.timestamp).toLocaleString('de-DE')}] @${e.userName} (ID: ${e.userId}): ${WHITELIST_CHECK_LABELS[e.result] || e.result}${details ? ' (' + details + ')' : ''}`);
+  });
+}
+
 async function resolveUserByLogin(login) {
   const accessToken = await getValidAccessToken();
   const res = await axios.get(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(login)}`, {
@@ -648,30 +691,11 @@ function buildViewerRankMessage(viewerRank, fromName) {
   return pick(variants);
 }
 
-// Chat-Hinweis vor dem Whitelist-Shoutout (ADR 0015), analog zur Raid-Begrüßung mit Spiel und Datum.
-// Datum nur aus einer gespeicherten Übertragung (lastLiveAt); Highlights/Uploads sagen nichts über den letzten Livestream.
+// Chat-Hinweis vor dem Whitelist-Shoutout (ADR 0015). Text vom Nutzer vorgegeben (05.11.2026);
+// nennt nur das Spiel, kein Datum. Ohne bekanntes Spiel entfällt der mittlere Satz.
 function buildWhitelistShoutoutMessage(name, activity) {
-  const withGame = activity.game ? ` mit ${activity.game}` : '';
-  if (activity.source === 'live') {
-    return pick([
-      `Schön, dass du da bist, @${name}! Gerade selbst live${withGame} – schaut gern bei @${name} vorbei!`,
-      `Hallo @${name}! Du bist gerade selbst live${withGame} – Leute, nichts wie hin!`,
-      `Willkommen im Chat, @${name}! Gerade live${withGame} – ein Besuch lohnt sich!`
-    ]);
-  }
-  if (activity.lastLiveAt) {
-    const date = formatDateDe(activity.lastLiveAt);
-    return pick([
-      `Schön, dass du da bist, @${name}! Zuletzt live am ${date}${withGame} – schaut mal bei @${name} vorbei!`,
-      `Hallo @${name}! Der letzte Stream war am ${date}${withGame}. Lasst gern ein Follow da!`,
-      `Willkommen im Chat, @${name}! Zuletzt am ${date} live${withGame} – ein Besuch lohnt sich!`
-    ]);
-  }
-  return pick([
-    `Schön, dass du da bist, @${name}! Zuletzt${withGame} unterwegs – schaut mal bei @${name} vorbei!`,
-    `Hallo @${name}! Lasst gern ein Follow bei @${name} da!`,
-    `Willkommen im Chat, @${name}! Ein Besuch auf dem Kanal lohnt sich!`
-  ].filter(text => activity.game || !text.includes('Zuletzt')));
+  const gameSentence = activity.game ? ` Dort gab es zuletzt ${activity.game}.` : '';
+  return `Welch netter Besuch! Wir begrüßen @${name}!${gameSentence} Lasst gern mal nen Follow da!`;
 }
 
 function buildClosingMessage() {
@@ -1642,30 +1666,45 @@ async function handleWhitelistShoutout(evt) {
   shoutedOutThisSession.add(chatterId);
 
   let activity;
+  let checkError = null;
   try {
     activity = await getChannelActivity(chatterId);
   } catch (err) {
+    checkError = err.response?.data?.message || err.message;
     console.error(`Aktivitätsprüfung für @${chatterName} fehlgeschlagen:`, err.response?.data || err.message);
     activity = { active: null, lastActiveAt: null, lastLiveAt: null, source: null, game: null };
   }
+  const record = (result, shoutout) => recordWhitelistCheck({
+    userId: chatterId, userName: chatterName, result, shoutout,
+    lastActiveAt: activity.lastActiveAt, lastLiveAt: activity.lastLiveAt, game: activity.game,
+    ...(checkError ? { error: checkError } : {})
+  });
 
+  // Selbst live und gleichzeitig hier im Chat: kein Hinweis, kein Shoutout, aber festhalten (Nutzer, 05.11.2026)
+  if (activity.source === 'live') {
+    console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – ist gerade selbst live${activity.game ? ` (${activity.game})` : ''} und chattet hier; im Prüfprotokoll vermerkt`);
+    record('live', false);
+    return;
+  }
   if (activity.active === false) {
-    console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – in den letzten ${SHOUTOUT_ACTIVITY_WINDOW_DAYS} Tagen nicht aktiv (zuletzt aktiv am ${formatDateDe(activity.lastActiveAt)})`);
+    console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – in den letzten ${SHOUTOUT_ACTIVITY_WINDOW_DAYS} Tagen nicht aktiv (zuletzt aktiv am ${formatDateDe(activity.lastActiveAt)}); im Prüfprotokoll vermerkt`);
+    record('inaktiv', false);
     return;
   }
   if (activity.active === null) {
     // Unklar: API-Fehler oder kein Video gefunden (VODs deaktiviert/abgelaufen, keine Highlights)
     if (SHOUTOUT_ACTIVITY_STRICT) {
-      console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – Aktivität nicht feststellbar`);
+      console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – Aktivität nicht feststellbar; im Prüfprotokoll vermerkt`);
+      record('unklar', false);
       return;
     }
-    console.log(`Aktivität von @${chatterName} nicht feststellbar – Shoutout trotzdem (Testphase, SHOUTOUT_ACTIVITY_STRICT = false)`);
+    console.log(`Aktivität von @${chatterName} nicht feststellbar – Shoutout trotzdem (Testphase, SHOUTOUT_ACTIVITY_STRICT = false); im Prüfprotokoll vermerkt`);
+    record('unklar', true);
   } else {
-    const seen = activity.source === 'live' ? 'gerade live' : `zuletzt aktiv am ${formatDateDe(activity.lastActiveAt)}`;
-    console.log(`Erstnachricht von gelistetem Streamer @${chatterName} (ID: ${chatterId}) erkannt (${seen}) – sende Hinweis und Shoutout`);
+    console.log(`Erstnachricht von gelistetem Streamer @${chatterName} (ID: ${chatterId}) erkannt (zuletzt aktiv am ${formatDateDe(activity.lastActiveAt)}) – sende Hinweis und Shoutout`);
   }
 
-  // Wie beim Raid: erst die Chat-Nachricht (mit Spiel und Datum, soweit bekannt), dann der Shoutout
+  // Wie beim Raid: erst die Chat-Nachricht (mit Spiel, soweit bekannt), dann der Shoutout
   await sendChatMessage(buildWhitelistShoutoutMessage(chatterName, activity));
   setTimeout(() => sendShoutout(chatterId, chatterName), WHITELIST_SHOUTOUT_DELAY_MS);
 }
@@ -1883,6 +1922,7 @@ function printConsoleHelp() {
   console.log(' whitelist add @<name>      - Nutzer per Namen zur Whitelist hinzufügen (löst ID automatisch auf)');
   console.log(' whitelist remove <id>      - Nutzer per ID aus der Whitelist entfernen');
   console.log(' whitelist list             - Aktuelle Whitelist anzeigen');
+  console.log(' whitelist checks           - Auffälligkeiten der Aktivitätsprüfung anzeigen (live beim Chatten, inaktiv, unklar)');
   console.log(' subgoal refresh            - Sub-Goal-Stand jetzt von Twitch laden');
   console.log(' subgoal show               - Aktuellen gecachten Sub-Goal-Stand anzeigen');
   console.log(' events show                - Letzte 10 Follow/Sub/Gift-Ereignisse anzeigen');
@@ -1911,6 +1951,11 @@ rl.on('line', async (input) => {
 
     if (sub === 'list') {
       printWhitelist();
+      return;
+    }
+
+    if (sub === 'checks') {
+      printWhitelistChecks();
       return;
     }
 
