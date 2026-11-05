@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 ## [Unreleased]
 
 ### Added
+- Tests mit Attrappen im Repository (`test/`, `npm test`): K3, Shoutouts und Startanzeige, belegter Port, `/status`, EventSub-Keepalive, K9, Jahresbasis der Raid-Statistik; kein Netzwerk, eigenes temporäres Arbeitsverzeichnis je Test.
 - EventSub-Keepalive: Bleibt länger als `keepalive_timeout_seconds` plus 5 s jede Nachricht von Twitch aus, gilt die Verbindung als still abgebrochen, wird getrennt und neu aufgebaut (Konsolenhinweis). Vorher hätte der Server bis zum Neustart keine Ereignisse mehr erhalten.
 - `/status` liefert `pid` und `started_at`, die Startanzeige nennt die Prozess-ID samt `taskkill`-Befehl. So ist erkennbar, welcher Prozess antwortet (05.11.2026).
 - `AuthServer.cmd` (Windows-Start im eigenen Konsolenfenster, vom Stream-Deck-Skript genutzt, bisher nur lokal) im Repository, Titel und Banner mit neuem Namen; `.gitattributes` sorgt für CRLF-Zeilenenden. `.gitignore` schließt Token-Sicherungen (`*tokens*.json`) aus. README: Hinweis zu OneDrive und Git.

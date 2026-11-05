@@ -22,10 +22,10 @@
 ## Arbeitsweise
 - Kleine, testbare Schritte statt großer Umbauten. Ein Commit je logischer Änderung.
 - Vor jeder Weiterentwicklung den Stand im GitHub-Repository prüfen. Branches, Entity-Namen, Webhooks und Scopes können sich ändern und werden nicht aus dem Gedächtnis übernommen.
-- Produktive Endpoints (Twitch-Chat, Home Assistant) beim Testen nicht ansprechen. Tests laufen mit Attrappen und in einem eigenen Arbeitsverzeichnis, damit die Laufzeit-JSON-Dateien nicht verändert werden.
+- Produktive Endpoints (Twitch-Chat, Home Assistant) beim Testen nicht ansprechen. Tests laufen mit Attrappen und in einem eigenen Arbeitsverzeichnis, damit die Laufzeit-JSON-Dateien nicht verändert werden. Vorhandene Tests liegen in `test/` (Muster: `ws`, `axios`, `readline` per `Module._load` ersetzen, Ausgabe `OK …`/`FAIL …`); neue Funktionen bekommen dort einen eigenen Test, der in `test/run-all.js` eingetragen wird.
 
 ## Pflicht-Checks
-- `node --check server.js` vor jeder Auslieferung.
+- `node --check server.js` und `npm test` (Ergebnis: 0 FAIL) vor jeder Auslieferung.
 - Nur beabsichtigte Stellen ändern; Diff gegen die Vorversion prüfen.
 - HA-Payload `{type, count, meta, timestamp}` unverändert lassen (siehe docs/ARCHITEKTUR.md).
 - Doku (ARCHITEKTUR, Spec, CHANGELOG) im selben Schritt aktualisieren.
