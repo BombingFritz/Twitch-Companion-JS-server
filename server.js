@@ -28,6 +28,7 @@ const EFFECT_MODE_FILE = './effect_mode.json';
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
+const RAID_YEARLY_FROM_YEAR = 2027;               // Raid-Statistik ab diesem Jahr je Kalenderjahr statt je Quartal (ADR 0012)
 const SHOUTOUT_ACTIVITY_WINDOW_DAYS = 40;         // Whitelist-Shoutout nur, wenn der Kanal in diesem Zeitraum aktiv war (ADR 0015)
 
 const EFFECT_BURST_WINDOW_MS = 2500;
@@ -42,6 +43,8 @@ const FOLLOW_DEDUPE_WINDOW_MS = 60 * 1000;        // Follow/Unfollow/Follow dess
 // EventSub-WebSocket
 const EVENTSUB_WS_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const EVENTSUB_RECONNECT_DELAY_MS = 5000;         // Neuaufbau nach unerwartetem Verbindungsende
+const EVENTSUB_KEEPALIVE_DEFAULT_S = 10;          // falls session_welcome keinen keepalive_timeout_seconds liefert
+const EVENTSUB_KEEPALIVE_GRACE_MS = 5000;         // Zuschlag auf das Keepalive-Intervall, bevor die Verbindung als tot gilt
 
 // Zugriffsschutz (siehe ADR 0013)
 // Standard-Herkünfte für Widgets, wenn CORS_ORIGINS in der .env leer ist:
@@ -230,13 +233,19 @@ function saveRaidLog(log) {
   fs.writeFileSync(RAID_FILE, JSON.stringify(log, null, 2), 'utf8');
 }
 
-// Aktueller Zeitraum-Schlüssel.
-// Aktuell Quartal-basiert (z.B. "2026-Q3").
-// Ab 2027 ggf. auf Jahres-Basis umstellen:
-// function getPeriodKey(date) { return `${date.getFullYear()}`; }
+// Zeitraum-Schlüssel der Raid-Statistik (ADR 0012):
+// bis 2026 je Quartal (z. B. "2026-Q4"), ab RAID_YEARLY_FROM_YEAR je Kalenderjahr (z. B. "2027").
+// Bestehende Quartalsdaten bleiben unter ihrem Schlüssel in raids.json erhalten.
 function getPeriodKey(date) {
+  const year = date.getFullYear();
+  if (year >= RAID_YEARLY_FROM_YEAR) return `${year}`;
   const q = Math.floor(date.getMonth() / 3) + 1;
-  return `${date.getFullYear()}-Q${q}`;
+  return `${year}-Q${q}`;
+}
+
+// Wort für die Chat-Texte: "Quartal" oder "Jahr"
+function getPeriodWord(pKey) {
+  return pKey.includes('-Q') ? 'Quartal' : 'Jahr';
 }
 
 function pick(arr) {
@@ -610,19 +619,19 @@ function buildGameMessage(game, durationStr) {
   return pick(variants);
 }
 
-function buildRankRepeatMessage(countRank, fromName, count) {
+function buildRankRepeatMessage(countRank, fromName, count, periodWord) {
   const variants = [
     `Platz ${countRank} der treuesten Raider geht an @${fromName}, der schon zum ${count}. Mal raidet.`,
-    `@${fromName} sichert sich Platz ${countRank} der häufigsten Raider – bereits der ${count}. Raid in diesem Quartal!`,
+    `@${fromName} sichert sich Platz ${countRank} der häufigsten Raider – bereits der ${count}. Raid in diesem ${periodWord}!`,
     `Rang ${countRank} bei den treuesten Raidern: @${fromName}, mittlerweile zum ${count}. Mal hier!`
   ];
   return pick(variants);
 }
 
-function buildRepeatOnlyMessage(fromName, count) {
+function buildRepeatOnlyMessage(fromName, count, periodWord) {
   const variants = [
-    `@${fromName} raidet schon zum ${count}. Mal in diesem Quartal!`,
-    `Schon der ${count}. Raid von @${fromName} in diesem Quartal!`,
+    `@${fromName} raidet schon zum ${count}. Mal in diesem ${periodWord}!`,
+    `Schon der ${count}. Raid von @${fromName} in diesem ${periodWord}!`,
     `@${fromName} ist zum ${count}. Mal dabei – danke für die Treue!`
   ];
   return pick(variants);
@@ -948,7 +957,8 @@ app.get('/status', (req, res) => {
     effect_queue_length: effectQueue.length,
     allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
     bdu_widget_connected: bduClients.length > 0,
-    bdu_silence_until: bduSilenceUntil ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
+    // isBduSilenceActive() räumt eine abgelaufene Funkstille ab, sonst stünde hier die alte Uhrzeit (K9)
+    bdu_silence_until: isBduSilenceActive() ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
     pid: process.pid,
     started_at: SERVER_STARTED_AT
   });
@@ -1023,9 +1033,35 @@ function connectEventSub(reconnectUrl = null) {
     eventSubWs = ws;
   }
 
+  // Keepalive: Twitch schickt spätestens alle keepalive_timeout_seconds eine Nachricht
+  // (Ereignis oder session_keepalive). Bleibt jede Nachricht aus, ist die Verbindung still
+  // abgebrochen (ohne close). Dann wird sie hart getrennt; das close-Ereignis löst für die
+  // aktive Verbindung den üblichen Neuaufbau aus.
+  let keepaliveTimer = null;
+  let keepaliveTimeoutMs = null;   // erst nach session_welcome bekannt
+  function armKeepalive() {
+    if (keepaliveTimeoutMs === null) return;
+    clearTimeout(keepaliveTimer);
+    keepaliveTimer = setTimeout(() => {
+      const seconds = Math.round(keepaliveTimeoutMs / 1000);
+      if (ws === eventSubWs) {
+        console.warn(`EventSub: seit ${seconds} s keine Nachricht (weder Ereignis noch Keepalive) – Verbindung gilt als abgebrochen und wird neu aufgebaut`);
+      } else {
+        console.warn(`EventSub: nicht aktive Verbindung seit ${seconds} s ohne Nachricht – wird geschlossen`);
+      }
+      ws.terminate();
+    }, keepaliveTimeoutMs);
+  }
+
   ws.on('message', async (data) => {
     const msg = JSON.parse(data);
     const msgType = msg.metadata.message_type;
+
+    if (msgType === 'session_welcome') {
+      const keepaliveSeconds = msg.payload.session.keepalive_timeout_seconds || EVENTSUB_KEEPALIVE_DEFAULT_S;
+      keepaliveTimeoutMs = keepaliveSeconds * 1000 + EVENTSUB_KEEPALIVE_GRACE_MS;
+    }
+    armKeepalive();   // jede Nachricht zählt als Lebenszeichen
 
     if (msgType === 'session_welcome') {
       const sessionId = msg.payload.session.id;
@@ -1112,6 +1148,7 @@ function connectEventSub(reconnectUrl = null) {
   });
 
   ws.on('close', () => {
+    clearTimeout(keepaliveTimer);
     // Nur das Ende der aktiven Verbindung löst einen Neuaufbau aus. Alte Verbindungen
     // nach einem Reconnect oder ein gescheiterter Reconnect-Versuch werden ignoriert;
     // im letzteren Fall bleibt die bisherige Verbindung aktiv.
@@ -1719,10 +1756,11 @@ async function handleRaidEvent(evt) {
     buildGameMessage(game, durationStr)
   ];
 
+  const periodWord = getPeriodWord(pKey || getPeriodKey(new Date()));
   if (countRank && data.count >= 2) {
-    msgParts.push(buildRankRepeatMessage(countRank, fromName, data.count));
+    msgParts.push(buildRankRepeatMessage(countRank, fromName, data.count, periodWord));
   } else if (data.count >= 2) {
-    msgParts.push(buildRepeatOnlyMessage(fromName, data.count));
+    msgParts.push(buildRepeatOnlyMessage(fromName, data.count, periodWord));
   }
 
   if (viewerRank) {
@@ -1777,6 +1815,7 @@ function printConsoleHelp() {
   console.log('');
   console.log('Verfügbare Konsolenbefehle:');
   console.log(' whitelist add <id> <name>  - Nutzer per ID zur Whitelist hinzufügen');
+  console.log(' whitelist add <id>         - Nutzer per ID zur Whitelist hinzufügen (löst Namen automatisch auf)');
   console.log(' whitelist add @<name>      - Nutzer per Namen zur Whitelist hinzufügen (löst ID automatisch auf)');
   console.log(' whitelist remove <id>      - Nutzer per ID aus der Whitelist entfernen');
   console.log(' whitelist list             - Aktuelle Whitelist anzeigen');
