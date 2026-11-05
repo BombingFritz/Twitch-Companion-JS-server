@@ -29,6 +29,7 @@
 - Nur beabsichtigte Stellen ändern; Diff gegen die Vorversion prüfen.
 - HA-Payload `{type, count, meta, timestamp}` unverändert lassen (siehe docs/ARCHITEKTUR.md).
 - Doku (ARCHITEKTUR, Spec, CHANGELOG) im selben Schritt aktualisieren.
+- Vor dem Commit `git diff --cached --stat` prüfen: Enthält er alle Dateien, die die Commit-Nachricht nennt, insbesondere die Doku-Dateien? Änderungen an mehreren Dateien nur ganz oder gar nicht anwenden; der Commit folgt nur, wenn alle Schritte davor erfolgreich waren.
 
 ## Verbote
 - Keine Secrets ausgeben oder committen (`.env`, `tokens.json`). Nur Platzhalter wie `<CLIENT_SECRET>`.
