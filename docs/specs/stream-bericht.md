@@ -20,7 +20,7 @@ Nach jedem Stream erzeugt der Server automatisch einen Bericht mit allen clipbar
 | Hype Train | EventSub `channel.hype_train.begin` / `.end` | `hype_train` |
 | Stream-Deck-Alarm | zusätzlicher HTTP-Aufruf an den Server (aus dem HA-Skript oder per Stream-Deck-Aktion) | `alarm` |
 | Stream-Deck-Marker | nach Streamende per Get Stream Markers abholen | `marker` |
-| Raid (optional) | EventSub `channel.raid` | `raid` |
+| Raid | EventSub `channel.raid` (Nutzer 05.11.2026: aufnehmen; die separate Raid-Statistik mit `!raidstats` bleibt unverändert, ADR 0012) | `raid` |
 
 ### Ablauf
 1. **`stream.online`:** Session anlegen (`stream_id`, `started_at`).
@@ -41,6 +41,11 @@ Nach jedem Stream erzeugt der Server automatisch einen Bericht mit allen clipbar
 - `!spielgut` und `!spielschlecht`, eine Stimme pro User-ID, jederzeit änderbar (die letzte zählt), nur während der Stream läuft.
 - Bei einem Kategoriewechsel (`channel.update`) wird je Spiel getrennt gezählt, wichtig für gemischte Mittwochsabende.
 - Ergebnis im Bericht: gut, schlecht, Anteil in Prozent, Zahl der Abstimmenden. Optional `!bewertung` für den Zwischenstand im Chat.
+- **Idee (Nutzer, 05.11.2026): verdeckt abstimmen**, damit die Bewertung nicht offen im Chat steht. Optionen, noch nicht entschieden:
+  - Flüstern an den Bot „DerBdu“ (z. B. „gut“/„schlecht“): EventSub `user.whisper.message` für das Bot-Konto, Scope des Bots `user:read:whispers` oder `user:manage:whispers` [UNGEKLÄRT, prüfen]. Setzt den Bot-Login voraus (OFFEN.md, Bot-Account). Einschränkung: Wer Flüstern von Fremden blockiert oder Twitch-Einschränkungen für neue Konten unterliegt, erreicht den Bot evtl. nicht [UNGEKLÄRT]. Bestätigung per Flüstern zurück bräuchte eine verifizierte Telefonnummer am Bot-Konto [UNGEKLÄRT].
+  - Chat-Befehl wie geplant, der Server löscht die Nachricht sofort nach dem Zählen (Scope `moderator:manage:chat_messages`): kurz sichtbar, aber ohne neues Konto.
+  - Kanalpunkte-Belohnung „Spiel gut“/„Spiel schlecht“ (EventSub `channel.channel_points_custom_reward_redemption.add`): Einlösungen erscheinen je nach Einstellung trotzdem im Chat [UNGEKLÄRT].
+  - Vorschlag: zuerst offen im Chat (1a), verdeckte Abstimmung nachrüsten, sobald der Bot angebunden ist.
 - Später optional als Overlay im Design des Polling-Widgets.
 
 ### Scopes (laut Vorlage; gegen die Twitch-Doku prüfen)
@@ -73,7 +78,7 @@ Keiner dieser Scopes steht bisher in `SCOPES` (`.env.example`). Nach dem Ergänz
 - **Testdaten:** Ein Teststream schreibt Berichte und setzt echte Marker. Das berührt K8 (Test- und Live-Daten trennen).
 
 ## Vorschlag Teilschritte (Stufe 1)
-1. **1a Spielbewertung:** `stream.online`/`stream.offline`/`channel.update` abonnieren, Stimmen je Spiel zählen und in einer JSON-Datei halten, `!bewertung`. Keine neuen Scopes nötig [prüfen], eigenständig testbar.
+1. **1a Spielbewertung:** `stream.online`/`stream.offline`/`channel.update` abonnieren, Stimmen je Spiel zählen und in einer JSON-Datei halten, `!bewertung`. Keine neuen Scopes nötig [prüfen], eigenständig testbar. Verdeckte Abstimmung später (siehe Spielbewertung).
 2. **1b Kandidaten-Sammler:** `recordCandidate()`, Erfassung von Enigma-Antwort (Chat-Modus) und Raid, Offset aus `started_at` (geschätzt). Noch ohne Marker und ohne neue Scopes.
 3. **1c Bericht:** nach `stream.offline` VOD-ID ermitteln, Bericht als `.md`/`.json` schreiben.
 4. **1d Marker und Hype Train:** neue Scopes und neuer Login, Create Stream Marker, Get Stream Markers, Hype-Train-Events.

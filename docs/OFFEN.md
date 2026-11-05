@@ -41,7 +41,8 @@ Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2
 
 ## Geplant: Bot-Account „DerBdu“ für BdU-Antworten (Nutzer, 03.11.2026)
 Ziel: Antworten, Warnung und Funkstille-Ansage des BdU erscheinen nicht als Broadcaster, sondern vom eigenen Bot-Konto „DerBdu“. Reihenfolge laut Nutzer: nach dem Livestream-Test und dem Release Enigma-Widget 1.2.0.
-- Partner-Vorteil: Twitch-Partner können bis zu zwei dauerhafte Bot-Abos (Stufe 3) anfordern; der Nutzer klärt das für „DerBdu“ mit dem Support. Das Abo regelt nur Emotes und Abo-Abzeichen, nicht die technische Anbindung.
+- Stand 05.11.2026: Das Konto „DerBdu“ ist angelegt. Twitch lehnt das Partner-Bot-Abo (dauerhaftes Abo Stufe 3) ab; „DerBdu“ wird als normaler Bot geführt. Das Abo hätte nur Emotes und Abo-Abzeichen betroffen; der technische Plan unten gilt unverändert. Das „Chat Bot“-Abzeichen hängt nach bisherigem Kenntnisstand nicht am Abo, sondern an App-Access-Token, `user:bot` und `channel:bot` bzw. Moderatorrechten [UNGEKLÄRT, beim Umsetzen prüfen].
+- Weiterer möglicher Nutzen: Bewertungen per Flüstern an den Bot statt offen im Chat (siehe specs/stream-bericht.md, Spielbewertung).
 - Technischer Plan (Vorschlag, noch nicht entschieden):
   - Senden über die Helix-API „Send Chat Message“ mit App-Access-Token (Client-Credentials) und `sender_id` = Bot. Damit zeigt Twitch das „Chat Bot“-Abzeichen; mit Nutzer-Token des Bots erscheint es nicht.
   - Voraussetzungen: Bot-Konto erteilt einmalig `user:bot` (und `user:write:chat`); für den Kanal `channel:bot` oder der Bot ist Moderator (`/mod DerBdu`, empfohlen).
@@ -90,7 +91,7 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 
 ## Geplant: Stream-Bericht mit Clip-Kandidaten und Spielbewertung (Nutzer, 04.11.2026)
 Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-bericht.md). Noch nicht entschieden, kein ADR.
-- Kurz: Nach jedem Stream ein Bericht mit clipbaren Momenten (Enigma-Antworten, Hype Trains, Alarm-Taste, Stream-Deck-Marker, optional Raids) samt Timecode und VOD-Link, dazu die Spielbewertung aus dem Chat (`!spielgut`/`!spielschlecht`, je Spiel). Später Ein-Klick-Clips und Shorts.
+- Kurz: Nach jedem Stream ein Bericht mit clipbaren Momenten (Enigma-Antworten, Hype Trains, Alarm-Taste, Stream-Deck-Marker, Raids; die separate Raid-Statistik bleibt) samt Timecode und VOD-Link, dazu die Spielbewertung aus dem Chat (`!spielgut`/`!spielschlecht`, je Spiel). Später Ein-Klick-Clips und Shorts.
 - Offene Punkte stehen in der Spec unter „Abgleich“: eigener Kandidaten-Sammler statt `scheduleEffect()`, neue EventSub-Typen (`stream.offline`, `channel.update`, Hype Train), neue Scopes und deren Wirkung auf `/token` (P2), Absicherung des Alarm-Endpoints (K1), Persistenz während des Streams, Testdaten (K8).
 - Vorgeschlagene Reihenfolge: 1a Spielbewertung, 1b Kandidaten-Sammler, 1c Bericht, 1d Marker und Hype Train, 1e Alarm-Endpoint.
 
@@ -104,6 +105,5 @@ Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-ber
 ## Priorität 3 (Ideen)
 - Konsolenbefehl `effects confirm` zum Bestätigen im Modus `manual` (bisher nur HTTP).
 - `printConsoleHelp()` um `whitelist add <id>` ergänzen (Befehl funktioniert, fehlt nur in der Hilfe).
-- Umstellung der Raid-Statistik auf Jahresbasis ab 2027 (Kommentar im Code). Zeitgebunden: Entscheidung vor dem 01.01.2027 nötig, sonst beginnt automatisch `2027-Q1`.
 - `refreshSubGoalCache` läuft bei jedem Sub-Event einzeln, bei einem Gift-Bomb entsprechend oft.
 - Alte `Server_Dokumentation.md` durch diese Struktur ersetzen. Die Datei liegt nicht im Repository [UNGEKLÄRT, ob der Punkt erledigt ist oder die Datei nur lokal existiert].
