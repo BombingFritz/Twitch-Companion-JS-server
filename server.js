@@ -1898,7 +1898,19 @@ rl.on('line', async (input) => {
 // ═══════════════════════════════════════════════════════════════════
 
 const PORT_NUM = parseInt(PORT);
-app.listen(PORT_NUM, () => {
+// Express 5 ruft diese Funktion auch bei einem Startfehler auf (z. B. Port belegt), dann mit `err`.
+// Ohne diese Prüfung liefe ein zweiter Server ohne HTTP-Teil, aber mit eigener EventSub-Verbindung
+// (doppelte Chat-Ausgaben, Widgets verbunden mit dem anderen Server).
+app.listen(PORT_NUM, (err) => {
+  if (err) {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`FEHLER: Port ${PORT_NUM} ist bereits belegt. Läuft der Server schon in einem anderen Fenster? Dieser Start wird abgebrochen, damit nicht zwei Server parallel laufen.`);
+    } else {
+      console.error(`FEHLER: Server konnte nicht starten: ${err.message}`);
+    }
+    process.exit(1);
+    return;
+  }
   console.log('');
   console.log('═════════════════════════════════════════════');
   console.log('Twitch Companion JS server');
