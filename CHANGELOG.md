@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 
 ### Added
 - EventSub-Keepalive: Bleibt länger als `keepalive_timeout_seconds` plus 5 s jede Nachricht von Twitch aus, gilt die Verbindung als still abgebrochen, wird getrennt und neu aufgebaut (Konsolenhinweis). Vorher hätte der Server bis zum Neustart keine Ereignisse mehr erhalten.
+- Whitelist-Shoutout nur an aktive Streamer: gerade live oder neuestes Video (Übertragung, Highlight, Upload) höchstens 40 Tage alt (`SHOUTOUT_ACTIVITY_WINDOW_DAYS`, ADR 0015). Testphase: bei unklarer Aktivität trotzdem Shoutout (`SHOUTOUT_ACTIVITY_STRICT = false`). Streamer, die beim Chatten selbst live sind, erhalten keinen Shoutout. Vor dem Shoutout der Chat-Hinweis „Welch netter Besuch! Wir begrüßen @<name>! Dort gab es zuletzt <Spiel>. Lasst gern mal nen Follow da!“ (ohne Datum). Auffälligkeiten (live, inaktiv, unklar) landen im Prüfprotokoll `whitelist_checks.json`, Konsolenbefehl `whitelist checks`. Raid-Shoutouts unverändert.
 - `/status` liefert `pid` und `started_at`, die Startanzeige nennt die Prozess-ID samt `taskkill`-Befehl. So ist erkennbar, welcher Prozess antwortet (05.11.2026).
 - `AuthServer.cmd` (Windows-Start im eigenen Konsolenfenster, vom Stream-Deck-Skript genutzt, bisher nur lokal) im Repository, Titel und Banner mit neuem Namen; `.gitattributes` sorgt für CRLF-Zeilenenden. `.gitignore` schließt Token-Sicherungen (`*tokens*.json`) aus. README: Hinweis zu OneDrive und Git.
 - BdU-Chat `!BdU <Text>` (ADR 0014, `docs/specs/bdu-chat.md`): Server prüft Limits (1 Anfrage je 3 min, 3 je Nutzer in 30 min, Warnung „Funkverkehr einschränken, Feind peilt ein!“ höchstens 1× je 10 min, Tagesobergrenze 60), reicht angenommene Anfragen per Server-Sent Events (`GET /api/bdu/stream`) an das Enigma-Widget weiter und postet dessen Antwort (`POST /api/bdu/answer`) als „FT vom BdU: …“ (Reply). Funkstille bei erschöpftem KI-Kontingent (30 min bzw. bis Streamstart) mit einmaliger Ansage. Beide Endpoints nur lokal. Konsole `bdu show`, `bdu silence off`; `/status` mit `bdu_widget_connected`, `bdu_silence_until`. Getestet mit Attrappen (35/35) und Ende-zu-Ende mit dem Widget (18/18); Live-Test ausstehend.
@@ -55,6 +56,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 ### Fixed
 - `/status`: `bdu_silence_until` zeigt nach Ablauf einer Funkstille `null` statt der alten Uhrzeit (OFFEN.md K9).
 - Konsolenhilfe nennt auch `whitelist add <id>` (Name wird aufgelöst).
+- Raid-Begrüßung ohne Spielinfo: „ein unbekanntes Spiel“ bzw. „einem unbekannten Spiel“ je nach Satz statt immer „einem unbekannten Spiel“ (vorher grammatisch falsch in zwei von drei Varianten).
 - Start bei belegtem Port bricht jetzt mit Fehlermeldung ab. Vorher meldete der zweite Start „Server läuft auf …“ und lief ohne HTTP-Teil, aber mit eigener EventSub-Verbindung weiter (Express 5 ruft den `listen`-Callback auch im Fehlerfall auf). Folge: zwei Server parallel, Widgets nur mit dem ersten verbunden (05.11.2026).
 - Effekt-Modus `off` verwirft jetzt auch eine wartende Bestätigung im Modus `manual`. Vorher löste `/api/effects/confirm` den Effekt trotz `off` aus. Umschalten per HTTP und Konsole über die gemeinsame Funktion `setEffectMode()` (OFFEN.md K3, docs/BUGS.md).
 - Kein zweiter Shoutout mehr für einen Raider, der danach im Chat schreibt und auf der Whitelist steht (Twitch lehnte mit 429 ab, Livestream 03.11.2026). Der Raid-Shoutout trägt den Raider in `shoutedOutThisSession` ein; scheitert er, darf die Whitelist es erneut versuchen.
@@ -69,5 +71,3 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - `/token` antwortet nur noch auf lokale Aufrufe über `localhost`/`127.0.0.1` (kein Abruf aus dem LAN, Schutz vor DNS-Rebinding). Siehe ADR 0013.
 - Hinweis: Neuere OBS-Versionen sperren Widgets, die als „Lokale Datei“ eingebunden sind, den Zugriff auf `localhost`. Widgets per URL `file:///…` einbinden (docs/BUGS.md).
 
-### Hinweis
-- Die 40-Tage-Aktivitätsprüfung für Shoutouts existiert nur in einem anderen Branch und ist hier nicht enthalten.
