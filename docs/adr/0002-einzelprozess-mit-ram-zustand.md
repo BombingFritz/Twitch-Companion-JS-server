@@ -8,4 +8,4 @@
 
 **Verworfene Alternativen:** [UNGEKLÄRT]
 
-**Konsequenzen:** Flüchtiger Zustand geht beim Neustart verloren (z. B. wartende Raid-Begrüßungen, Effekt-Queue). Zwei gleichzeitig laufende Instanzen sind nicht vorgesehen. Seit 05.11.2026 bricht ein zweiter Start auf demselben Port mit Fehlermeldung ab (vorher lief er unbemerkt ohne HTTP-Teil weiter, siehe BUGS.md). Zwei Instanzen auf verschiedenen Ports werden nicht erkannt.
+**Konsequenzen:** Flüchtiger Zustand geht beim Neustart verloren (z. B. wartende Raid-Begrüßungen, Effekt-Queue). Zwei gleichzeitig laufende Instanzen sind nicht vorgesehen. Seit 05.11.2026 bricht ein zweiter Start auf demselben Port mit Fehlermeldung ab (vorher lief er unbemerkt ohne HTTP-Teil weiter, siehe BUGS.md). Zwei Instanzen auf verschiedenen Ports werden nicht erkannt. Welcher Prozess auf dem Port antwortet, zeigen `pid` und `started_at` in `/status` sowie die Prozess-ID in der Startanzeige.
