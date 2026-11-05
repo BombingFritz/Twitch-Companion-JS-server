@@ -4,7 +4,7 @@ Node.js/Express-Dienst für Twitch-OAuth2 mit automatischem Token-Refresh. Er h�
 
 ## Setup
 
-Den Projektordner nicht in einen Cloud-Sync-Ordner (z. B. OneDrive) legen: `.env` und `tokens.json` enthalten Zugangsdaten, und der Server schreibt laufend JSON-Dateien, die der Sync-Dienst sperren kann.
+Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.json` (Zugangsdaten) mit synchronisiert. Im Betrieb bisher ohne Probleme. Meldet Git Fehler (z. B. `index.lock`, beschädigtes Repository), den Klon außerhalb des Sync-Ordners neu anlegen und die Laufzeitdateien hineinkopieren.
 
 1. Node.js installieren, mindestens Version 18 (Vorgabe von Express 5).
 2. Abhängigkeiten installieren: `npm install` (liest `package.json` und `package-lock.json`).
