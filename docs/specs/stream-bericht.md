@@ -41,6 +41,7 @@ Raids gehören nur in Teil 1, sie sind keine Clip-Kandidaten.
      - Hype Trains (Beginn, Ende, erreichtes Level); zusätzlich als Clip-Kandidat in Teil 2.
      - Watch-Serien (Watch Streaks), soweit über EventSub erfassbar [UNGEKLÄRT, ob und über welches Event Twitch geteilte Watch-Serien liefert].
      - Top 10 der häufigsten Chatter des Abends: Nachrichten je Nutzer aus `channel.chat.message` zählen (schon abonniert); ob Broadcaster und Bots ausgenommen werden [UNGEKLÄRT].
+     - Whitelist-Auffälligkeiten der Session aus dem Prüfprotokoll `whitelist_checks.json` (ADR 0015, Nutzer 05.11.2026): wer beim Chatten selbst live war (mit Spiel; kann problematisch sein, muss aber nicht), wer seit mehr als 40 Tagen nicht aktiv ist, bei wem die Aktivität nicht feststellbar war. Zweck: die Whitelist anhand der Berichte überarbeiten.
      - In ferner Zukunft (nicht jetzt): genauere Statistik im Hintergrund, z. B. über mehrere Streams hinweg.
    - **Teil 2, Clip-Kandidaten** nach Zeit sortiert: `hh:mm:ss` · Typ · Kontext (Enigma-Text, Hype-Train-Level, Marker-Beschreibung) · Link `https://www.twitch.tv/videos/<vod_id>?t=<h>h<m>m<s>s`. Der Link startet etwa 20 Sekunden vor dem Moment.
 5. **Optional:** Benachrichtigung „Bericht fertig“ über Home Assistant.
