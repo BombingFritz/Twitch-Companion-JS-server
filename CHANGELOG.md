@@ -30,11 +30,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - `/token` loggt einmal je Herkunft, an welche Widget-Herkunft der Token ausgegeben wurde.
 
 ### Documentation
+- AGENTS.md: neuer Pflicht-Check vor dem Commit (`git diff --cached --stat`, Änderungen an mehreren Dateien ganz oder gar nicht).
 - BdU-Chat-Befehl `!BdU`: ADR 0014, `docs/specs/bdu-chat.md`, Eintrag in `docs/OFFEN.md` (umgesetzt, siehe Added).
 - `CLAUDE.md` importiert `AGENTS.md`, damit Claude Code die Regeln in jeder Sitzung lädt.
 - Doku-Abgleich mit dem Code (Nov. 2026): ADR 0002 und 0007 zum EventSub-Reconnect präzisiert, Antwort von `POST /api/bdu/answer` bei `quota`, Erkennung des Tageskontingents („täglich“), Konsolenhilfe ohne `whitelist add <id>`, BdU-Chat in README und `.env.example`, neuer offener Punkt K9 (`bdu_silence_until` in `/status`).
 
 ### Planned
+- Stream-Bericht mit Clip-Kandidaten und Spielbewertung: Spec `docs/specs/stream-bericht.md` (Vorlage des Nutzers, mit Abgleich gegen Code und ADRs; Bericht in zwei Teilen: Stream-Dokumentation inkl. Raids und Clip-Kandidaten; Optionen für verdeckte Abstimmung, bevorzugt Kanalpunkte), Eintrag in `docs/OFFEN.md`. Bot „DerBdu“ wird als normaler Bot geführt.
 - Vorgemerkt in `docs/OFFEN.md` („Ausbau zur Plattform“): Server-Konsole im Browser, Sicherheitsprüfung, Auslieferung der Widgets als optionale Module, öffentliche Veröffentlichung für andere Streamer.
 
 ### Changed
