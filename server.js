@@ -30,6 +30,8 @@ const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
 const RAID_YEARLY_FROM_YEAR = 2027;               // Raid-Statistik ab diesem Jahr je Kalenderjahr statt je Quartal (ADR 0012)
 const SHOUTOUT_ACTIVITY_WINDOW_DAYS = 40;         // Whitelist-Shoutout nur, wenn der Kanal in diesem Zeitraum aktiv war (ADR 0015)
+const SHOUTOUT_ACTIVITY_STRICT = false;           // Testphase: Aktivität unklar (API-Fehler, kein Video) -> trotzdem Shoutout; später true
+const WHITELIST_SHOUTOUT_DELAY_MS = 2000;         // Abstand zwischen Chat-Hinweis und Whitelist-Shoutout (wie beim Raid)
 
 const EFFECT_BURST_WINDOW_MS = 2500;
 const EFFECT_MIN_GAP_MS = 4000;
@@ -644,6 +646,32 @@ function buildViewerRankMessage(viewerRank, fromName) {
     `Zusätzlich Rang ${viewerRank} in der Gesamt-Zuschauer-Wertung!`
   ];
   return pick(variants);
+}
+
+// Chat-Hinweis vor dem Whitelist-Shoutout (ADR 0015), analog zur Raid-Begrüßung mit Spiel und Datum.
+// Datum nur aus einer gespeicherten Übertragung (lastLiveAt); Highlights/Uploads sagen nichts über den letzten Livestream.
+function buildWhitelistShoutoutMessage(name, activity) {
+  const withGame = activity.game ? ` mit ${activity.game}` : '';
+  if (activity.source === 'live') {
+    return pick([
+      `Schön, dass du da bist, @${name}! Gerade selbst live${withGame} – schaut gern bei @${name} vorbei!`,
+      `Hallo @${name}! Du bist gerade selbst live${withGame} – Leute, nichts wie hin!`,
+      `Willkommen im Chat, @${name}! Gerade live${withGame} – ein Besuch lohnt sich!`
+    ]);
+  }
+  if (activity.lastLiveAt) {
+    const date = formatDateDe(activity.lastLiveAt);
+    return pick([
+      `Schön, dass du da bist, @${name}! Zuletzt live am ${date}${withGame} – schaut mal bei @${name} vorbei!`,
+      `Hallo @${name}! Der letzte Stream war am ${date}${withGame}. Lasst gern ein Follow da!`,
+      `Willkommen im Chat, @${name}! Zuletzt am ${date} live${withGame} – ein Besuch lohnt sich!`
+    ]);
+  }
+  return pick([
+    `Schön, dass du da bist, @${name}! Zuletzt${withGame} unterwegs – schaut mal bei @${name} vorbei!`,
+    `Hallo @${name}! Lasst gern ein Follow bei @${name} da!`,
+    `Willkommen im Chat, @${name}! Ein Besuch auf dem Kanal lohnt sich!`
+  ].filter(text => activity.game || !text.includes('Zuletzt')));
 }
 
 function buildClosingMessage() {
@@ -1360,6 +1388,19 @@ function isModOrBroadcaster(evt) {
   return badges.some(b => b.set_id === 'moderator' || b.set_id === 'broadcaster');
 }
 
+// Postet eine Chat-Nachricht als Broadcaster. Fehler werden geloggt, kein Retry.
+async function sendChatMessage(message) {
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+    await axios.post('https://api.twitch.tv/helix/chat/messages',
+      { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message },
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
+  } catch (err) {
+    console.error('Fehler beim Senden in den Chat:', err.response?.data || err.message, '– Text:', message);
+  }
+}
+
 async function sendShoutout(toBroadcasterId, toBroadcasterName) {
   try {
     const accessToken = await getValidAccessToken();
@@ -1604,43 +1645,66 @@ async function handleWhitelistShoutout(evt) {
   try {
     activity = await getChannelActivity(chatterId);
   } catch (err) {
-    console.error(`Aktivitätsprüfung für @${chatterName} fehlgeschlagen – kein Shoutout in dieser Session:`, err.response?.data || err.message);
-    return;
-  }
-  if (!activity.active) {
-    const detail = activity.lastActiveAt
-      ? `zuletzt aktiv am ${new Date(activity.lastActiveAt).toLocaleDateString('de-DE')}`
-      : 'keine Übertragung, kein Highlight und kein Upload gefunden (evtl. VODs deaktiviert oder abgelaufen)';
-    console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – in den letzten ${SHOUTOUT_ACTIVITY_WINDOW_DAYS} Tagen nicht aktiv (${detail})`);
-    return;
+    console.error(`Aktivitätsprüfung für @${chatterName} fehlgeschlagen:`, err.response?.data || err.message);
+    activity = { active: null, lastActiveAt: null, lastLiveAt: null, source: null, game: null };
   }
 
-  const seen = activity.source === 'live' ? 'gerade live' : `zuletzt aktiv am ${new Date(activity.lastActiveAt).toLocaleDateString('de-DE')}`;
-  console.log(`Erstnachricht von gelistetem Streamer @${chatterName} (ID: ${chatterId}) erkannt (${seen}) – sende Shoutout`);
-  await sendShoutout(chatterId, chatterName);
+  if (activity.active === false) {
+    console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – in den letzten ${SHOUTOUT_ACTIVITY_WINDOW_DAYS} Tagen nicht aktiv (zuletzt aktiv am ${formatDateDe(activity.lastActiveAt)})`);
+    return;
+  }
+  if (activity.active === null) {
+    // Unklar: API-Fehler oder kein Video gefunden (VODs deaktiviert/abgelaufen, keine Highlights)
+    if (SHOUTOUT_ACTIVITY_STRICT) {
+      console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – Aktivität nicht feststellbar`);
+      return;
+    }
+    console.log(`Aktivität von @${chatterName} nicht feststellbar – Shoutout trotzdem (Testphase, SHOUTOUT_ACTIVITY_STRICT = false)`);
+  } else {
+    const seen = activity.source === 'live' ? 'gerade live' : `zuletzt aktiv am ${formatDateDe(activity.lastActiveAt)}`;
+    console.log(`Erstnachricht von gelistetem Streamer @${chatterName} (ID: ${chatterId}) erkannt (${seen}) – sende Hinweis und Shoutout`);
+  }
+
+  // Wie beim Raid: erst die Chat-Nachricht (mit Spiel und Datum, soweit bekannt), dann der Shoutout
+  await sendChatMessage(buildWhitelistShoutoutMessage(chatterName, activity));
+  setTimeout(() => sendShoutout(chatterId, chatterName), WHITELIST_SHOUTOUT_DELAY_MS);
+}
+
+function formatDateDe(iso) {
+  return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 // Prüft, ob ein Kanal in den letzten SHOUTOUT_ACTIVITY_WINDOW_DAYS Tagen aktiv war (ADR 0015).
 // Aktiv heißt: gerade live (/helix/streams) oder das neueste Video jeder Art (/helix/videos,
 // type=all: vergangene Übertragung, Highlight, Upload) ist jünger als das Zeitfenster.
-// Liefert { active, lastActiveAt, source }; wirft bei einem API-Fehler.
+// Liefert { active: true | false | null (unklar, kein Video), lastActiveAt, lastLiveAt, source, game }.
+// lastLiveAt: Beginn der letzten gespeicherten Übertragung (nur aus type=archive, für den Chat-Text).
+// game: aktuelle Kategorie des Kanals (/helix/channels), bei Offline-Kanälen meist das zuletzt gestreamte Spiel.
+// Wirft bei einem API-Fehler.
 async function getChannelActivity(userId) {
   const accessToken = await getValidAccessToken();
   const headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID };
   const id = encodeURIComponent(userId);
-  const [streamRes, videoRes] = await Promise.all([
+  const [streamRes, videoRes, channelRes] = await Promise.all([
     axios.get(`https://api.twitch.tv/helix/streams?user_id=${id}`, { headers }),
-    axios.get(`https://api.twitch.tv/helix/videos?user_id=${id}&type=all&sort=time&first=1`, { headers })
+    axios.get(`https://api.twitch.tv/helix/videos?user_id=${id}&type=all&sort=time&first=20`, { headers }),
+    axios.get(`https://api.twitch.tv/helix/channels?broadcaster_id=${id}`, { headers })
   ]);
 
+  const channelGame = channelRes.data.data?.[0]?.game_name || null;
   const stream = streamRes.data.data?.[0];
-  if (stream) return { active: true, lastActiveAt: stream.started_at, source: 'live' };
+  if (stream) {
+    return { active: true, lastActiveAt: stream.started_at, lastLiveAt: stream.started_at, source: 'live', game: stream.game_name || channelGame };
+  }
 
-  const video = videoRes.data.data?.[0];
-  if (!video) return { active: false, lastActiveAt: null, source: null };
+  const videos = videoRes.data.data || [];
+  const newest = videos[0];
+  const lastArchive = videos.find(v => v.type === 'archive');
+  const lastLiveAt = lastArchive ? lastArchive.created_at : null;
+  if (!newest) return { active: null, lastActiveAt: null, lastLiveAt: null, source: null, game: channelGame };
 
-  const ageDays = (Date.now() - new Date(video.created_at).getTime()) / (24 * 60 * 60 * 1000);
-  return { active: ageDays <= SHOUTOUT_ACTIVITY_WINDOW_DAYS, lastActiveAt: video.created_at, source: video.type };
+  const ageDays = (Date.now() - new Date(newest.created_at).getTime()) / (24 * 60 * 60 * 1000);
+  return { active: ageDays <= SHOUTOUT_ACTIVITY_WINDOW_DAYS, lastActiveAt: newest.created_at, lastLiveAt, source: newest.type, game: channelGame };
 }
 
 function enqueueRaidEvent(evt) {
