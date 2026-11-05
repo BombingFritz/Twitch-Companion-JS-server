@@ -26,6 +26,7 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 - **K6 Name:** Der Kontext nennt den Server noch „Node.js Auth Server“. Bei der nächsten Überarbeitung des Kontexts „Twitch Companion JS server“ verwenden.
 - **K7 Startskript und Konsole:** Der Server liest Konsolenbefehle über `stdin`. Startet das Startskript ihn ohne sichtbares Konsolenfenster, sind Whitelist- und Effekt-Befehle nicht erreichbar [UNGEKLÄRT, wie das Skript startet].
 - **K8 Test- und Live-Daten:** Alle JSON-Dateien liegen im Arbeitsverzeichnis, einen Testmodus gibt es nicht. Ein Testlauf im Projektordner würde echte Raid-Statistik und Event-Log verändern und echte Chat-Nachrichten senden. Das passt zur Entwicklungsrichtung „Stream-, Langzeit- und Testdaten trennen“, ist aber noch nicht umgesetzt.
+- **K9 `/status` zeigt abgelaufene Funkstille (Bug, klein, gefunden 03.11.2026):** `bdu_silence_until` liest `bduSilenceUntil` direkt. Nach Ablauf einer 30-min-Funkstille bleibt dort die alte Uhrzeit stehen, bis `isBduSilenceActive()` das nächste Mal läuft (nächstes `!BdU` oder `bdu show`). Auf das Verhalten im Chat hat das keinen Einfluss. Fix: in `/status` `isBduSilenceActive()` aufrufen, bevor der Wert gelesen wird.
 
 ## BdU-Chat (`!BdU`) – umgesetzt, Livestream-Test ausstehend
 Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2.0 (`BombingFritz/Uboat-Widget`). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
@@ -62,6 +63,7 @@ Noch nicht entschieden, nicht spezifiziert.
 
 ## Priorität 3 (Ideen)
 - Konsolenbefehl `effects confirm` zum Bestätigen im Modus `manual` (bisher nur HTTP).
+- `printConsoleHelp()` um `whitelist add <id>` ergänzen (Befehl funktioniert, fehlt nur in der Hilfe).
 - Umstellung der Raid-Statistik auf Jahresbasis ab 2027 (Kommentar im Code).
 - `refreshSubGoalCache` läuft bei jedem Sub-Event einzeln, bei einem Gift-Bomb entsprechend oft.
-- Alte `Server_Dokumentation.md` durch diese Struktur ersetzen.
+- Alte `Server_Dokumentation.md` durch diese Struktur ersetzen. Die Datei liegt nicht im Repository [UNGEKLÄRT, ob der Punkt erledigt ist oder die Datei nur lokal existiert].

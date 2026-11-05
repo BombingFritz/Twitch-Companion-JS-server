@@ -20,10 +20,11 @@ Node.js/Express-Dienst für Twitch-OAuth2 mit automatischem Token-Refresh. Er h�
 - Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist)
 - Effekt-Queue mit Modi `auto`/`manual`/`off` und Home-Assistant-Webhook
 - Event-Log (Follow/Sub/Gift) und Konsolenbefehle
+- BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet als „FT vom BdU: …“ (ADR 0014)
 
 ## Dokumentation
 
-- [AGENTS.md](AGENTS.md) – Regeln für KI-Assistenten
+- [AGENTS.md](AGENTS.md) – Regeln für KI-Assistenten (`CLAUDE.md` importiert sie für Claude Code)
 - [docs/KONTEXT.md](docs/KONTEXT.md) – Einordnung im Stream-Ökosystem
 - [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) – Ist-Zustand
 - [docs/adr/](docs/adr/) – Architekturentscheidungen

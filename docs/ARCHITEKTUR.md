@@ -28,7 +28,7 @@ Konsole (readline) --> server.js
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `handleChatNotification` |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `sendShoutout` |
-| BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount` |
+| BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
 | Konsole | `printConsoleHelp`, `rl.on('line', …)` |
@@ -67,7 +67,7 @@ Zugriffsschutz (ADR 0013):
 | `/api/effects/mode` | `{mode, queueLength, pendingConfirmation: {type,count} oder null}` | – |
 | `/api/effects/confirm` | `{ok, message}`; bestätigt den wartenden Effekt im Modus `manual` | – |
 | `/api/bdu/stream` | Server-Sent Events für das Enigma-Widget: `retry: 5000`, Ereignis `hello`, Ereignis `request` mit `{id, text}`, Kommentar-Ping alle 30 s. Nur lokal (wie `/token`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
-| `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet „FT vom BdU: …“ als Reply, `quota` startet Funkstille; Antwort `{ok}`. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
+| `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet „FT vom BdU: …“ als Reply, `quota` startet Funkstille; Antwort `{ok:true}`, bei `quota` `{ok:true, silenceUntil}` (Millisekunden-Zeitstempel; beim Tageskontingent `null`, weil intern `Infinity`). `ok` ohne Text wird wie `error` behandelt. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
 
 ## 5. Konsolenbefehle
 
@@ -89,9 +89,11 @@ Zugriffsschutz (ADR 0013):
 
 Es gibt keinen Konsolenbefehl zum Bestätigen eines Effekts.
 
+`help` (`printConsoleHelp()`) führt `whitelist add <id>` nicht auf, der Befehl funktioniert aber (OFFEN.md, Priorität 3).
+
 ## 6. EventSub
 
-Alle Subscriptions werden bei `session_welcome` angelegt, Reihenfolge wie unten.
+Alle Subscriptions werden beim `session_welcome` einer frischen Verbindung angelegt, Reihenfolge wie unten (nicht nach `session_reconnect`, siehe „Verbindungsverwaltung“).
 
 | Typ | Version | Condition | Verarbeitung |
 |---|---|---|---|
