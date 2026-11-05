@@ -1336,8 +1336,18 @@ async function sendShoutout(toBroadcasterId, toBroadcasterName) {
       }
     );
     console.log(`Shoutout erfolgreich gesendet für @${toBroadcasterName}`);
+    return true;
   } catch (e) {
-    console.error(`Fehler beim Senden des Shoutouts für @${toBroadcasterName}:`, e.response?.data || e.message);
+    // Erwartbare Ablehnungen durch Twitch als kurze Hinweise statt als Fehler ausgeben
+    const status = e.response?.status;
+    if (status === 400 && /not streaming live/i.test(e.response?.data?.message || '')) {
+      console.warn(`Shoutout für @${toBroadcasterName} nicht möglich – Kanal ist noch nicht live`);
+    } else if (status === 429) {
+      console.warn(`Shoutout für @${toBroadcasterName} nicht möglich – Twitch-Wartezeit läuft (2 min zwischen Shoutouts, 60 min je Streamer)`);
+    } else {
+      console.error(`Fehler beim Senden des Shoutouts für @${toBroadcasterName}:`, e.response?.data || e.message);
+    }
+    return false;
   }
 }
 
@@ -1688,7 +1698,15 @@ async function handleRaidEvent(evt) {
     console.log(`Raid-Begrüßung erfolgreich gesendet für @${fromName}`);
 
     if (viewers >= 3) {
-      setTimeout(() => sendShoutout(fromId, fromName), 2000);
+      // Sofort als geshoutet merken, damit die erste Chat-Nachricht des Raiders (Whitelist)
+      // keinen zweiten Shoutout versucht, den Twitch mit 429 ablehnt. Scheitert der
+      // Raid-Shoutout, wird der Eintrag wieder entfernt.
+      const alreadyMarked = shoutedOutThisSession.has(fromId);
+      shoutedOutThisSession.add(fromId);
+      setTimeout(async () => {
+        const ok = await sendShoutout(fromId, fromName);
+        if (!ok && !alreadyMarked) shoutedOutThisSession.delete(fromId);
+      }, 2000);
     } else {
       console.log(`Kein Shoutout – nur ${viewers} Viewer (Schwelle: 3)`);
     }
@@ -1891,6 +1909,7 @@ app.listen(PORT_NUM, () => {
   console.log('═════════════════════════════════════════════');
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
+  console.log(`Home-Assistant-Webhook: ${HA_WEBHOOK_URL ? 'eingetragen' : 'NICHT eingetragen – Effekte werden nur lokal geloggt (HA_WEBHOOK_URL in .env)'}`);
   console.log('═════════════════════════════════════════════');
 
   const tokens = loadTokens();
@@ -1899,7 +1918,9 @@ app.listen(PORT_NUM, () => {
     const expiresAt = tokens.expires_at || (tokens.obtained_at + tokens.expires_in * 1000);
     const remainingMinutes = Math.floor((expiresAt - now) / 1000 / 60);
     console.log(`Authentifiziert als: ${tokens.broadcaster_name || 'unbekannt'}`);
-    console.log(`Token gültig für: ${remainingMinutes} Minuten`);
+    console.log(remainingMinutes > 0
+      ? `Token gültig für: ${remainingMinutes} Minuten`
+      : 'Token abgelaufen – wird beim ersten Zugriff automatisch erneuert');
     console.log(`Auto-Refresh: Aktiviert`);
     connectEventSub();
   } else {
