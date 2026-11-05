@@ -50,6 +50,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Doku: `docs/KONTEXT.md` (Einordnung im Ökosystem), Arbeitsweise in AGENTS.md, Abgleich mit dem Gesamtkontext in OFFEN.md.
 
 ### Fixed
+- `/status`: `bdu_silence_until` zeigt nach Ablauf einer Funkstille `null` statt der alten Uhrzeit (OFFEN.md K9).
+- Konsolenhilfe nennt auch `whitelist add <id>` (Name wird aufgelöst).
 - Start bei belegtem Port bricht jetzt mit Fehlermeldung ab. Vorher meldete der zweite Start „Server läuft auf …“ und lief ohne HTTP-Teil, aber mit eigener EventSub-Verbindung weiter (Express 5 ruft den `listen`-Callback auch im Fehlerfall auf). Folge: zwei Server parallel, Widgets nur mit dem ersten verbunden (05.11.2026).
 - Effekt-Modus `off` verwirft jetzt auch eine wartende Bestätigung im Modus `manual`. Vorher löste `/api/effects/confirm` den Effekt trotz `off` aus. Umschalten per HTTP und Konsole über die gemeinsame Funktion `setEffectMode()` (OFFEN.md K3, docs/BUGS.md).
 - Kein zweiter Shoutout mehr für einen Raider, der danach im Chat schreibt und auf der Whitelist steht (Twitch lehnte mit 429 ab, Livestream 03.11.2026). Der Raid-Shoutout trägt den Raider in `shoutedOutThisSession` ein; scheitert er, darf die Whitelist es erneut versuchen.

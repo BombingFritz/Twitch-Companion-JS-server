@@ -89,8 +89,6 @@ Zugriffsschutz (ADR 0013):
 
 Es gibt keinen Konsolenbefehl zum Bestätigen eines Effekts.
 
-`help` (`printConsoleHelp()`) führt `whitelist add <id>` nicht auf, der Befehl funktioniert aber (OFFEN.md, Priorität 3).
-
 ## 6. EventSub
 
 Alle Subscriptions werden beim `session_welcome` einer frischen Verbindung angelegt, Reihenfolge wie unten (nicht nach `session_reconnect`, siehe „Verbindungsverwaltung“).

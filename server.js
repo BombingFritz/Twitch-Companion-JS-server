@@ -945,7 +945,8 @@ app.get('/status', (req, res) => {
     effect_queue_length: effectQueue.length,
     allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
     bdu_widget_connected: bduClients.length > 0,
-    bdu_silence_until: bduSilenceUntil ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
+    // isBduSilenceActive() räumt eine abgelaufene Funkstille ab, sonst stünde hier die alte Uhrzeit (K9)
+    bdu_silence_until: isBduSilenceActive() ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
     pid: process.pid,
     started_at: SERVER_STARTED_AT
   });
@@ -1760,6 +1761,7 @@ function printConsoleHelp() {
   console.log('');
   console.log('Verfügbare Konsolenbefehle:');
   console.log(' whitelist add <id> <name>  - Nutzer per ID zur Whitelist hinzufügen');
+  console.log(' whitelist add <id>         - Nutzer per ID zur Whitelist hinzufügen (löst Namen automatisch auf)');
   console.log(' whitelist add @<name>      - Nutzer per Namen zur Whitelist hinzufügen (löst ID automatisch auf)');
   console.log(' whitelist remove <id>      - Nutzer per ID aus der Whitelist entfernen');
   console.log(' whitelist list             - Aktuelle Whitelist anzeigen');
