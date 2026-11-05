@@ -38,6 +38,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Vorgemerkt in `docs/OFFEN.md` („Ausbau zur Plattform“): Server-Konsole im Browser, Sicherheitsprüfung, Auslieferung der Widgets als optionale Module, öffentliche Veröffentlichung für andere Streamer.
 
 ### Changed
+- Raid-Statistik ab 2027 je Kalenderjahr statt je Quartal (`RAID_YEARLY_FROM_YEAR`, ADR 0012 geändert); Texte sagen dann „in diesem Jahr“. 2026 bleibt quartalsweise, bestehende Daten bleiben erhalten.
 - Shoutout-Ablehnungen „Kanal nicht live“ (400) und „Twitch-Wartezeit“ (429) als kurzer Hinweis statt als Fehlerausgabe; `sendShoutout` liefert `true`/`false`.
 - Startanzeige: abgelaufener Token als „abgelaufen – wird beim ersten Zugriff automatisch erneuert“ statt negativer Minuten; neue Zeile, ob `HA_WEBHOOK_URL` eingetragen ist (ohne die Adresse).
 - Alle Antworten mit `Cache-Control: no-store`, damit OBS-Browser-Sources keine alten Antworten (z. B. von `/token`) aus dem Cache verwenden.

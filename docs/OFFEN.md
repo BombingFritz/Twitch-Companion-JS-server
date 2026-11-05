@@ -97,6 +97,5 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 
 ## Priorität 3 (Ideen)
 - Konsolenbefehl `effects confirm` zum Bestätigen im Modus `manual` (bisher nur HTTP).
-- Umstellung der Raid-Statistik auf Jahresbasis ab 2027 (Kommentar im Code).
 - `refreshSubGoalCache` läuft bei jedem Sub-Event einzeln, bei einem Gift-Bomb entsprechend oft.
 - Alte `Server_Dokumentation.md` durch diese Struktur ersetzen. Die Datei liegt nicht im Repository [UNGEKLÄRT, ob der Punkt erledigt ist oder die Datei nur lokal existiert].
