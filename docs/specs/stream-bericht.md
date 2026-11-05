@@ -3,7 +3,12 @@
 **Status:** geplant, nicht umgesetzt. Vorlage des Nutzers vom 04.11.2026, übernommen am 05.11.2026; ergänzt um den Abgleich mit Code und ADRs (Abschnitt „Abgleich“). Vor der Umsetzung eigenes ADR. Scopes, Event-Versionen und API-Endpunkte vor dem Bauen gegen die aktuelle Twitch-Doku prüfen.
 
 ## Ziel
-Nach jedem Stream erzeugt der Server automatisch einen Bericht mit allen clipbaren Momenten: Timecode, Anlass und direkter VOD-Link. So lassen sich die Kandidaten am nächsten Tag der Reihe nach durchgehen, ohne Timecodes zu merken oder im VOD zu spulen. Der Bericht enthält außerdem die Spielbewertung aus dem Chat.
+Nach jedem Stream erzeugt der Server automatisch einen Bericht mit zwei Teilen (Nutzer, 05.11.2026):
+
+1. **Stream-Dokumentation:** die wichtigsten Daten zum Stream, z. B. Datum, Titel, Kategorien, Dauer, Raids und die Spielbewertung aus dem Chat.
+2. **Clip-Kandidaten:** alle clipbaren Momente mit Timecode, Anlass und direktem VOD-Link. So lassen sich die Kandidaten am nächsten Tag der Reihe nach durchgehen, ohne Timecodes zu merken oder im VOD zu spulen.
+
+Raids gehören nur in Teil 1, sie sind keine Clip-Kandidaten.
 
 ## Ausgangslage
 - Server mit Twitch OAuth, EventSub, zentraler Effekt-Queue und HA-Payload `{type, count, meta, timestamp}`.
@@ -20,7 +25,6 @@ Nach jedem Stream erzeugt der Server automatisch einen Bericht mit allen clipbar
 | Hype Train | EventSub `channel.hype_train.begin` / `.end` | `hype_train` |
 | Stream-Deck-Alarm | zusätzlicher HTTP-Aufruf an den Server (aus dem HA-Skript oder per Stream-Deck-Aktion) | `alarm` |
 | Stream-Deck-Marker | nach Streamende per Get Stream Markers abholen | `marker` |
-| Raid | EventSub `channel.raid` (Nutzer 05.11.2026: aufnehmen; die separate Raid-Statistik mit `!raidstats` bleibt unverändert, ADR 0012) | `raid` |
 
 ### Ablauf
 1. **`stream.online`:** Session anlegen (`stream_id`, `started_at`).
@@ -32,9 +36,8 @@ Nach jedem Stream erzeugt der Server automatisch einen Bericht mit allen clipbar
    - VOD-ID über Get Videos (`type=archive`, passende `stream_id`) ermitteln.
    - Stream-Deck-Marker per Get Stream Markers (`video_id`) abholen und einsortieren.
 4. **Bericht schreiben:** `data/reports/YYYY-MM-DD_<kategorie>.md` und `.json` (Ordner in `.gitignore`).
-   - Kopf: Datum, Titel, Kategorie(n), Dauer.
-   - Spielbewertung (siehe unten).
-   - Kandidaten nach Zeit sortiert: `hh:mm:ss` · Typ · Kontext (Enigma-Text, Hype-Train-Level, Marker-Beschreibung) · Link `https://www.twitch.tv/videos/<vod_id>?t=<h>h<m>m<s>s`. Der Link startet etwa 20 Sekunden vor dem Moment.
+   - **Teil 1, Stream-Dokumentation:** Datum, Titel, Kategorie(n), Dauer; Raids (Raider, Uhrzeit, Zuschauer, Spiel des Raiders; aus `channel.raid`, die separate Raid-Statistik mit `!raidstats` bleibt unverändert, ADR 0012); Spielbewertung (siehe unten). Weitere Kennzahlen, z. B. neue Follows, Subs und Gifts aus dem Event-Log [UNGEKLÄRT, gewünscht?].
+   - **Teil 2, Clip-Kandidaten** nach Zeit sortiert: `hh:mm:ss` · Typ · Kontext (Enigma-Text, Hype-Train-Level, Marker-Beschreibung) · Link `https://www.twitch.tv/videos/<vod_id>?t=<h>h<m>m<s>s`. Der Link startet etwa 20 Sekunden vor dem Moment.
 5. **Optional:** Benachrichtigung „Bericht fertig“ über Home Assistant.
 
 ### Spielbewertung
@@ -44,8 +47,8 @@ Nach jedem Stream erzeugt der Server automatisch einen Bericht mit allen clipbar
 - **Idee (Nutzer, 05.11.2026): verdeckt abstimmen**, damit die Bewertung nicht offen im Chat steht. Optionen, noch nicht entschieden:
   - Flüstern an den Bot „DerBdu“ (z. B. „gut“/„schlecht“): EventSub `user.whisper.message` für das Bot-Konto, Scope des Bots `user:read:whispers` oder `user:manage:whispers` [UNGEKLÄRT, prüfen]. Setzt den Bot-Login voraus (OFFEN.md, Bot-Account). Einschränkung: Wer Flüstern von Fremden blockiert oder Twitch-Einschränkungen für neue Konten unterliegt, erreicht den Bot evtl. nicht [UNGEKLÄRT]. Bestätigung per Flüstern zurück bräuchte eine verifizierte Telefonnummer am Bot-Konto [UNGEKLÄRT].
   - Chat-Befehl wie geplant, der Server löscht die Nachricht sofort nach dem Zählen (Scope `moderator:manage:chat_messages`): kurz sichtbar, aber ohne neues Konto.
-  - Kanalpunkte-Belohnung „Spiel gut“/„Spiel schlecht“ (EventSub `channel.channel_points_custom_reward_redemption.add`): Einlösungen erscheinen je nach Einstellung trotzdem im Chat [UNGEKLÄRT].
-  - Vorschlag: zuerst offen im Chat (1a), verdeckte Abstimmung nachrüsten, sobald der Bot angebunden ist.
+  - **Kanalpunkte-Belohnung „Spiel gut“/„Spiel schlecht“ (vom Nutzer bevorzugt, 05.11.2026),** sofern sich die Einlösung im Chat unsichtbar machen lässt und der Server sie trotzdem registriert. Erfassung über EventSub `channel.channel_points_custom_reward_redemption.add` (Scope `channel:read:redemptions`; eine vom Server per API angelegte Belohnung bräuchte `channel:manage:redemptions`) [UNGEKLÄRT, gegen die Twitch-Doku prüfen]. Eine Stimme je Nutzer, die letzte Einlösung zählt. Ob eine Einlösung ohne Texteingabe im Chat erscheint, ist [UNGEKLÄRT]; Test durch den Nutzer: Belohnung ohne „Zuschauer muss Text eingeben“ und mit „Warteschlange überspringen“ anlegen, einlösen, Chat beobachten. Kosten: z. B. 1 Kanalpunkt.
+  - Vorschlag: Ist die Einlösung unsichtbar, die Bewertung direkt über Kanalpunkte bauen; sonst zuerst offen im Chat (1a) und verdeckt nachrüsten, sobald der Bot angebunden ist.
 - Später optional als Overlay im Design des Polling-Widgets.
 
 ### Scopes (laut Vorlage; gegen die Twitch-Doku prüfen)
@@ -79,8 +82,8 @@ Keiner dieser Scopes steht bisher in `SCOPES` (`.env.example`). Nach dem Ergänz
 
 ## Vorschlag Teilschritte (Stufe 1)
 1. **1a Spielbewertung:** `stream.online`/`stream.offline`/`channel.update` abonnieren, Stimmen je Spiel zählen und in einer JSON-Datei halten, `!bewertung`. Keine neuen Scopes nötig [prüfen], eigenständig testbar. Verdeckte Abstimmung später (siehe Spielbewertung).
-2. **1b Kandidaten-Sammler:** `recordCandidate()`, Erfassung von Enigma-Antwort (Chat-Modus) und Raid, Offset aus `started_at` (geschätzt). Noch ohne Marker und ohne neue Scopes.
-3. **1c Bericht:** nach `stream.offline` VOD-ID ermitteln, Bericht als `.md`/`.json` schreiben.
+2. **1b Kandidaten-Sammler:** `recordCandidate()`, Erfassung von Enigma-Antworten (Chat-Modus), Offset aus `started_at` (geschätzt). Noch ohne Marker und ohne neue Scopes.
+3. **1c Bericht:** nach `stream.offline` VOD-ID ermitteln, Bericht als `.md`/`.json` schreiben (Teil 1 mit Raids, Teil 2 Kandidaten).
 4. **1d Marker und Hype Train:** neue Scopes und neuer Login, Create Stream Marker, Get Stream Markers, Hype-Train-Events.
 5. **1e Alarm-Endpoint:** nach Klärung der Absicherung.
 
