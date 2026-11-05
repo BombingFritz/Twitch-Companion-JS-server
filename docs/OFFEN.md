@@ -88,6 +88,12 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 - Einschränkungen: Der geplante Bot-Account (App-Access-Token mit Client-Secret, siehe „Bot-Account DerBdu“) passt nicht ohne Weiteres zu einem öffentlichen Client [UNGEKLÄRT]. Rate-Limits und Bedingungen von Twitch gelten dann für alle Nutzer einer gemeinsamen Client-ID [UNGEKLÄRT].
 - Weitere Voraussetzungen: P2 abgeschlossen; Installation ohne Programmierkenntnisse; Einstellungen ohne `.env` (z. B. über P1); Home Assistant optional; Texte und Branding (Spargel, BdU) konfigurierbar statt fest im Code; Lizenz wählen (`package.json`: bisher `ISC`, `private: true`) [UNGEKLÄRT]; Test- und Live-Daten getrennt (K8).
 
+## Geplant: Stream-Bericht mit Clip-Kandidaten und Spielbewertung (Nutzer, 04.11.2026)
+Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-bericht.md). Noch nicht entschieden, kein ADR.
+- Kurz: Nach jedem Stream ein Bericht mit clipbaren Momenten (Enigma-Antworten, Hype Trains, Alarm-Taste, Stream-Deck-Marker, optional Raids) samt Timecode und VOD-Link, dazu die Spielbewertung aus dem Chat (`!spielgut`/`!spielschlecht`, je Spiel). Später Ein-Klick-Clips und Shorts.
+- Offene Punkte stehen in der Spec unter „Abgleich“: eigener Kandidaten-Sammler statt `scheduleEffect()`, neue EventSub-Typen (`stream.offline`, `channel.update`, Hype Train), neue Scopes und deren Wirkung auf `/token` (P2), Absicherung des Alarm-Endpoints (K1), Persistenz während des Streams, Testdaten (K8).
+- Vorgeschlagene Reihenfolge: 1a Spielbewertung, 1b Kandidaten-Sammler, 1c Bericht, 1d Marker und Hype Train, 1e Alarm-Endpoint.
+
 ## Priorität 2
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
 - Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung. Fremde Webseiten werden per Herkunftsprüfung abgelehnt, Einbindungen ohne `Origin` nicht (siehe K1). Bewertung: [UNGEKLÄRT].
@@ -98,6 +104,6 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 ## Priorität 3 (Ideen)
 - Konsolenbefehl `effects confirm` zum Bestätigen im Modus `manual` (bisher nur HTTP).
 - `printConsoleHelp()` um `whitelist add <id>` ergänzen (Befehl funktioniert, fehlt nur in der Hilfe).
-- Umstellung der Raid-Statistik auf Jahresbasis ab 2027 (Kommentar im Code).
+- Umstellung der Raid-Statistik auf Jahresbasis ab 2027 (Kommentar im Code). Zeitgebunden: Entscheidung vor dem 01.01.2027 nötig, sonst beginnt automatisch `2027-Q1`.
 - `refreshSubGoalCache` läuft bei jedem Sub-Event einzeln, bei einem Gift-Bomb entsprechend oft.
 - Alte `Server_Dokumentation.md` durch diese Struktur ersetzen. Die Datei liegt nicht im Repository [UNGEKLÄRT, ob der Punkt erledigt ist oder die Datei nur lokal existiert].

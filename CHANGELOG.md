@@ -33,6 +33,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Doku-Abgleich mit dem Code (Nov. 2026): ADR 0002 und 0007 zum EventSub-Reconnect präzisiert, Antwort von `POST /api/bdu/answer` bei `quota`, Erkennung des Tageskontingents („täglich“), Konsolenhilfe ohne `whitelist add <id>`, BdU-Chat in README und `.env.example`, neuer offener Punkt K9 (`bdu_silence_until` in `/status`).
 
 ### Planned
+- Stream-Bericht mit Clip-Kandidaten und Spielbewertung: Spec `docs/specs/stream-bericht.md` (Vorlage des Nutzers, mit Abgleich gegen Code und ADRs), Eintrag in `docs/OFFEN.md`.
 - Vorgemerkt in `docs/OFFEN.md` („Ausbau zur Plattform“): Server-Konsole im Browser, Sicherheitsprüfung, Auslieferung der Widgets als optionale Module, öffentliche Veröffentlichung für andere Streamer.
 
 ### Changed
