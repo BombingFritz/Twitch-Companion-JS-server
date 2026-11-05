@@ -5,7 +5,7 @@
 - Feldnamen in `handleChatNotification` (`chatter_is_anonymous`, `sub.is_gift`, `resub.is_gift`, `source_broadcaster_user_id`) sind gegen reale Twitch-Events nicht belegt [UNGEKLÄRT]. Gegen echte Subs/Gifts prüfen.
   - **Teilweise belegt (Livestream 03.11.2026):** `notice_type` `resub` (6×) und `sub_gift` ohne `community_gift_id` (1×) lösten je genau einen Effekt aus; beim Einzel-Gift kein zusätzlicher Sub-Effekt für den Empfänger; die Lichter reagierten. Weiter offen: `chatter_is_anonymous`, `is_gift`, `community_sub_gift` (Gift-Bomb), `source_broadcaster_user_id`.
 - Aktualität: Der Server wird parallel in mehreren Diskussionen weiterentwickelt. Vor jeder Weiterentwicklung klären, welcher Stand gilt. Ab jetzt gilt das GitHub-Repository als maßgeblicher Stand.
-- EventSub-Keepalive: `session_keepalive` wird nicht ausgewertet. Bricht die Verbindung still ab (ohne `close`), bemerkt der Server das nicht [UNGEKLÄRT, ob in der Praxis aufgetreten].
+- ~~EventSub-Keepalive~~ – erledigt (Nov. 2026): Stille Verbindungen werden nach Keepalive-Intervall plus 5 s getrennt und neu aufgebaut (ARCHITEKTUR.md, „Verbindungsverwaltung“). Ob stille Abbrüche in der Praxis vorkamen, ist weiter [UNGEKLÄRT]; die Konsole meldet sie jetzt.
 
 ## Abgleich mit dem Gesamtkontext (Okt. 2026)
 
@@ -28,7 +28,7 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 - **K7 Startskript und Konsole:** Der Server liest Konsolenbefehle über `stdin`. Startet das Startskript ihn ohne sichtbares Konsolenfenster, sind Whitelist- und Effekt-Befehle nicht erreichbar [UNGEKLÄRT, wie das Skript startet].
   - Stand 04.11.2026: Der Server startet über `AuthServer.cmd` (Windows), jetzt im Repository. Das Stream-Deck-Skript nutzt die `.cmd`; eine inhaltsgleiche `AuthServer.bat` lag lokal daneben, mit ihr klappte der Start per Stream Deck laut Nutzer nicht [UNGEKLÄRT, warum]; sie ist nicht im Repository. Sie öffnet ein eigenes Konsolenfenster mit `node server.js` und `pause`, die Konsolenbefehle sind also erreichbar, sofern das Stream-Deck-Skript, das Server, OBS und WLED-Controller nacheinander startet, die Datei normal (nicht minimiert/versteckt) öffnet [UNGEKLÄRT]. Banner und Fenstertitel tragen jetzt den neuen Namen (K6); der Dateiname bleibt, damit bestehende Verknüpfungen weiter funktionieren.
 - **K8 Test- und Live-Daten:** Alle JSON-Dateien liegen im Arbeitsverzeichnis, einen Testmodus gibt es nicht. Ein Testlauf im Projektordner würde echte Raid-Statistik und Event-Log verändern und echte Chat-Nachrichten senden. Das passt zur Entwicklungsrichtung „Stream-, Langzeit- und Testdaten trennen“, ist aber noch nicht umgesetzt.
-- **K9 `/status` zeigt abgelaufene Funkstille (Bug, klein, gefunden 03.11.2026):** `bdu_silence_until` liest `bduSilenceUntil` direkt. Nach Ablauf einer 30-min-Funkstille bleibt dort die alte Uhrzeit stehen, bis `isBduSilenceActive()` das nächste Mal läuft (nächstes `!BdU` oder `bdu show`). Auf das Verhalten im Chat hat das keinen Einfluss. Fix: in `/status` `isBduSilenceActive()` aufrufen, bevor der Wert gelesen wird.
+- **K9 `/status` zeigt abgelaufene Funkstille (Bug, klein, gefunden 03.11.2026) – erledigt (Nov. 2026):** `bdu_silence_until` liest `bduSilenceUntil` direkt. Nach Ablauf einer 30-min-Funkstille bleibt dort die alte Uhrzeit stehen, bis `isBduSilenceActive()` das nächste Mal läuft (nächstes `!BdU` oder `bdu show`). Auf das Verhalten im Chat hat das keinen Einfluss. Fix: in `/status` `isBduSilenceActive()` aufrufen, bevor der Wert gelesen wird.
 
 ## BdU-Chat (`!BdU`) – umgesetzt, erster Livestream-Test 03.11.2026
 Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2.0 (`BombingFritz/Uboat-Widget`). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
@@ -97,7 +97,5 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 
 ## Priorität 3 (Ideen)
 - Konsolenbefehl `effects confirm` zum Bestätigen im Modus `manual` (bisher nur HTTP).
-- `printConsoleHelp()` um `whitelist add <id>` ergänzen (Befehl funktioniert, fehlt nur in der Hilfe).
-- Umstellung der Raid-Statistik auf Jahresbasis ab 2027 (Kommentar im Code).
 - `refreshSubGoalCache` läuft bei jedem Sub-Event einzeln, bei einem Gift-Bomb entsprechend oft.
 - Alte `Server_Dokumentation.md` durch diese Struktur ersetzen. Die Datei liegt nicht im Repository [UNGEKLÄRT, ob der Punkt erledigt ist oder die Datei nur lokal existiert].
