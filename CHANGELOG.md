@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 ## [Unreleased]
 
 ### Added
+- `/status` liefert `pid` und `started_at`, die Startanzeige nennt die Prozess-ID samt `taskkill`-Befehl. So ist erkennbar, welcher Prozess antwortet (05.11.2026).
 - `AuthServer.cmd` (Windows-Start im eigenen Konsolenfenster, vom Stream-Deck-Skript genutzt, bisher nur lokal) im Repository, Titel und Banner mit neuem Namen; `.gitattributes` sorgt für CRLF-Zeilenenden. `.gitignore` schließt Token-Sicherungen (`*tokens*.json`) aus. README: Hinweis zu OneDrive und Git.
 - BdU-Chat `!BdU <Text>` (ADR 0014, `docs/specs/bdu-chat.md`): Server prüft Limits (1 Anfrage je 3 min, 3 je Nutzer in 30 min, Warnung „Funkverkehr einschränken, Feind peilt ein!“ höchstens 1× je 10 min, Tagesobergrenze 60), reicht angenommene Anfragen per Server-Sent Events (`GET /api/bdu/stream`) an das Enigma-Widget weiter und postet dessen Antwort (`POST /api/bdu/answer`) als „FT vom BdU: …“ (Reply). Funkstille bei erschöpftem KI-Kontingent (30 min bzw. bis Streamstart) mit einmaliger Ansage. Beide Endpoints nur lokal. Konsole `bdu show`, `bdu silence off`; `/status` mit `bdu_widget_connected`, `bdu_silence_until`. Getestet mit Attrappen (35/35) und Ende-zu-Ende mit dem Widget (18/18); Live-Test ausstehend.
 - OAuth2-Login (`/login`, `/callback`), Token-Speicher und Auto-Refresh mit 5-Minuten-Puffer, `/token`, `/status`.
@@ -48,6 +49,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Doku: `docs/KONTEXT.md` (Einordnung im Ökosystem), Arbeitsweise in AGENTS.md, Abgleich mit dem Gesamtkontext in OFFEN.md.
 
 ### Fixed
+- Start bei belegtem Port bricht jetzt mit Fehlermeldung ab. Vorher meldete der zweite Start „Server läuft auf …“ und lief ohne HTTP-Teil, aber mit eigener EventSub-Verbindung weiter (Express 5 ruft den `listen`-Callback auch im Fehlerfall auf). Folge: zwei Server parallel, Widgets nur mit dem ersten verbunden (05.11.2026).
 - Effekt-Modus `off` verwirft jetzt auch eine wartende Bestätigung im Modus `manual`. Vorher löste `/api/effects/confirm` den Effekt trotz `off` aus. Umschalten per HTTP und Konsole über die gemeinsame Funktion `setEffectMode()` (OFFEN.md K3, docs/BUGS.md).
 - Kein zweiter Shoutout mehr für einen Raider, der danach im Chat schreibt und auf der Whitelist steht (Twitch lehnte mit 429 ab, Livestream 03.11.2026). Der Raid-Shoutout trägt den Raider in `shoutedOutThisSession` ein; scheitert er, darf die Whitelist es erneut versuchen.
 - Falscher EventSub-Typ `channel.stream.online` durch `stream.online` ersetzt.

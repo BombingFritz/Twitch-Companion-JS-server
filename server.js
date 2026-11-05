@@ -7,6 +7,7 @@ const WebSocket = require('ws');
 require('dotenv').config();
 
 const app = express();
+const SERVER_STARTED_AT = new Date().toISOString();   // für /status und Startanzeige (welcher Prozess antwortet?)
 
 const {
   CLIENT_ID,
@@ -920,7 +921,7 @@ app.get('/api/effects/confirm', (req, res) => {
 app.get('/status', (req, res) => {
   const tokens = loadTokens();
   if (!tokens) {
-    return res.json({ authenticated: false, message: 'Keine Tokens vorhanden. Bitte login durchführen.' });
+    return res.json({ authenticated: false, message: 'Keine Tokens vorhanden. Bitte login durchführen.', pid: process.pid, started_at: SERVER_STARTED_AT });
   }
 
   const now = Date.now();
@@ -942,7 +943,9 @@ app.get('/status', (req, res) => {
     effect_queue_length: effectQueue.length,
     allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
     bdu_widget_connected: bduClients.length > 0,
-    bdu_silence_until: bduSilenceUntil ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null
+    bdu_silence_until: bduSilenceUntil ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
+    pid: process.pid,
+    started_at: SERVER_STARTED_AT
   });
 });
 
@@ -1898,12 +1901,25 @@ rl.on('line', async (input) => {
 // ═══════════════════════════════════════════════════════════════════
 
 const PORT_NUM = parseInt(PORT);
-app.listen(PORT_NUM, () => {
+// Express 5 ruft diese Funktion auch bei einem Startfehler auf (z. B. Port belegt), dann mit `err`.
+// Ohne diese Prüfung liefe ein zweiter Server ohne HTTP-Teil, aber mit eigener EventSub-Verbindung
+// (doppelte Chat-Ausgaben, Widgets verbunden mit dem anderen Server).
+app.listen(PORT_NUM, (err) => {
+  if (err) {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`FEHLER: Port ${PORT_NUM} ist bereits belegt. Läuft der Server schon in einem anderen Fenster? Dieser Start wird abgebrochen, damit nicht zwei Server parallel laufen.`);
+    } else {
+      console.error(`FEHLER: Server konnte nicht starten: ${err.message}`);
+    }
+    process.exit(1);
+    return;
+  }
   console.log('');
   console.log('═════════════════════════════════════════════');
   console.log('Twitch Companion JS server');
   console.log('═════════════════════════════════════════════');
   console.log(`Server läuft auf: http://localhost:${PORT_NUM}`);
+  console.log(`Prozess-ID: ${process.pid} (zum Beenden: taskkill /PID ${process.pid} /F)`);
   console.log(`Login: http://localhost:${PORT_NUM}/login`);
   console.log(`Status: http://localhost:${PORT_NUM}/status`);
   console.log('═════════════════════════════════════════════');
