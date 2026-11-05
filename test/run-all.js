@@ -21,6 +21,10 @@ const runs = [
   ['jahr-test.js', ['2026-11-05T20:00:00', '2026-Q4', 'Quartal']],
   ['jahr-test.js', ['2026-12-31T23:59:00', '2026-Q4', 'Quartal']],
   ['jahr-test.js', ['2027-01-01T00:01:00', '2027', 'Jahr']],
+  ['aktiv-test.js', ['aktiv']],
+  ['aktiv-test.js', ['grammatik', '0.1']],
+  ['aktiv-test.js', ['grammatik', '0.4']],
+  ['aktiv-test.js', ['grammatik', '0.8']],
 ];
 
 let ok = 0, fail = 0;
