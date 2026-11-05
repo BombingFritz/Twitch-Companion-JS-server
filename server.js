@@ -28,6 +28,7 @@ const EFFECT_MODE_FILE = './effect_mode.json';
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
+const RAID_YEARLY_FROM_YEAR = 2027;               // Raid-Statistik ab diesem Jahr je Kalenderjahr statt je Quartal (ADR 0012)
 
 const EFFECT_BURST_WINDOW_MS = 2500;
 const EFFECT_MIN_GAP_MS = 4000;
@@ -231,13 +232,19 @@ function saveRaidLog(log) {
   fs.writeFileSync(RAID_FILE, JSON.stringify(log, null, 2), 'utf8');
 }
 
-// Aktueller Zeitraum-Schlüssel.
-// Aktuell Quartal-basiert (z.B. "2026-Q3").
-// Ab 2027 ggf. auf Jahres-Basis umstellen:
-// function getPeriodKey(date) { return `${date.getFullYear()}`; }
+// Zeitraum-Schlüssel der Raid-Statistik (ADR 0012):
+// bis 2026 je Quartal (z. B. "2026-Q4"), ab RAID_YEARLY_FROM_YEAR je Kalenderjahr (z. B. "2027").
+// Bestehende Quartalsdaten bleiben unter ihrem Schlüssel in raids.json erhalten.
 function getPeriodKey(date) {
+  const year = date.getFullYear();
+  if (year >= RAID_YEARLY_FROM_YEAR) return `${year}`;
   const q = Math.floor(date.getMonth() / 3) + 1;
-  return `${date.getFullYear()}-Q${q}`;
+  return `${year}-Q${q}`;
+}
+
+// Wort für die Chat-Texte: "Quartal" oder "Jahr"
+function getPeriodWord(pKey) {
+  return pKey.includes('-Q') ? 'Quartal' : 'Jahr';
 }
 
 function pick(arr) {
@@ -607,19 +614,19 @@ function buildGameMessage(game, durationStr) {
   return pick(variants);
 }
 
-function buildRankRepeatMessage(countRank, fromName, count) {
+function buildRankRepeatMessage(countRank, fromName, count, periodWord) {
   const variants = [
     `Platz ${countRank} der treuesten Raider geht an @${fromName}, der schon zum ${count}. Mal raidet.`,
-    `@${fromName} sichert sich Platz ${countRank} der häufigsten Raider – bereits der ${count}. Raid in diesem Quartal!`,
+    `@${fromName} sichert sich Platz ${countRank} der häufigsten Raider – bereits der ${count}. Raid in diesem ${periodWord}!`,
     `Rang ${countRank} bei den treuesten Raidern: @${fromName}, mittlerweile zum ${count}. Mal hier!`
   ];
   return pick(variants);
 }
 
-function buildRepeatOnlyMessage(fromName, count) {
+function buildRepeatOnlyMessage(fromName, count, periodWord) {
   const variants = [
-    `@${fromName} raidet schon zum ${count}. Mal in diesem Quartal!`,
-    `Schon der ${count}. Raid von @${fromName} in diesem Quartal!`,
+    `@${fromName} raidet schon zum ${count}. Mal in diesem ${periodWord}!`,
+    `Schon der ${count}. Raid von @${fromName} in diesem ${periodWord}!`,
     `@${fromName} ist zum ${count}. Mal dabei – danke für die Treue!`
   ];
   return pick(variants);
@@ -1703,10 +1710,11 @@ async function handleRaidEvent(evt) {
     buildGameMessage(game, durationStr)
   ];
 
+  const periodWord = getPeriodWord(pKey || getPeriodKey(new Date()));
   if (countRank && data.count >= 2) {
-    msgParts.push(buildRankRepeatMessage(countRank, fromName, data.count));
+    msgParts.push(buildRankRepeatMessage(countRank, fromName, data.count, periodWord));
   } else if (data.count >= 2) {
-    msgParts.push(buildRepeatOnlyMessage(fromName, data.count));
+    msgParts.push(buildRepeatOnlyMessage(fromName, data.count, periodWord));
   }
 
   if (viewerRank) {

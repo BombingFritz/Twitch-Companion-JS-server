@@ -18,7 +18,7 @@ Konsole (readline) --> server.js
 | Bereich | Funktionen / Zustand |
 |---|---|
 | Tokens | `loadTokens`, `saveTokens`, `getValidAccessToken` |
-| Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
+| Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `getPeriodWord`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
@@ -38,7 +38,7 @@ Konsole (readline) --> server.js
 | Datei | Struktur |
 |---|---|
 | `tokens.json` | `{access_token, refresh_token, broadcaster_id, broadcaster_name, obtained_at, expires_in, expires_at}` |
-| `raids.json` | `{ "<Periode>": { "<raiderId>": {name, count, totalViewers} } }`, Periode z. B. `2026-Q4` |
+| `raids.json` | `{ "<Periode>": { "<raiderId>": {name, count, totalViewers} } }`, Periode bis 2026 je Quartal (z. B. `2026-Q4`), ab 2027 je Jahr (z. B. `2027`), ADR 0012 |
 | `whitelist.json` | `{ "<userId>": "<userName>" }` |
 | `subgoal_cache.json` | `{current, target, title, goalId, status, lastUpdated}` |
 | `events.json` | Array, max. 200 Einträge: `{type, ...meta, count, timestamp[, skippedManualTimeout]}` |
@@ -128,6 +128,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 |---|---|---|
 | `RAIDSTATS_COOLDOWN_MS` | 30000 | Abstand zwischen `!raidstats` |
 | `RAID_GREETING_MIN_GAP_MS` | 90000 | Abstand zwischen Raid-Begrüßungen |
+| `RAID_YEARLY_FROM_YEAR` | 2027 | Ab diesem Jahr Raid-Statistik je Kalenderjahr statt je Quartal |
 | `EFFECT_BURST_WINDOW_MS` | 2500 | Bündelungsfenster je Effekt-Typ, Timer startet bei jedem Ereignis neu |
 | `EFFECT_MIN_GAP_MS` | 4000 | Abstand zwischen zwei Effekten |
 | `EFFECT_MANUAL_CONFIRM_TIMEOUT_MS` | 30000 | Wartezeit auf Bestätigung im Modus `manual` |
