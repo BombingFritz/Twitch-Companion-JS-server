@@ -22,7 +22,7 @@ Konsole (readline) --> server.js
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
-| Effekt-Modus | `loadEffectMode`, `saveEffectMode`; RAM: `effectMode`, `pendingManualConfirmation` |
+| Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode`, `pendingManualConfirmation` |
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `runManualConfirmation`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
@@ -182,7 +182,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 - `meta`: Daten des letzten Ereignisses im Bündel.
 - `userName` bei anonymem Gifter: `anonym`.
 - Modus `manual`: Aufruf nur nach Bestätigung, bei Timeout kein Aufruf.
-- Modus `off`: wartende Jobs werden verworfen, ein laufender Effekt wird nicht abgebrochen.
+- Modus `off`: wartende Jobs werden verworfen, ein laufender Effekt wird nicht abgebrochen. Wartet beim Umschalten ein Effekt im Modus `manual` auf Bestätigung, wird er verworfen: kein Aufruf, kein Eintrag in `events.json`, `/api/effects/confirm` liefert danach `{ok:false}`.
 
 ## 9. Umgebungsvariablen
 

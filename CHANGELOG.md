@@ -42,6 +42,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/). Bis zur ersten
 - Doku: `docs/KONTEXT.md` (Einordnung im Ökosystem), Arbeitsweise in AGENTS.md, Abgleich mit dem Gesamtkontext in OFFEN.md.
 
 ### Fixed
+- Effekt-Modus `off` verwirft jetzt auch eine wartende Bestätigung im Modus `manual`. Vorher löste `/api/effects/confirm` den Effekt trotz `off` aus. Umschalten per HTTP und Konsole über die gemeinsame Funktion `setEffectMode()` (OFFEN.md K3, docs/BUGS.md).
 - Falscher EventSub-Typ `channel.stream.online` durch `stream.online` ersetzt.
 - Konsolenbefehle durch korrigierte Regex und bereinigte Escapes wieder erkannt.
 - Log-Spam bei Polling reduziert.
