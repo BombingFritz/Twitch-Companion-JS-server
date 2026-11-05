@@ -54,6 +54,36 @@ Noch nicht entschieden, nicht spezifiziert.
 - Weniger Abfragen bringt die Anmeldung allein nicht: SpargelPoll fragt Twitch selbst per REST ab (dortiges ADR 0002). Einsparen ließe sich das erst, wenn der Server Ereignisse (z. B. Umfragen per EventSub) an die Widgets weiterreicht. Das berührt ADRs in den Widget-Repositories.
 - Zu klären: welche Widgets (SpargelPoll, Coinflip, Enigma, weitere), was „Fehler“ jeweils heißt, ob Widgets auf Server-Ausfälle anders reagieren sollen als heute (Start-Wiederholung), Darstellung der Übersicht.
 
+## Geplant: Ausbau zur Plattform (Nutzer, 03.11.2026)
+Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UNGEKLÄRT]. Je Punkt vor der Umsetzung eigenes ADR und eigene Spec.
+
+### P1 Server-Konsole im Browser
+- Ziel: Weboberfläche des Servers (z. B. `http://localhost:3000/admin`) mit ausführlicherem Log, Whitelist-Verwaltung und Einstellungen, etwa Effekt-Modus und manuelles Auslösen von Effekten.
+- Berührt **ADR 0006** (Whitelist nur per Konsole): Das ADR müsste abgelöst werden; bei der Umsetzung nachfragen.
+- Voraussetzung: Zugriffsschutz für alle zustandsändernden Aktionen (nur lokal wie `/token`, ADR 0013; POST statt GET, siehe Priorität 2). Sonst könnte jede Webseite im Browser des Streaming-PCs die Whitelist ändern oder Effekte auslösen.
+- Manuelles Auslösen nur über `scheduleEffect()` (ADR 0004), HA-Payload unverändert.
+- Ausführlicher Log: Log-Zeilen bisher nur auf `stdout`; braucht einen Puffer im Server (RAM oder Datei, ADR 0001/0002). Löst nebenbei K7 (Konsole beim Start per Skript ohne Fenster nicht erreichbar).
+- Anknüpfungspunkte: Server-Sent Events wie beim BdU-Chat (ADR 0014) für den Live-Log; Idee „Widgets melden sich an“ für eine Übersicht der Widgets.
+
+### P2 Sicherheitsprüfung
+- Ziel: Server systematisch auf Sicherheitslücken prüfen und gefundene schließen.
+- Bekannte Ansatzpunkte: Zustandsändernde GET-Endpoints ohne Authentifizierung (Priorität 2), Herkunft `null` als Restlücke (K1), Server lauscht auf allen Schnittstellen (K1, [UNGEKLÄRT], ob Home Assistant aus dem LAN abfragt), keine Begrenzung der Anfragerate, Abhängigkeiten (`npm audit`).
+- Sinnvoll vor P1 und P3 und zwingend vor P4.
+
+### P3 Widgets vom Server ausliefern, als optionale Module
+- Ziel: Der Server liefert die Browser-Widgets aus (`http://localhost:3000/widgets/…`), alles liegt an einem Ort; jedes Widget ist ein optionales Modul, das sich ein- und ausschalten lässt.
+- Bisher bewusst zurückgestellt: Vor- und Nachteile, Auslöser und Sicherheitsregel (nur ein eigener Widget-Ordner, nie der Server-Ordner) stehen unter K1, „Option für später“. Berührt **ADR 0013** (Herkünfte `null` und `http://absolute` könnten entfallen) und die ADRs der Widget-Repositories (`BombingFritz/TwitchPoll`, `BombingFritz/Uboat-Widget`).
+- Zu klären: Modul-Schnittstelle (z. B. Name, Version, eigene Endpoints, eigene Einstellungen), ob Widgets im Server-Repository liegen oder als eigene Repositories eingebunden werden, Verhalten der OBS-Quellen, wenn der Server nicht läuft.
+
+### P4 Öffentliche Veröffentlichung für andere Streamer
+- Ziel: Andere Streamer können den Server einfach, sicher und bequem einsetzen, möglichst ohne eigene Twitch-App in der Developer Console.
+- Kernproblem: Heute braucht jede Installation `CLIENT_ID` und `CLIENT_SECRET` einer eigenen App. Ein gemeinsames Client-Secret darf nicht mit ausgeliefert werden.
+- Mögliche Wege (nicht geprüft):
+  - Twitch „Device Code Grant Flow“ mit einer öffentlichen App (Client-Typ „Public“): Anmeldung ohne Client-Secret, nur mit der gemeinsamen Client-ID. Laufzeit und Erneuerung der Refresh-Tokens bei öffentlichen Clients [UNGEKLÄRT, gegen die Twitch-Doku prüfen].
+  - Zentraler, von dir betriebener Anmeldedienst, der das Secret hält. Das widerspricht dem bisherigen rein lokalen Betrieb und bringt Betriebs- und Datenschutzpflichten.
+- Einschränkungen: Der geplante Bot-Account (App-Access-Token mit Client-Secret, siehe „Bot-Account DerBdu“) passt nicht ohne Weiteres zu einem öffentlichen Client [UNGEKLÄRT]. Rate-Limits und Bedingungen von Twitch gelten dann für alle Nutzer einer gemeinsamen Client-ID [UNGEKLÄRT].
+- Weitere Voraussetzungen: P2 abgeschlossen; Installation ohne Programmierkenntnisse; Einstellungen ohne `.env` (z. B. über P1); Home Assistant optional; Texte und Branding (Spargel, BdU) konfigurierbar statt fest im Code; Lizenz wählen (`package.json`: bisher `ISC`, `private: true`) [UNGEKLÄRT]; Test- und Live-Daten getrennt (K8).
+
 ## Priorität 2
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
 - Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung. Fremde Webseiten werden per Herkunftsprüfung abgelehnt, Einbindungen ohne `Origin` nicht (siehe K1). Bewertung: [UNGEKLÄRT].
