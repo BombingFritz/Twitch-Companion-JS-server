@@ -104,6 +104,5 @@ Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-ber
 
 ## Priorität 3 (Ideen)
 - Konsolenbefehl `effects confirm` zum Bestätigen im Modus `manual` (bisher nur HTTP).
-- `printConsoleHelp()` um `whitelist add <id>` ergänzen (Befehl funktioniert, fehlt nur in der Hilfe).
 - `refreshSubGoalCache` läuft bei jedem Sub-Event einzeln, bei einem Gift-Bomb entsprechend oft.
 - Alte `Server_Dokumentation.md` durch diese Struktur ersetzen. Die Datei liegt nicht im Repository [UNGEKLÄRT, ob der Punkt erledigt ist oder die Datei nur lokal existiert].
