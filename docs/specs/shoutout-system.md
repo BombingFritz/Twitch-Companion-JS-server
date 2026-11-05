@@ -11,7 +11,7 @@ Andere Streamer automatisch über die offizielle Twitch-Funktion shouten.
 - Fehler werden geloggt, es gibt keinen Retry. Erwartbare Ablehnungen von Twitch erscheinen als kurzer Hinweis statt als Fehler: 400 „not streaming live“ (Kanal noch nicht live) und 429 (Twitch-Wartezeit: 2 min zwischen Shoutouts, 60 min je Streamer).
 
 ## Nicht-Ziele
-- Keine Aktivitätsprüfung des Zielkanals. Eine 40-Tage-Prüfung existiert nur in einem anderen Branch, nicht in diesem Code.
+- Keine Aktivitätsprüfung bei Raid-Shoutouts (der Raider ist live). Whitelist-Shoutouts prüfen die Aktivität der letzten 40 Tage, entfallen bei Streamern, die gerade selbst live sind, und posten vorher einen Chat-Hinweis mit dem Spiel (ADR 0015, Spec Whitelist).
 - Schwelle ist nicht konfigurierbar (hart im Code).
 
 ## Akzeptanzkriterien
@@ -24,4 +24,4 @@ Andere Streamer automatisch über die offizielle Twitch-Funktion shouten.
 - Ablehnung mit 400 „not streaming live“ oder 429 erzeugt einen kurzen Hinweis, keine Fehlerausgabe.
 
 ## Berührte Funktionen/Dateien
-`sendShoutout`, `handleRaidEvent`, `handleWhitelistShoutout`
+`sendShoutout`, `handleRaidEvent`, `handleWhitelistShoutout`, `getChannelActivity`

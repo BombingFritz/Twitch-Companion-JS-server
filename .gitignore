@@ -13,6 +13,7 @@ whitelist.json
 subgoal_cache.json
 events.json
 effect_mode.json
+whitelist_checks.json
 # Sicherungskopien von Tokens (z. B. BACKUPtokens.json)
 *tokens*.json
 

@@ -14,7 +14,7 @@ Eingehende Raids automatisch im Chat begrüßen und die Raid-Statistik pflegen.
 
 ## Nicht-Ziele
 - Kein Licht-Effekt bei Raids.
-- Keine Aktivitätsprüfung des Raiders (siehe OFFEN.md).
+- Keine Aktivitätsprüfung des Raiders: Wer raidet, ist live (ADR 0015 gilt nur für Whitelist-Shoutouts).
 
 ## Akzeptanzkriterien
 - Zwei Raids innerhalb von 90 s erzeugen zwei Begrüßungen mit mindestens 90 s Abstand.
@@ -23,7 +23,7 @@ Eingehende Raids automatisch im Chat begrüßen und die Raid-Statistik pflegen.
 - Ab `count >= 2` enthält die Nachricht einen Wiederholungs-Hinweis; bei Rang 1–5 nach Häufigkeit die Rang-Variante.
 - Bei Rang 1–3 nach Zuschauern enthält die Nachricht den Zuschauer-Rang-Hinweis.
 - Bei `viewers > 50` enthält der Basisgruß einen Zusatz.
-- Schlägt der Abruf von Spiel oder Streamdauer fehl, wird trotzdem begrüßt (Spiel: „einem unbekannten Spiel“).
+- Schlägt der Abruf von Spiel oder Streamdauer fehl, wird trotzdem begrüßt (Spiel unbekannt, grammatisch passend je Textvariante: „Dort gab es zuletzt ein unbekanntes Spiel“, „Zuletzt lief bei ihnen ein unbekanntes Spiel“, „… einer Session mit einem unbekannten Spiel“).
 - Kann kein Access-Token geladen werden, erfolgt weder Begrüßung noch Tracking.
 - `!raidstats` von einem Nutzer ohne Mod- oder Broadcaster-Badge bleibt ohne Antwort.
 - Ein zweites `!raidstats` innerhalb von 30 s bleibt ohne Antwort.

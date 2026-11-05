@@ -19,7 +19,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - OAuth2 mit Auto-Refresh, Token-Ausgabe an Widgets (`/token` mit Token, Client-ID und Broadcaster-ID; nur lokal und für erlaubte Widget-Herkünfte, siehe ADR 0013)
 - Predictions-API und Sub-Goal-Counter für Widgets
 - Raid-Begrüßung mit Warteschlange, Quartals-Leaderboard, `!raidstats`
-- Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist)
+- Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist nur an Streamer, die in den letzten 40 Tagen aktiv waren)
 - Effekt-Queue mit Modi `auto`/`manual`/`off` und Home-Assistant-Webhook
 - Event-Log (Follow/Sub/Gift) und Konsolenbefehle
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet als „FT vom BdU: …“ (ADR 0014)

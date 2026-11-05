@@ -1,14 +1,30 @@
 # Changelog
 
-Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach [Semantic Versioning](https://semver.org/lang/de/). Version 1.0.0 fasst alles bis zum 05.11.2026 zusammen (exakte Zeitpunkte einzelner älterer Änderungen sind nicht belegt; Reihenfolge nach Doku-Stand 09.09.2026, 18.09.2026 und Code). Ab 1.0.0 erhält jede Version einen Git-Tag `vX.Y.Z`.
+Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach [Semantic Versioning](https://semver.org/lang/de/). Version 1.0 fasst alles bis zum 05.11.2026 zusammen (exakte Zeitpunkte einzelner älterer Änderungen sind nicht belegt; Reihenfolge nach Doku-Stand 09.09.2026, 18.09.2026 und Code). Ab 1.0 erhält jede Version einen Git-Tag (`1.0`, `1.1`, `1.1.1`, …) und ein GitHub-Release.
 
 ## [Unreleased]
 
-## [1.1.0] – 2026-11-05
+## [1.1.1] – 2026-11-06
+
+Wartungs-Version ohne Codeänderung am Server.
+
+### Added
+- Tests mit Attrappen im Repository (`test/`, `npm test`): K3, Shoutouts und Startanzeige, belegter Port, `/status`, EventSub-Keepalive, K9, Jahresbasis der Raid-Statistik, Aktivitätsprüfung und Hinweis beim Whitelist-Shoutout; kein Netzwerk, eigenes temporäres Arbeitsverzeichnis je Test.
+
+### Changed
+- Versionsnummer in `package.json`/`package-lock.json` auf 1.1.1 (der Tag `1.1` trägt dort noch 1.0.0).
+- CHANGELOG nach Versionen aufgeteilt.
+
+### Documentation
+- AGENTS.md: `npm test` als Pflicht-Check vor jeder Auslieferung, Muster für neue Tests in `test/`.
+
+## [1.1] – 2026-11-06
+
+Enthält #10, #11 und #12.
 
 ### Added
 - EventSub-Keepalive: Bleibt länger als `keepalive_timeout_seconds` plus 5 s jede Nachricht von Twitch aus, gilt die Verbindung als still abgebrochen, wird getrennt und neu aufgebaut (Konsolenhinweis). Vorher hätte der Server bis zum Neustart keine Ereignisse mehr erhalten.
-- Tests mit Attrappen im Repository (`test/`, `npm test`): K3, Shoutouts und Startanzeige, belegter Port, `/status`, EventSub-Keepalive, K9, Jahresbasis der Raid-Statistik; kein Netzwerk, eigenes temporäres Arbeitsverzeichnis je Test.
+- Whitelist-Shoutout nur an aktive Streamer: gerade live oder neuestes Video (Übertragung, Highlight, Upload) höchstens 40 Tage alt (`SHOUTOUT_ACTIVITY_WINDOW_DAYS`, ADR 0015). Testphase: bei unklarer Aktivität trotzdem Shoutout (`SHOUTOUT_ACTIVITY_STRICT = false`). Streamer, die beim Chatten selbst live sind, erhalten keinen Shoutout. Vor dem Shoutout der Chat-Hinweis „Welch netter Besuch! Wir begrüßen @<name>! Dort gab es zuletzt <Spiel>. Lasst gern mal nen Follow da!“ (ohne Datum). Auffälligkeiten (live, inaktiv, unklar) landen im Prüfprotokoll `whitelist_checks.json`, Konsolenbefehl `whitelist checks`. Raid-Shoutouts unverändert.
 
 ### Changed
 - Raid-Statistik ab 2027 je Kalenderjahr statt je Quartal (`RAID_YEARLY_FROM_YEAR`, ADR 0012 geändert); Texte sagen dann „in diesem Jahr“. 2026 bleibt quartalsweise, bestehende Daten bleiben erhalten.
@@ -16,14 +32,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 ### Fixed
 - `/status`: `bdu_silence_until` zeigt nach Ablauf einer Funkstille `null` statt der alten Uhrzeit (OFFEN.md K9).
 - Konsolenhilfe nennt auch `whitelist add <id>` (Name wird aufgelöst).
+- Raid-Begrüßung ohne Spielinfo: „ein unbekanntes Spiel“ bzw. „einem unbekannten Spiel“ je nach Satz statt immer „einem unbekannten Spiel“ (vorher grammatisch falsch in zwei von drei Varianten).
 
 ### Documentation
-- AGENTS.md: Pflicht-Checks vor dem Commit (`git diff --cached --stat`, Änderungen an mehreren Dateien ganz oder gar nicht) und `npm test` vor jeder Auslieferung.
+- AGENTS.md: Pflicht-Check vor dem Commit (`git diff --cached --stat`, Änderungen an mehreren Dateien ganz oder gar nicht).
+- ADR 0015 (Aktivitätsprüfung, Chat-Hinweis und Prüfprotokoll beim Whitelist-Shoutout).
 
 ### Planned
 - Stream-Bericht mit Clip-Kandidaten und Spielbewertung: Spec `docs/specs/stream-bericht.md` (Vorlage des Nutzers, mit Abgleich gegen Code und ADRs; Bericht in zwei Teilen: Stream-Dokumentation inkl. Raids, Follows, Subs, Gifts, Hype Trains, Watch-Serien, Top 10 der Chatter, Whitelist-Auffälligkeiten, Spielbewertung; Clip-Kandidaten; Abstimmung bevorzugt über zwei Kanalpunkte-Belohnungen), Eintrag in `docs/OFFEN.md`. Bot „DerBdu“ wird als normaler Bot geführt.
 
-## [1.0.0] – 2026-11-05
+## [1.0] – 2026-11-05
 
 In mehreren Livestreams (03.–05.11.2026) erprobter Stand.
 
@@ -87,8 +105,9 @@ In mehreren Livestreams (03.–05.11.2026) erprobter Stand.
 - Vorgemerkt in `docs/OFFEN.md` („Ausbau zur Plattform“): Server-Konsole im Browser, Sicherheitsprüfung, Auslieferung der Widgets als optionale Module, öffentliche Veröffentlichung für andere Streamer.
 
 ### Hinweis
-- Die 40-Tage-Aktivitätsprüfung für Shoutouts existierte nur in einem anderen, nicht mehr auffindbaren Branch und ist in 1.0.0 nicht enthalten (Neuumsetzung geplant).
+- Die 40-Tage-Aktivitätsprüfung für Shoutouts existierte nur in einem anderen, nicht mehr auffindbaren Branch und ist in 1.0 nicht enthalten; in 1.1 neu umgesetzt (ADR 0015).
 
-[Unreleased]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/BombingFritz/Twitch-Companion-JS-server/releases/tag/v1.0.0
+[Unreleased]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.1.1...HEAD
+[1.1.1]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.1...1.1.1
+[1.1]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.0...1.1
+[1.0]: https://github.com/BombingFritz/Twitch-Companion-JS-server/releases/tag/1.0
