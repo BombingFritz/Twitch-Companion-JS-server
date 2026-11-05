@@ -4,11 +4,13 @@ Node.js/Express-Dienst für Twitch-OAuth2 mit automatischem Token-Refresh. Er h�
 
 ## Setup
 
+Den Projektordner nicht in einen Cloud-Sync-Ordner (z. B. OneDrive) legen: `.env` und `tokens.json` enthalten Zugangsdaten, und der Server schreibt laufend JSON-Dateien, die der Sync-Dienst sperren kann.
+
 1. Node.js installieren, mindestens Version 18 (Vorgabe von Express 5).
 2. Abhängigkeiten installieren: `npm install` (liest `package.json` und `package-lock.json`).
 3. `.env` anlegen: `cp .env.example .env`, Werte eintragen. `REDIRECT_URI` muss exakt der Twitch-Developer-Console entsprechen.
 4. Syntax prüfen: `npm run check` (entspricht `node --check server.js`)
-5. Starten: `npm start` (entspricht `node server.js`), unter Windows alternativ per Doppelklick auf `AuthServer.bat` (eigenes Konsolenfenster, bleibt nach einem Absturz offen)
+5. Starten: `npm start` (entspricht `node server.js`), unter Windows alternativ per Doppelklick auf `AuthServer.cmd` (eigenes Konsolenfenster, bleibt nach einem Absturz offen; so startet auch das Stream-Deck-Skript den Server)
 6. Einmalig anmelden: `http://localhost:3000/login` im Browser öffnen.
 7. Prüfen: `http://localhost:3000/status`
 

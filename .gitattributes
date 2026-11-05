@@ -1,2 +1,3 @@
-# Windows-Batchdateien brauchen CRLF-Zeilenenden
+# Windows-Startdateien brauchen CRLF-Zeilenenden
+*.cmd text eol=crlf
 *.bat text eol=crlf
