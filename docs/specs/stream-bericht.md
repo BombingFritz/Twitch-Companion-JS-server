@@ -36,7 +36,12 @@ Raids gehören nur in Teil 1, sie sind keine Clip-Kandidaten.
    - VOD-ID über Get Videos (`type=archive`, passende `stream_id`) ermitteln.
    - Stream-Deck-Marker per Get Stream Markers (`video_id`) abholen und einsortieren.
 4. **Bericht schreiben:** `data/reports/YYYY-MM-DD_<kategorie>.md` und `.json` (Ordner in `.gitignore`).
-   - **Teil 1, Stream-Dokumentation:** Datum, Titel, Kategorie(n), Dauer; Raids (Raider, Uhrzeit, Zuschauer, Spiel des Raiders; aus `channel.raid`, die separate Raid-Statistik mit `!raidstats` bleibt unverändert, ADR 0012); Spielbewertung (siehe unten). Weitere Kennzahlen, z. B. neue Follows, Subs und Gifts aus dem Event-Log [UNGEKLÄRT, gewünscht?].
+   - **Teil 1, Stream-Dokumentation:** Datum, Titel, Kategorie(n), Dauer; Raids (Raider, Uhrzeit, Zuschauer, Spiel des Raiders; aus `channel.raid`, die separate Raid-Statistik mit `!raidstats` bleibt unverändert, ADR 0012); Spielbewertung (siehe unten). Dazu (Nutzer, 05.11.2026):
+     - Follows, Subs (neu/Resub) und Gifts mit Namen und Anzahl. Hinweis: `events.json` speichert gebündelte Effekte mit nur dem letzten Namen je Bündel; für den Bericht braucht es eine eigene Erfassung je Ereignis während der Session.
+     - Hype Trains (Beginn, Ende, erreichtes Level); zusätzlich als Clip-Kandidat in Teil 2.
+     - Watch-Serien (Watch Streaks), soweit über EventSub erfassbar [UNGEKLÄRT, ob und über welches Event Twitch geteilte Watch-Serien liefert].
+     - Top 10 der häufigsten Chatter des Abends: Nachrichten je Nutzer aus `channel.chat.message` zählen (schon abonniert); ob Broadcaster und Bots ausgenommen werden [UNGEKLÄRT].
+     - In ferner Zukunft (nicht jetzt): genauere Statistik im Hintergrund, z. B. über mehrere Streams hinweg.
    - **Teil 2, Clip-Kandidaten** nach Zeit sortiert: `hh:mm:ss` · Typ · Kontext (Enigma-Text, Hype-Train-Level, Marker-Beschreibung) · Link `https://www.twitch.tv/videos/<vod_id>?t=<h>h<m>m<s>s`. Der Link startet etwa 20 Sekunden vor dem Moment.
 5. **Optional:** Benachrichtigung „Bericht fertig“ über Home Assistant.
 
@@ -47,9 +52,10 @@ Raids gehören nur in Teil 1, sie sind keine Clip-Kandidaten.
 - **Idee (Nutzer, 05.11.2026): verdeckt abstimmen**, damit die Bewertung nicht offen im Chat steht. Optionen, noch nicht entschieden:
   - Flüstern an den Bot „DerBdu“ (z. B. „gut“/„schlecht“): EventSub `user.whisper.message` für das Bot-Konto, Scope des Bots `user:read:whispers` oder `user:manage:whispers` [UNGEKLÄRT, prüfen]. Setzt den Bot-Login voraus (OFFEN.md, Bot-Account). Einschränkung: Wer Flüstern von Fremden blockiert oder Twitch-Einschränkungen für neue Konten unterliegt, erreicht den Bot evtl. nicht [UNGEKLÄRT]. Bestätigung per Flüstern zurück bräuchte eine verifizierte Telefonnummer am Bot-Konto [UNGEKLÄRT].
   - Chat-Befehl wie geplant, der Server löscht die Nachricht sofort nach dem Zählen (Scope `moderator:manage:chat_messages`): kurz sichtbar, aber ohne neues Konto.
-  - **Kanalpunkte-Belohnung „Spiel gut“/„Spiel schlecht“ (vom Nutzer bevorzugt, 05.11.2026),** sofern sich die Einlösung im Chat unsichtbar machen lässt und der Server sie trotzdem registriert. Erfassung über EventSub `channel.channel_points_custom_reward_redemption.add` (Scope `channel:read:redemptions`; eine vom Server per API angelegte Belohnung bräuchte `channel:manage:redemptions`) [UNGEKLÄRT, gegen die Twitch-Doku prüfen]. Eine Stimme je Nutzer, die letzte Einlösung zählt. Ob eine Einlösung ohne Texteingabe im Chat erscheint, ist [UNGEKLÄRT]; Test durch den Nutzer: Belohnung ohne „Zuschauer muss Text eingeben“ und mit „Warteschlange überspringen“ anlegen, einlösen, Chat beobachten. Kosten: z. B. 1 Kanalpunkt.
+  - **Kanalpunkte-Belohnungen (vom Nutzer bevorzugt, 05.11.2026): je eine für „Vote für das Spiel“ und „Vote gegen das Spiel“. Namen [UNGEKLÄRT, Nutzer entscheidet],** sofern sich die Einlösung im Chat unsichtbar machen lässt und der Server sie trotzdem registriert. Erfassung über EventSub `channel.channel_points_custom_reward_redemption.add` (Scope `channel:read:redemptions`; eine vom Server per API angelegte Belohnung bräuchte `channel:manage:redemptions`) [UNGEKLÄRT, gegen die Twitch-Doku prüfen]. Eine Stimme je Nutzer, die letzte Einlösung zählt. Ob eine Einlösung ohne Texteingabe im Chat erscheint, ist [UNGEKLÄRT]; Test durch den Nutzer: Belohnung ohne „Zuschauer muss Text eingeben“ und mit „Warteschlange überspringen“ anlegen, einlösen, Chat beobachten. Kosten: z. B. 1 Kanalpunkt.
   - Vorschlag: Ist die Einlösung unsichtbar, die Bewertung direkt über Kanalpunkte bauen; sonst zuerst offen im Chat (1a) und verdeckt nachrüsten, sobald der Bot angebunden ist.
 - Später optional als Overlay im Design des Polling-Widgets.
+- Später (nach der Bot-Anbindung und wenn die Abstimmung zuverlässig läuft): Der Bot postet einmal pro Stunde den Zwischenstand und erinnert ans Abstimmen.
 
 ### Scopes (laut Vorlage; gegen die Twitch-Doku prüfen)
 - `channel:manage:broadcast`: Create Stream Marker
