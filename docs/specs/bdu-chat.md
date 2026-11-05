@@ -24,13 +24,13 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 
 ### Antwort des Widgets (`POST /api/bdu/answer`, JSON)
 - `{id, status: "ok", text}`: Bekannte, noch offene `id` → „FT vom BdU: “ + Text, auf 500 Zeichen gekürzt (Twitch-Limit), per `POST /helix/chat/messages` mit `reply_parent_message_id` posten. Unbekannte oder abgelaufene `id`: verwerfen, loggen.
-- `{id, status: "quota", error}`: **Funkstille** starten (siehe unten), nichts zur Anfrage posten.
+- `{id, status: "quota", error}`: **Funkstille** starten (siehe unten), nichts zur Anfrage posten. Antwort an das Widget: `{ok: true, silenceUntil}` (Zeitstempel in ms; beim Tageskontingent `null`).
 - `{id, status: "error"}`: nichts posten, loggen.
 - Kommt binnen `BDU_ANSWER_TIMEOUT_MS` (120 s; das Widget hält Anfragen bis zu 60 s für den Kaleu zurück) keine Antwort: Anfrage verwerfen, loggen.
 
 ### Funkstille (betrifft nur den Chat)
 - Auslöser: `status: "quota"` vom Widget.
-- Dauer: 30 min (`BDU_SILENCE_MS`). Deutet der Fehlertext auf das Tageskontingent hin (z. B. „per day“), bis zum nächsten `stream.online` bzw. Neustart. Erkennung über den Fehlertext („per day“, „PerDay“, „daily“).
+- Dauer: 30 min (`BDU_SILENCE_MS`). Deutet der Fehlertext auf das Tageskontingent hin (z. B. „per day“), bis zum nächsten `stream.online` bzw. Neustart. Erkennung über den Fehlertext („per day“, „perday“, „daily“, „täglich“, Groß-/Kleinschreibung egal).
 - Beim Start einmal posten: „BdU befiehlt Funkstille bis HH:MM Uhr – Meldungen werden nicht beantwortet.“ (Ortszeit des Servers; beim Tageskontingent „bis auf Weiteres“).
 - Erneuter Auslöser direkt nach Ablauf: Funkstille verlängern, ohne neue Ansage.
 
