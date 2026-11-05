@@ -28,6 +28,7 @@ const EFFECT_MODE_FILE = './effect_mode.json';
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
+const SHOUTOUT_ACTIVITY_WINDOW_DAYS = 40;         // Whitelist-Shoutout nur, wenn der Kanal in diesem Zeitraum aktiv war (ADR 0015)
 
 const EFFECT_BURST_WINDOW_MS = 2500;
 const EFFECT_MIN_GAP_MS = 4000;
@@ -596,11 +597,15 @@ function buildBaseMessage(fromName, viewers) {
   return pick(variants);
 }
 
+// game = null: Spiel unbekannt. Die Varianten brauchen dann unterschiedliche Fälle
+// („es gab ein unbekanntes Spiel“, „lief ein unbekanntes Spiel“, „mit einem unbekannten Spiel“).
 function buildGameMessage(game, durationStr) {
+  const gameNomAkk = game || 'ein unbekanntes Spiel';
+  const gameDativ = game || 'einem unbekannten Spiel';
   const variants = [
-    `Dort gab es zuletzt ${game}${durationStr}.`,
-    `Zuletzt lief bei ihnen ${game}${durationStr}.`,
-    `Gerade kommt ihr von einer Session mit ${game}${durationStr}.`
+    `Dort gab es zuletzt ${gameNomAkk}${durationStr}.`,
+    `Zuletzt lief bei ihnen ${gameNomAkk}${durationStr}.`,
+    `Gerade kommt ihr von einer Session mit ${gameDativ}${durationStr}.`
   ];
   return pick(variants);
 }
@@ -1555,9 +1560,50 @@ async function handleWhitelistShoutout(evt) {
   if (!whitelist[chatterId]) return;
   if (shoutedOutThisSession.has(chatterId)) return;
 
+  // Je Session nur einmal prüfen bzw. shouten, auch wenn die Prüfung negativ ausfällt
   shoutedOutThisSession.add(chatterId);
-  console.log(`Erstnachricht von gelistetem Streamer @${chatterName} (ID: ${chatterId}) erkannt – sende Shoutout`);
+
+  let activity;
+  try {
+    activity = await getChannelActivity(chatterId);
+  } catch (err) {
+    console.error(`Aktivitätsprüfung für @${chatterName} fehlgeschlagen – kein Shoutout in dieser Session:`, err.response?.data || err.message);
+    return;
+  }
+  if (!activity.active) {
+    const detail = activity.lastActiveAt
+      ? `zuletzt aktiv am ${new Date(activity.lastActiveAt).toLocaleDateString('de-DE')}`
+      : 'keine Übertragung, kein Highlight und kein Upload gefunden (evtl. VODs deaktiviert oder abgelaufen)';
+    console.log(`Kein Shoutout für gelisteten Streamer @${chatterName} – in den letzten ${SHOUTOUT_ACTIVITY_WINDOW_DAYS} Tagen nicht aktiv (${detail})`);
+    return;
+  }
+
+  const seen = activity.source === 'live' ? 'gerade live' : `zuletzt aktiv am ${new Date(activity.lastActiveAt).toLocaleDateString('de-DE')}`;
+  console.log(`Erstnachricht von gelistetem Streamer @${chatterName} (ID: ${chatterId}) erkannt (${seen}) – sende Shoutout`);
   await sendShoutout(chatterId, chatterName);
+}
+
+// Prüft, ob ein Kanal in den letzten SHOUTOUT_ACTIVITY_WINDOW_DAYS Tagen aktiv war (ADR 0015).
+// Aktiv heißt: gerade live (/helix/streams) oder das neueste Video jeder Art (/helix/videos,
+// type=all: vergangene Übertragung, Highlight, Upload) ist jünger als das Zeitfenster.
+// Liefert { active, lastActiveAt, source }; wirft bei einem API-Fehler.
+async function getChannelActivity(userId) {
+  const accessToken = await getValidAccessToken();
+  const headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID };
+  const id = encodeURIComponent(userId);
+  const [streamRes, videoRes] = await Promise.all([
+    axios.get(`https://api.twitch.tv/helix/streams?user_id=${id}`, { headers }),
+    axios.get(`https://api.twitch.tv/helix/videos?user_id=${id}&type=all&sort=time&first=1`, { headers })
+  ]);
+
+  const stream = streamRes.data.data?.[0];
+  if (stream) return { active: true, lastActiveAt: stream.started_at, source: 'live' };
+
+  const video = videoRes.data.data?.[0];
+  if (!video) return { active: false, lastActiveAt: null, source: null };
+
+  const ageDays = (Date.now() - new Date(video.created_at).getTime()) / (24 * 60 * 60 * 1000);
+  return { active: ageDays <= SHOUTOUT_ACTIVITY_WINDOW_DAYS, lastActiveAt: video.created_at, source: video.type };
 }
 
 function enqueueRaidEvent(evt) {
@@ -1617,7 +1663,7 @@ async function handleRaidEvent(evt) {
     return;
   }
 
-  let game = 'einem unbekannten Spiel';
+  let game = null;   // null = unbekannt, Text dafür in buildGameMessage
   let durationStr = '';
   let startedAt = null;
 
@@ -1627,7 +1673,7 @@ async function handleRaidEvent(evt) {
       axios.get(`https://api.twitch.tv/helix/streams?user_id=${fromId}`, { headers })
     ]);
 
-    game = chanRes.data.data[0]?.game_name || game;
+    game = chanRes.data.data[0]?.game_name || null;
     startedAt = streamRes.data.data[0]?.started_at || null;
 
     if (startedAt) {
@@ -1639,7 +1685,7 @@ async function handleRaidEvent(evt) {
       console.warn(`Kein aktiver Stream-Datensatz für ${fromName} gefunden (evtl. bereits offline) – Streamdauer nicht verfügbar`);
     }
 
-    console.log(' Ermitteltes Spiel:', game);
+    console.log(' Ermitteltes Spiel:', game || 'unbekannt');
     console.log(' Stream gestartet um:', startedAt || 'unbekannt');
     console.log(' Berechnete Dauer:', durationStr || 'n/a');
   } catch (e) {

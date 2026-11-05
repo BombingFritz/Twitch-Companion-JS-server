@@ -73,7 +73,7 @@ Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT]
 
 ## Entwicklungsrichtungen mit Bezug zum Server
 
-- Shoutout-Branch (40-Tage-Prüfung) mit der Effekt-Queue zusammenführen (OFFEN.md, Priorität 1).
+- ~~Shoutout-Branch (40-Tage-Prüfung) zusammenführen~~ – neu umgesetzt (ADR 0015).
 - Companion-Widget: braucht Server-Daten zu Sub-Goal, Effekt-Modus, Queue und Events.
 - Unterschiedliche WLED- und Matter-Effekte je Eventtyp (Server: `type`/`meta` liefern, Logik in Home Assistant).
 - Persistente, korrigierbare Zustände über einzelne Streams hinaus.

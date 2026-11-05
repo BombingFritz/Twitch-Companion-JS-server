@@ -1,7 +1,7 @@
 # Offene Punkte
 
 ## Priorität 1
-- Ungemergter Branch: 40-Tage-Aktivitätsprüfung für Shoutouts (`getRecentStreamInfo()` über `/helix/videos`, `SHOUTOUT_ACTIVITY_WINDOW_DAYS=40`, Chat-Nachricht mit Datum und Spiel). Fehlt in diesem Code. Zusammenführen mit der Effekt-Queue steht aus.
+- ~~Ungemergter Branch: 40-Tage-Aktivitätsprüfung für Shoutouts~~ – erledigt (05.11.2026): Der alte Code ist nicht mehr auffindbar; neu umgesetzt nach ADR 0015 (nur Whitelist-Shoutouts, aktiv = live oder Video jeder Art höchstens 40 Tage alt). Die frühere Chat-Nachricht mit Datum und Spiel ist nicht übernommen [UNGEKLÄRT, ob gewünscht].
 - Feldnamen in `handleChatNotification` (`chatter_is_anonymous`, `sub.is_gift`, `resub.is_gift`, `source_broadcaster_user_id`) sind gegen reale Twitch-Events nicht belegt [UNGEKLÄRT]. Gegen echte Subs/Gifts prüfen.
   - **Teilweise belegt (Livestream 03.11.2026):** `notice_type` `resub` (6×) und `sub_gift` ohne `community_gift_id` (1×) lösten je genau einen Effekt aus; beim Einzel-Gift kein zusätzlicher Sub-Effekt für den Empfänger; die Lichter reagierten. Weiter offen: `chatter_is_anonymous`, `is_gift`, `community_sub_gift` (Gift-Bomb), `source_broadcaster_user_id`.
 - Aktualität: Der Server wird parallel in mehreren Diskussionen weiterentwickelt. Vor jeder Weiterentwicklung klären, welcher Stand gilt. Ab jetzt gilt das GitHub-Repository als maßgeblicher Stand.
