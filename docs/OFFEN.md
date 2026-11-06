@@ -34,7 +34,7 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 ## UBOAT-Personalakte (`!personalakte`) – umgesetzt, noch nicht im Stream erprobt
 Umgesetzt nach `docs/specs/uboat-personalakte.md`, ADR 0016. Vor dem ersten Einsatz `UBOAT_SAVES_DIR` in der `.env` setzen.
 - Beim ersten UBOAT-Stream prüfen: Kategoriename in der Konsole („[Kategorie] Twitch-Kategorie: …“), muss zu `UBOAT_CATEGORY_NAMES` passen [UNGEKLÄRT].
-- Abgleich mit dem Crew-Bildschirm im Spiel (Screenshot vom Nutzer erbeten): Bedeutung von `status` 0/1 (Vermutung Reserve/an Bord), Anzeige der Stufe [UNGEKLÄRT].
+- `status` 0/1 = Reserve/an Bord (Nutzer, 06.11.2026), in der Akte umgesetzt. Abgleich mit dem Crew-Bildschirm (Screenshot vom Nutzer erbeten) steht noch aus, ebenso die Anzeige der Stufe [UNGEKLÄRT].
 - Fester Posten bzw. Schicht: Rollen-Objekte wie „Frühschicht“ stehen im Spielstand, hängen vermutlich am Szenen-Charakter (`PlayableCharacter`), noch nicht ausgelesen.
 - Verwundungen und `fate`-Werte: noch nicht in einem Spielstand beobachtet; Spielstand mit verwundetem bzw. gefallenem Crewmitglied zum Prüfen.
 - Namen im Spiel weichen teils vom Twitch-Namen ab; Nutzer überlegt, sie im Spiel anzupassen. Bis dahin `uboat map <login> <Name>`.

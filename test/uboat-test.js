@@ -78,13 +78,13 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     check('S3 channel.update v2 abonniert, Kategorie abgerufen', subscriptions.includes('channel.update@2') && has(/Twitch-Kategorie: UBOAT \(Abruf\).*aktiv/));
 
     let r = await ask('kobold', 'Kobold');
-    check('B1 Matrose: Akte als Reply', r && r.reply_parent_message_id && r.message === 'Personalakte Kobold – Matrose: Stufe 0, 0 EP. Charakter: Ängstlich. Fähigkeiten: Hart im Nehmen. Stand: ' + r.message.split('Stand: ')[1], r && r.message);
+    check('B1 Matrose an Bord: Akte als Reply', r && r.reply_parent_message_id && r.message === 'Personalakte Kobold – Matrose, an Bord: Stufe 0, 0 EP. Charakter: Ängstlich. Fähigkeiten: Hart im Nehmen. Stand: ' + r.message.split('Stand: ')[1], r && r.message);
     check('B2 Stand mit Datum und Uhrzeit', r && /Stand: \d\d\.\d\d\. \d\d:\d\d Uhr$/.test(r.message), r && r.message);
     r = await ask('alpaka');
     check('B3 Offizier: Klasse deutsch, EP letzte Feindfahrt, Auszeichnung, interne Werte und Klassen-Fähigkeit ausgeblendet',
-      r && r.message.startsWith('Personalakte Alpaka – Offizier (Funker): Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Gutes Gehör. Stand:'), r && r.message);
+      r && r.message.startsWith('Personalakte Alpaka – Offizier (Funker), an Bord: Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Gutes Gehör. Stand:'), r && r.message);
     r = await ask('gefallenergustav', 'GefallenerGustav');
-    check('B4 Gefallener: Todesdatum', r && r.message.includes('Gefallen am 12.03.1941.'), r && r.message);
+    check('B4 Gefallener: Todesdatum, nicht als „an Bord“ geführt', r && r.message.includes('Gefallen am 12.03.1941.') && r.message.startsWith('Personalakte Gefallener Gustav – Offizier (Befehlshaber): '), r && r.message);
     check('B5 höchstens 500 Zeichen', chatPosts.every(p => p.message.length <= 500));
 
     r = await ask('majormac', 'MajorMac');
@@ -92,11 +92,11 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     r = await ask('juergenmueller', 'JuergenMueller');
     check('Z2 Zuordnung mit Umlauten (Jürgen Müller)', r && r.message.startsWith('Personalakte Jürgen Müller'), r && r.message);
     r = await ask('zw3rg', 'Zwergwildsau');
-    check('Z3 Zuordnung über den Anzeigenamen', r && r.message.startsWith('Personalakte Zwergwildsau'), r && r.message);
+    check('Z3 Zuordnung über den Anzeigenamen; Reserve', r && r.message.startsWith('Personalakte Zwergwildsau – Matrose, in Reserve: Stufe 0'), r && r.message);
     rl.emit('line', 'uboat map @Fritz_TV Fritz Unsinkbar'); await sleep(50);
     check('Z4 Konsole uboat map schreibt Zuordnungsdatei', JSON.parse(fs.readFileSync('uboat_crew_map.json', 'utf8')).fritz_tv === 'Fritz Unsinkbar');
     r = await ask('fritz_tv', 'Fritz_TV');
-    check('Z5 Zuordnung über Datei (Kommandant, Fähigkeit Kommandant ausgeblendet)', r && r.message.startsWith('Personalakte Fritz Unsinkbar – Kommandant (Befehlshaber): Stufe 4, 281 EP (+200 letzte Feindfahrt), 4 Auszeichnungen. Charakter: Gesundheitsprobleme. Fähigkeiten: Spanischsprachig.'), r && r.message);
+    check('Z5 Zuordnung über Datei (Kommandant, Fähigkeit Kommandant ausgeblendet)', r && r.message.startsWith('Personalakte Fritz Unsinkbar – Kommandant (Befehlshaber), an Bord: Stufe 4, 281 EP (+200 letzte Feindfahrt), 4 Auszeichnungen. Charakter: Gesundheitsprobleme. Fähigkeiten: Spanischsprachig.'), r && r.message);
     r = await ask('hanspeter', 'HansPeter');
     check('Z6 mehrdeutiger Name: keine Akte, Hinweis in der Konsole', r && r.message === 'Zu deinem Namen liegt keine Personalakte vor.' && has(/passt auf mehrere Crewmitglieder \(Hans Peter, Hanspeter\)/), r && r.message);
     r = await ask('fremder');
@@ -121,7 +121,8 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
 
     let api = await getJson('/api/uboat/crew');
     check('E1 /api/uboat/crew: aktiv, Quelle, 9 Crewmitglieder mit deutschen Eigenschaften', api.enabled && api.active && api.source === 'Versenkung.save' && api.crew.length === 9
-      && api.crew.find(c => c.name === 'Kobold').traits[0] === 'Ängstlich', JSON.stringify({ ...api, crew: api.crew.length }));
+      && api.crew.find(c => c.name === 'Kobold').traits[0] === 'Ängstlich'
+      && api.crew.find(c => c.name === 'Kobold').statusLabel === 'an Bord' && api.crew.find(c => c.name === 'Zwergwildsau').statusLabel === 'in Reserve', JSON.stringify({ ...api, crew: api.crew.length }));
     const st = await getJson('/status');
     check('E2 /status: uboat_enabled, uboat_active, uboat_save', st.uboat_enabled === true && st.uboat_active === true && st.uboat_save === 'Versenkung.save' && !!st.uboat_saved_at);
 

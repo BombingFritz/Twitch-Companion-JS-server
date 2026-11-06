@@ -35,7 +35,8 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
   - Normalisierung: Kleinbuchstaben, ä→ae, ö→oe, ü→ue, ß→ss, alles außer a–z und 0–9 entfernen.
   - Passt eine Regel auf mehrere Crewmitglieder: kein Treffer, Hinweis in der Konsole. Kein ungefährer Abgleich.
 - Antworten (als Reply auf die Nachricht, `reply_parent_message_id`, höchstens 500 Zeichen):
-  - Treffer: `Personalakte <Name> – <Typ>[ (<Klasse>)]: Stufe <n>, <EP> EP[ (+<EP> letzte Feindfahrt)][, <n> Auszeichnung(en)].[ Charakter: <…>.][ Fähigkeiten: <…>.][ Gefallen am <TT.MM.JJJJ>.] Stand: <TT.MM.> <HH:MM> Uhr` (Klammern = nur wenn vorhanden bzw. größer 0). Beispiel: „Personalakte Alpaka – Offizier (Funker): Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Spanischsprachig, Gutes Gehör, Erkennung von Schiffsschrauben. Stand: 04.11. 01:17 Uhr“
+  - Treffer: `Personalakte <Name> – <Typ>[ (<Klasse>)][, an Bord|, in Reserve]: Stufe <n>, <EP> EP[ (+<EP> letzte Feindfahrt)][, <n> Auszeichnung(en)].[ Charakter: <…>.][ Fähigkeiten: <…>.][ Gefallen am <TT.MM.JJJJ>.] Stand: <TT.MM.> <HH:MM> Uhr` (Klammern = nur wenn vorhanden bzw. größer 0). Beispiel: „Personalakte Alpaka – Offizier (Funker), an Bord: Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Spanischsprachig, Gutes Gehör, Erkennung von Schiffsschrauben. Stand: 04.11. 01:17 Uhr“
+  - Aufenthalt aus dem Feld `status`: 1 = „an Bord“, 0 = „in Reserve“ (Nutzer, 06.11.2026); andere Werte und Gefallene: kein Zusatz.
   - Charakter = Charakterzüge aus `Locales/UI/CrewListUI` (z. B. Seewolf, Ängstlich, Gesundheitsprobleme); Fähigkeiten = Einträge aus `Locales/Skills`, ohne die zur Offiziersklasse gleichnamige Fähigkeit.
   - Kein Treffer: „Zu deinem Namen liegt keine Personalakte vor.“
   - Noch kein Spielstand gelesen: „Die Personalakten sind gerade nicht verfügbar.“
@@ -45,7 +46,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
 - `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben. `loadUboatCrewMap()`/`saveUboatCrewMap()`. Fehlt die Datei: leer. Laufzeitdatei, nicht im Repository.
 
 ### Endpoint `GET /api/uboat/crew`
-`{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew: [{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, decorations, died, traits, skills, status}]}`. `active`: Kategorie ist UBOAT. Herkunftsprüfung wie alle Endpoints (ADR 0013); keine Twitch-Daten, kein Token.
+`{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew: [{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, decorations, died, traits, skills, status, statusLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“ oder `null`). `active`: Kategorie ist UBOAT. Herkunftsprüfung wie alle Endpoints (ADR 0013); keine Twitch-Daten, kein Token.
 
 ### Status und Konsole
 - `/status`: `uboat_enabled`, `uboat_active`, `uboat_save`, `uboat_saved_at`.
@@ -59,12 +60,12 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
 ## Nicht-Ziele (vorerst)
 - Live-Daten aus dem laufenden Spiel (nur Stand des letzten Speicherns).
 - Akten anderer Zuschauer abfragen.
-- Schicht bzw. fester Posten, Verwundungen, Bedeutung von `status` (siehe Offene Punkte).
+- Schicht bzw. fester Posten, Verwundungen (siehe Offene Punkte).
 - Widget „Heute an Bord“, Crew-Ereignisse über die Effekt-Queue, Stream-Bericht.
 - Änderungen am Spiel oder an Spielständen.
 
 ## Offene Punkte
-- `status` 0/1: Vermutung „Reserve“ bzw. „an Bord“ [UNGEKLÄRT, Abgleich mit Crew-Bildschirm].
+- `status` 0/1: laut Nutzer (06.11.2026) „Reserve“ bzw. „an Bord“, so umgesetzt. Im Spielstand vom 04.11.2026 sind 6 von 29 in Reserve; Abgleich mit dem Crew-Bildschirm steht noch aus.
 - Fester Posten (Schichten wie „Frühschicht“ sind Rollen-Objekte im Spielstand, hängen vermutlich am Szenen-Charakter, nicht an den Personaldaten) [UNGEKLÄRT].
 - Verwundungen und `fate`-Werte: noch nicht in einem Spielstand beobachtet [UNGEKLÄRT].
 - Anzeige der Stufe: Spiel zeigt evtl. Sterne statt Zahl [UNGEKLÄRT].
@@ -73,7 +74,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
 
 ## Akzeptanzkriterien
 - Parser liest einen Spielstand im Testformat: Crew vollständig, Fremdcharaktere ausgefiltert, Charakterzüge und Fähigkeiten deutsch, interne Werte ausgeblendet.
-- `!personalakte` bei Kategorie UBOAT: genau eine Reply mit Name, Typ, Stufe, EP und Stand.
+- `!personalakte` bei Kategorie UBOAT: genau eine Reply mit Name, Typ, „an Bord“ bzw. „in Reserve“, Stufe, EP und Stand.
 - Zuordnung über Datei, Login und Anzeigename (inkl. Groß-/Kleinschreibung, Leerzeichen, Umlaute); mehrdeutige Namen: keine Akte.
 - Unbekannter Nutzer: Hinweis „keine Personalakte“.
 - Andere Kategorie (auch nach `channel.update`): keine Ausgabe. Wechsel zurück zu UBOAT: Antwort.

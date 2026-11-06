@@ -97,7 +97,7 @@ const DEFAULT_CREW = [
   { name: 'Kobold', type: 0, level: 0, xp: 0, statuses: ['AnxiousPersonality', 'Sailor', 'Tough'] },
   { name: 'Major Mac', type: 0, level: 0, xp: 25, xpLP: 25, statuses: ['SeaWolf', 'Sailor', 'Runner'] },
   { name: 'Jürgen Müller', type: 0, statuses: ['Weak', 'Sailor'] },
-  { name: 'Zwergwildsau', type: 0, statuses: ['SeaWolf', 'Sailor'] },
+  { name: 'Zwergwildsau', type: 0, status: 0, statuses: ['SeaWolf', 'Sailor'] },
   { name: 'Hans Peter', type: 0, statuses: ['Sailor'] },
   { name: 'Hanspeter', type: 0, statuses: ['Sailor'] },
   { name: 'Nicht Angeheuert', type: 0, enrolled: false, statuses: ['Sailor'] },
