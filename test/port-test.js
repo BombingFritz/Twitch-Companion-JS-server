@@ -26,6 +26,6 @@ const blocker = http.createServer((q, r) => r.end('ANDERER SERVER')).listen(PORT
       ['P4 Exit-Code 1', exitCode === 1],
     ];
     for (const [n, ok] of res) real(`${ok ? 'OK  ' : 'FAIL'} ${n}`);
-    fs.rmSync(dir, { recursive: true, force: true }); blocker.close(); realExit(0);
+    process.chdir(os.tmpdir()); fs.rmSync(dir, { recursive: true, force: true }); blocker.close(); realExit(0);
   }, 800);
 });

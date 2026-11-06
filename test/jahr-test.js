@@ -34,6 +34,6 @@ setTimeout(() => {
       [`${iso}: andere Zeiträume unverändert`, Object.keys(seed).filter(k => k !== expKey).every(k => JSON.stringify(raids[k]) === JSON.stringify(seed[k]))],
     ];
     for (const [n, ok, i] of res) real(`${ok ? 'OK  ' : 'FAIL'} ${n}${ok ? '' : '  -> ' + JSON.stringify(i)}`);
-    fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
+    process.chdir(os.tmpdir()); fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
   }, 600);
 }, 300);

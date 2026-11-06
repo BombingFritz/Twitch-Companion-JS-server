@@ -59,5 +59,5 @@ const results = []; const check = (n, c, i = '') => results.push({ n, ok: !!c, i
   console.log = real;
   for (const r of results) real(`${r.ok ? 'OK  ' : 'FAIL'} ${r.n}${r.ok ? '' : '  -> ' + JSON.stringify(r.i)}`);
   real(`${results.filter(r => r.ok).length}/${results.length} bestanden`);
-  fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
+  process.chdir(os.tmpdir()); fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
 })();

@@ -4,6 +4,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
+### Fixed
+- Tests: Unter Windows brachen alle älteren Tests beim Aufräumen mit `EPERM` ab, weil der Prozess noch im zu löschenden Arbeitsverzeichnis stand; sie wechseln jetzt vorher heraus.
+
 ## [1.1.1] – 2026-11-06
 
 Wartungs-Version ohne Codeänderung am Server.

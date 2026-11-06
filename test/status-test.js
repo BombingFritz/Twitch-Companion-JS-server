@@ -22,5 +22,5 @@ setTimeout(() => http.get({ host: '127.0.0.1', port: PORT, path: '/status' }, r 
     ['Startanzeige nennt Prozess-ID', logs.some(l => l.includes(`Prozess-ID: ${process.pid}`))],
   ];
   for (const [n, ok] of res) real(`${ok ? 'OK  ' : 'FAIL'} ${n}`);
-  fs.rmSync(dir, { recursive: true, force: true }); process.exit(res.every(x => x[1]) ? 0 : 1);
+  process.chdir(os.tmpdir()); fs.rmSync(dir, { recursive: true, force: true }); process.exit(res.every(x => x[1]) ? 0 : 1);
 }); }), 500);
