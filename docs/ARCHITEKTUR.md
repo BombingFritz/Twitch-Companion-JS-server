@@ -180,8 +180,9 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `UBOAT_SAVE_SETTLE_MS` | 3000 | Spielstand erst lesen, wenn so lange unverändert |
 | `UBOAT_POLL_MS` | 60000 | Abfrage des Ordners zusätzlich zur Dateibeobachtung |
 | `UBOAT_KNOWN_GAME_VERSIONS` | `['2026.1 Patch 21']` | Erprobte Spielversionen; andere: Konsolenhinweis |
-| `UBOAT_HIDDEN_SKILLS` | `['Authority', 'Skipper']` | In der Akte nicht genannt |
-| `UBOAT_TEXT_NOT_FOUND` / `UBOAT_TEXT_UNAVAILABLE` | „Zu deinem Namen liegt keine Personalakte vor.“ / „Die Personalakten sind gerade nicht verfügbar.“ | Antworttexte |
+| `UBOAT_HIDDEN_SKILLS` | `['Authority', 'Skipper']` | Im Soldbuch nicht genannt |
+| `UBOAT_FRESH_MS` | 3600000 | Spielstand höchstens so alt: „Der Eintrag ist aktuell.“ im Soldbuch |
+| `UBOAT_TEXT_NOT_FOUND` / `UBOAT_TEXT_UNAVAILABLE` | „Zu deinem Namen liegt kein Soldbuch vor.“ / „Die Soldbücher sind gerade nicht verfügbar.“ | Antworttexte |
 | Viewer-Schwelle Raid-Shoutout | 3 (inline, `viewers >= 3`) | |
 | Shoutout-Verzögerung nach Begrüßung | 2000 ms (inline) | |
 | Zusatztext Begrüßung | `viewers > 50` (inline) | |

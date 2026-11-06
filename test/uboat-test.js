@@ -5,6 +5,7 @@ const Module = require('module'), path = require('path'), fs = require('fs'), os
 const { EventEmitter } = require('events');
 const fx = require('./uboat-fixture');
 const { parseSave } = require('../lib/uboat-save');
+const { createUboatCrew } = require('../lib/uboat-crew');
 const [serverPath, scenario] = [path.resolve(process.argv[2]), process.argv[3] || 'an'];
 const PORT = 39100 + Math.floor(Math.random() * 300);
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ub-'));
@@ -72,42 +73,50 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     const parsed = parseSave(fs.readFileSync(path.join(savesDir, 'Versenkung.save')));
     check('P1 Parser: 9 Crewmitglieder, Fremdcharakter und nicht Angeheuerte ausgefiltert', parsed.crew.length === 9 && !parsed.crew.some(c => /Arthur|Nicht/.test(c.name)), parsed.crew.map(c => c.name).join(','));
     check('P2 Parser: Spielversion und Rolle', parsed.gameVersion === '2026.1 Patch 21' && parsed.crew.find(c => c.name === 'Alpaka').role === 'Chief Boatswain');
+    // Aktualität: Hinweis nur, wenn der Spielstand höchstens 60 min alt ist
+    const oldDir = path.join(workDir, 'alt', 'Saves'); fs.mkdirSync(oldDir, { recursive: true });
+    fs.writeFileSync(path.join(oldDir, 'Alt.save'), fx.buildSave({ crew: fx.DEFAULT_CREW }));
+    fs.utimesSync(path.join(oldDir, 'Alt.save'), new Date(Date.now() - 61 * 60000), new Date(Date.now() - 61 * 60000));
+    const old = createUboatCrew({ savesDir: oldDir, log: () => {} }); old.reload();
+    const oldText = old.formatAkte(old.findMember('kobold', '').member);
+    // ohne Data Sheets in diesem Ordner keine deutschen Namen, daher ohne Charakter/Fähigkeiten
+    check('P3 Spielstand älter als 60 min: kein Hinweis „aktuell“, keine Zeitangabe', oldText === 'Soldbuch Kobold – Matrose, an Bord.', oldText);
 
     check('S1 Startanzeige: UBOAT-Personalakte an', has(/UBOAT-Personalakte: an/));
     check('S2 neuester Spielstand eingelesen (nicht der ältere)', has(/Spielstand „Versenkung.save“ eingelesen/) && !has(/„Alt.save“ eingelesen/));
     check('S3 channel.update v2 abonniert, Kategorie abgerufen', subscriptions.includes('channel.update@2') && has(/Twitch-Kategorie: UBOAT \(Abruf\).*aktiv/));
 
     let r = await ask('kobold', 'Kobold');
-    check('B1 Matrose an Bord: Akte als Reply', r && r.reply_parent_message_id && r.message === 'Personalakte Kobold – Matrose, an Bord: Stufe 0, 0 EP. Charakter: Ängstlich. Fähigkeiten: Hart im Nehmen. Stand: ' + r.message.split('Stand: ')[1], r && r.message);
-    check('B2 Stand mit Datum und Uhrzeit', r && /Stand: \d\d\.\d\d\. \d\d:\d\d Uhr$/.test(r.message), r && r.message);
+    check('B1 Matrose an Bord: Akte als Reply', r && r.reply_parent_message_id && r.message === 'Soldbuch Kobold – Matrose, an Bord. Charakter: Ängstlich. Fähigkeiten: Hart im Nehmen. Der Eintrag ist aktuell.', r && r.message);
+    check('B2 Matrose ohne Stufe/EP, ohne Datum und Uhrzeit, Hinweis „aktuell“', r && !/Stufe|EP|\d\d:\d\d/.test(r.message) && r.message.endsWith('Der Eintrag ist aktuell.'), r && r.message);
     r = await ask('alpaka');
     check('B3 Offizier: Klasse deutsch, EP letzte Feindfahrt, Auszeichnung, interne Werte und Klassen-Fähigkeit ausgeblendet',
-      r && r.message.startsWith('Personalakte Alpaka – Offizier (Funker), an Bord: Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Gutes Gehör. Stand:'), r && r.message);
+      r && r.message.startsWith('Soldbuch Alpaka – Offizier (Funker), an Bord: Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Gutes Gehör. Der Eintrag ist aktuell.'), r && r.message);
     r = await ask('gefallenergustav', 'GefallenerGustav');
-    check('B4 Gefallener: Todesdatum, nicht als „an Bord“ geführt', r && r.message.includes('Gefallen am 12.03.1941.') && r.message.startsWith('Personalakte Gefallener Gustav – Offizier (Befehlshaber): '), r && r.message);
+    check('B4 Gefallener: Todesdatum, nicht als „an Bord“ geführt', r && r.message.includes('Gefallen am 12.03.1941.') && r.message.startsWith('Soldbuch Gefallener Gustav – Offizier (Befehlshaber): Stufe 2, 50 EP.'), r && r.message);
     check('B5 höchstens 500 Zeichen', chatPosts.every(p => p.message.length <= 500));
 
     r = await ask('majormac', 'MajorMac');
-    check('Z1 Zuordnung trotz Leerzeichen/Groß-Klein (Major Mac)', r && r.message.startsWith('Personalakte Major Mac'), r && r.message);
+    check('Z1 Zuordnung trotz Leerzeichen/Groß-Klein (Major Mac); Matrose mit EP: trotzdem keine EP', r && r.message.startsWith('Soldbuch Major Mac – Matrose, an Bord. Charakter: Seewolf. Fähigkeiten: Läufer.'), r && r.message);
     r = await ask('juergenmueller', 'JuergenMueller');
-    check('Z2 Zuordnung mit Umlauten (Jürgen Müller)', r && r.message.startsWith('Personalakte Jürgen Müller'), r && r.message);
+    check('Z2 Zuordnung mit Umlauten (Jürgen Müller)', r && r.message.startsWith('Soldbuch Jürgen Müller'), r && r.message);
     r = await ask('zw3rg', 'Zwergwildsau');
-    check('Z3 Zuordnung über den Anzeigenamen; Reserve', r && r.message.startsWith('Personalakte Zwergwildsau – Matrose, in Reserve: Stufe 0'), r && r.message);
+    check('Z3 Zuordnung über den Anzeigenamen; Reserve', r && r.message.startsWith('Soldbuch Zwergwildsau – Matrose, in Reserve. Charakter: Seewolf.'), r && r.message);
     rl.emit('line', 'uboat map @Fritz_TV Fritz Unsinkbar'); await sleep(50);
     check('Z4 Konsole uboat map schreibt Zuordnungsdatei', JSON.parse(fs.readFileSync('uboat_crew_map.json', 'utf8')).fritz_tv === 'Fritz Unsinkbar');
     r = await ask('fritz_tv', 'Fritz_TV');
-    check('Z5 Zuordnung über Datei (Kommandant, Fähigkeit Kommandant ausgeblendet)', r && r.message.startsWith('Personalakte Fritz Unsinkbar – Kommandant (Befehlshaber), an Bord: Stufe 4, 281 EP (+200 letzte Feindfahrt), 4 Auszeichnungen. Charakter: Gesundheitsprobleme. Fähigkeiten: Spanischsprachig.'), r && r.message);
+    check('Z5 Zuordnung über Datei (Kommandant, Fähigkeit Kommandant ausgeblendet)', r && r.message.startsWith('Soldbuch Fritz Unsinkbar – Kommandant (Befehlshaber), an Bord: Stufe 4, 281 EP (+200 letzte Feindfahrt), 4 Auszeichnungen. Charakter: Gesundheitsprobleme. Fähigkeiten: Spanischsprachig.'), r && r.message);
     r = await ask('hanspeter', 'HansPeter');
-    check('Z6 mehrdeutiger Name: keine Akte, Hinweis in der Konsole', r && r.message === 'Zu deinem Namen liegt keine Personalakte vor.' && has(/passt auf mehrere Crewmitglieder \(Hans Peter, Hanspeter\)/), r && r.message);
+    check('Z6 mehrdeutiger Name: keine Akte, Hinweis in der Konsole', r && r.message === 'Zu deinem Namen liegt kein Soldbuch vor.' && has(/passt auf mehrere Crewmitglieder \(Hans Peter, Hanspeter\)/), r && r.message);
     r = await ask('fremder');
-    check('Z7 unbekannter Zuschauer: Hinweis', r && r.message === 'Zu deinem Namen liegt keine Personalakte vor.');
+    check('Z7 unbekannter Zuschauer: Hinweis', r && r.message === 'Zu deinem Namen liegt kein Soldbuch vor.');
     rl.emit('line', 'uboat unmap fritz_tv'); await sleep(50);
     check('Z8 Konsole uboat unmap entfernt Zuordnung', !('fritz_tv' in JSON.parse(fs.readFileSync('uboat_crew_map.json', 'utf8'))));
 
     r = await ask('kobold', 'Kobold');
     check('C1 Cooldown: zweiter Befehl binnen 60 s ohne Antwort', r === null && has(/von @kobold ignoriert – Cooldown/));
     r = await ask('neuling', 'Neuling', '!Personalakte bitte');
-    check('C2 Groß-/Kleinschreibung und Text dahinter', r && r.message === 'Zu deinem Namen liegt keine Personalakte vor.');
+    check('C2 Groß-/Kleinschreibung und Text dahinter', r && r.message === 'Zu deinem Namen liegt kein Soldbuch vor.');
     r = await ask('neuling2', 'Neuling2', '!personalakten');
     check('C3 ähnlicher Befehl löst nicht aus', r === null);
 
@@ -117,7 +126,7 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     check('K1 andere Kategorie: keine Antwort', r === null && has(/Twitch-Kategorie: Just Chatting \(channel\.update\).*inaktiv/));
     send('notification', 'channel.update', { event: { broadcaster_user_id: '1', category_name: 'UBOAT' } }); await sleep(100);
     r = await ask('kategorie2', 'Kobold');
-    check('K2 zurück zu UBOAT: Antwort', r && r.message.startsWith('Personalakte Kobold'));
+    check('K2 zurück zu UBOAT: Antwort', r && r.message.startsWith('Soldbuch Kobold'));
 
     let api = await getJson('/api/uboat/crew');
     check('E1 /api/uboat/crew: aktiv, Quelle, 9 Crewmitglieder mit deutschen Eigenschaften', api.enabled && api.active && api.source === 'Versenkung.save' && api.crew.length === 9

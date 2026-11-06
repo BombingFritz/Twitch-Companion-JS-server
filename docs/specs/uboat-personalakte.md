@@ -35,11 +35,15 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
   - Normalisierung: Kleinbuchstaben, ä→ae, ö→oe, ü→ue, ß→ss, alles außer a–z und 0–9 entfernen.
   - Passt eine Regel auf mehrere Crewmitglieder: kein Treffer, Hinweis in der Konsole. Kein ungefährer Abgleich.
 - Antworten (als Reply auf die Nachricht, `reply_parent_message_id`, höchstens 500 Zeichen):
-  - Treffer: `Personalakte <Name> – <Typ>[ (<Klasse>)][, an Bord|, in Reserve]: Stufe <n>, <EP> EP[ (+<EP> letzte Feindfahrt)][, <n> Auszeichnung(en)].[ Charakter: <…>.][ Fähigkeiten: <…>.][ Gefallen am <TT.MM.JJJJ>.] Stand: <TT.MM.> <HH:MM> Uhr` (Klammern = nur wenn vorhanden bzw. größer 0). Beispiel: „Personalakte Alpaka – Offizier (Funker), an Bord: Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Spanischsprachig, Gutes Gehör, Erkennung von Schiffsschrauben. Stand: 04.11. 01:17 Uhr“
+  - Treffer („Soldbuch“, Wunsch Nutzer 06.11.2026): `Soldbuch <Name> – <Typ>[ (<Klasse>)][, an Bord|, in Reserve][: <Details>].[ Charakter: <…>.][ Fähigkeiten: <…>.][ Gefallen am <TT.MM.JJJJ>.][ Der Eintrag ist aktuell.]` (Klammern = nur wenn vorhanden bzw. größer 0).
+    - Details: bei Offizieren und Kommandant `Stufe <n>, <EP> EP[ (+<EP> letzte Feindfahrt)]`; bei Matrosen entfällt das (im Spielstand vom 04.11.2026 haben alle 22 Matrosen Stufe 0, nur zwei haben überhaupt EP). Dazu bei allen `<n> Auszeichnung(en)`, wenn größer 0.
+    - „Der Eintrag ist aktuell.“ nur, wenn der gelesene Spielstand (Änderungszeit der Datei) höchstens `UBOAT_FRESH_MS` (60 min) alt ist; sonst kein Hinweis. Datum und Uhrzeit des Speicherns werden nicht genannt.
+    - Beispiele: „Soldbuch Alpaka – Offizier (Funker), an Bord: Stufe 3, 484 EP (+140 letzte Feindfahrt), 1 Auszeichnung. Charakter: Ängstlich. Fähigkeiten: Spanischsprachig, Gutes Gehör, Erkennung von Schiffsschrauben. Der Eintrag ist aktuell.“ – „Soldbuch Kobold – Matrose, an Bord. Charakter: Ängstlich. Fähigkeiten: Hart im Nehmen.“
   - Aufenthalt aus dem Feld `status`: 1 = „an Bord“, 0 = „in Reserve“ (Nutzer, 06.11.2026); andere Werte und Gefallene: kein Zusatz.
   - Charakter = Charakterzüge aus `Locales/UI/CrewListUI` (z. B. Seewolf, Ängstlich, Gesundheitsprobleme); Fähigkeiten = Einträge aus `Locales/Skills`, ohne die zur Offiziersklasse gleichnamige Fähigkeit.
-  - Kein Treffer: „Zu deinem Namen liegt keine Personalakte vor.“
-  - Noch kein Spielstand gelesen: „Die Personalakten sind gerade nicht verfügbar.“
+  - Kein Treffer: „Zu deinem Namen liegt kein Soldbuch vor.“
+  - Noch kein Spielstand gelesen: „Die Soldbücher sind gerade nicht verfügbar.“
+  - Der Befehl heißt weiterhin `!personalakte`.
 - Typ: Matrose, Offizier, Kommandant. Klasse (nur Offiziere): deutscher Name aus den Locales (Leader → Befehlshaber, Engineer → Ingenieur, Radioman → Funker).
 
 ### Zuordnungsdatei `uboat_crew_map.json` (ADR 0001)
@@ -55,7 +59,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
 - `uboat map <login> <Name im Spiel>` / `uboat unmap <login>`: Zuordnung setzen bzw. entfernen.
 
 ### Konstanten (oben in `server.js`)
-`UBOAT_COMMAND = '!personalakte'`, `UBOAT_USER_COOLDOWN_MS = 60 s`, `UBOAT_CATEGORY_NAMES = ['UBOAT']`, `UBOAT_SAVE_SETTLE_MS = 3 s`, `UBOAT_POLL_MS = 60 s`, `UBOAT_CREW_MAP_FILE = 'uboat_crew_map.json'`, `UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21']`, `UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper']`, Antworttexte.
+`UBOAT_COMMAND = '!personalakte'`, `UBOAT_USER_COOLDOWN_MS = 60 s`, `UBOAT_CATEGORY_NAMES = ['UBOAT']`, `UBOAT_SAVE_SETTLE_MS = 3 s`, `UBOAT_POLL_MS = 60 s`, `UBOAT_FRESH_MS = 60 min`, `UBOAT_CREW_MAP_FILE = 'uboat_crew_map.json'`, `UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21']`, `UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper']`, Antworttexte.
 
 ## Nicht-Ziele (vorerst)
 - Live-Daten aus dem laufenden Spiel (nur Stand des letzten Speicherns).
@@ -74,9 +78,10 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!personalakte` bekommt ein Zu
 
 ## Akzeptanzkriterien
 - Parser liest einen Spielstand im Testformat: Crew vollständig, Fremdcharaktere ausgefiltert, Charakterzüge und Fähigkeiten deutsch, interne Werte ausgeblendet.
-- `!personalakte` bei Kategorie UBOAT: genau eine Reply mit Name, Typ, „an Bord“ bzw. „in Reserve“, Stufe, EP und Stand.
+- `!personalakte` bei Kategorie UBOAT: genau eine Reply „Soldbuch …“ mit Name, Typ, „an Bord“ bzw. „in Reserve“; Stufe und EP nur bei Offizieren und Kommandant; keine Zeitangabe.
+- Spielstand höchstens 60 min alt: „Der Eintrag ist aktuell.“ am Ende; älter: kein Hinweis.
 - Zuordnung über Datei, Login und Anzeigename (inkl. Groß-/Kleinschreibung, Leerzeichen, Umlaute); mehrdeutige Namen: keine Akte.
-- Unbekannter Nutzer: Hinweis „keine Personalakte“.
+- Unbekannter Nutzer: Hinweis „kein Soldbuch“.
 - Andere Kategorie (auch nach `channel.update`): keine Ausgabe. Wechsel zurück zu UBOAT: Antwort.
 - Zweiter Befehl desselben Nutzers binnen 60 s: keine Ausgabe.
 - Neuer Spielstand im Ordner: nach Ruhezeit eingelesen, Akte zeigt neue Werte. Defekte Datei: alter Stand bleibt.

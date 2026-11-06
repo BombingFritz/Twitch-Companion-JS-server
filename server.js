@@ -83,8 +83,9 @@ const UBOAT_SAVE_SETTLE_MS = 3 * 1000;            // Spielstand erst lesen, wenn
 const UBOAT_POLL_MS = 60 * 1000;                  // zusätzlich zur Dateibeobachtung
 const UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21'];   // Parser daran erprobt; andere: Hinweis in der Konsole
 const UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper'];    // in der Akte nicht nennen (Spielmechanik bzw. doppelt zum Typ)
-const UBOAT_TEXT_NOT_FOUND = 'Zu deinem Namen liegt keine Personalakte vor.';
-const UBOAT_TEXT_UNAVAILABLE = 'Die Personalakten sind gerade nicht verfügbar.';
+const UBOAT_FRESH_MS = 60 * 60 * 1000;           // Spielstand höchstens so alt: "Der Eintrag ist aktuell." im Soldbuch
+const UBOAT_TEXT_NOT_FOUND = 'Zu deinem Namen liegt kein Soldbuch vor.';
+const UBOAT_TEXT_UNAVAILABLE = 'Die Soldbücher sind gerade nicht verfügbar.';
 const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachricht
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1967,7 +1968,8 @@ const uboatCrew = uboatSavesDir
     knownGameVersions: UBOAT_KNOWN_GAME_VERSIONS,
     hiddenSkills: UBOAT_HIDDEN_SKILLS,
     settleMs: UBOAT_SAVE_SETTLE_MS,
-    pollMs: UBOAT_POLL_MS
+    pollMs: UBOAT_POLL_MS,
+    freshMs: UBOAT_FRESH_MS
   })
   : null;
 const uboatLastAnswerByUser = new Map();   // user_id -> Zeitpunkt der letzten Antwort
