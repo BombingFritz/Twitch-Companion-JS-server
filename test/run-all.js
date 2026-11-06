@@ -25,6 +25,8 @@ const runs = [
   ['aktiv-test.js', ['grammatik', '0.1']],
   ['aktiv-test.js', ['grammatik', '0.4']],
   ['aktiv-test.js', ['grammatik', '0.8']],
+  ['uboat-test.js', ['an']],
+  ['uboat-test.js', ['aus']],
 ];
 
 let ok = 0, fail = 0;

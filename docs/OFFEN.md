@@ -31,6 +31,16 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 - **K8 Test- und Live-Daten:** Alle JSON-Dateien liegen im Arbeitsverzeichnis, einen Testmodus gibt es nicht. Ein Testlauf im Projektordner würde echte Raid-Statistik und Event-Log verändern und echte Chat-Nachrichten senden. Das passt zur Entwicklungsrichtung „Stream-, Langzeit- und Testdaten trennen“, ist aber noch nicht umgesetzt.
 - **K9 `/status` zeigt abgelaufene Funkstille (Bug, klein, gefunden 03.11.2026) – erledigt (Nov. 2026):** `bdu_silence_until` liest `bduSilenceUntil` direkt. Nach Ablauf einer 30-min-Funkstille bleibt dort die alte Uhrzeit stehen, bis `isBduSilenceActive()` das nächste Mal läuft (nächstes `!BdU` oder `bdu show`). Auf das Verhalten im Chat hat das keinen Einfluss. Fix: in `/status` `isBduSilenceActive()` aufrufen, bevor der Wert gelesen wird.
 
+## UBOAT-Personalakte (`!personalakte`) – umgesetzt, noch nicht im Stream erprobt
+Umgesetzt nach `docs/specs/uboat-personalakte.md`, ADR 0016. Vor dem ersten Einsatz `UBOAT_SAVES_DIR` in der `.env` setzen.
+- Beim ersten UBOAT-Stream prüfen: Kategoriename in der Konsole („[Kategorie] Twitch-Kategorie: …“), muss zu `UBOAT_CATEGORY_NAMES` passen [UNGEKLÄRT].
+- Abgleich mit dem Crew-Bildschirm im Spiel (Screenshot vom Nutzer erbeten): Bedeutung von `status` 0/1 (Vermutung Reserve/an Bord), Anzeige der Stufe [UNGEKLÄRT].
+- Fester Posten bzw. Schicht: Rollen-Objekte wie „Frühschicht“ stehen im Spielstand, hängen vermutlich am Szenen-Charakter (`PlayableCharacter`), noch nicht ausgelesen.
+- Verwundungen und `fate`-Werte: noch nicht in einem Spielstand beobachtet; Spielstand mit verwundetem bzw. gefallenem Crewmitglied zum Prüfen.
+- Namen im Spiel weichen teils vom Twitch-Namen ab; Nutzer überlegt, sie im Spiel anzupassen. Bis dahin `uboat map <login> <Name>`.
+- Später: Widget „Heute an Bord“ (Daten über `/api/uboat/crew`), Crew-Ereignisse (befördert, verwundet, gefallen) über die Effekt-Queue und den Stream-Bericht.
+- Ein Spiel-Update kann das Format ändern: dann Konsolenhinweis „Ungetestete Spielversion“ bzw. „nicht lesbar“; Diagnose mit `node lib/uboat-save.js <Kopie des Spielstands>`.
+
 ## BdU-Chat (`!BdU`) – umgesetzt, erster Livestream-Test 03.11.2026
 Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2.0 (`BombingFritz/Uboat-Widget`). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
 - Mit echtem Twitch-Chat erprobt (03.11.2026): Erkennung, Weitergabe an das Widget und Antwort als Reply funktionieren (`reply_parent_message_id` bestätigt). Stolperstein: Widget-Quelle in OBS noch als „Lokale Datei“, dann kommt keine Verbindung an (Server meldet „kein Enigma-Widget verbunden“); Lösung `file:///`.

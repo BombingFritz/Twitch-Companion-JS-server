@@ -4,8 +4,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
+### Added
+- UBOAT-Personalakte: Chat-Befehl `!personalakte` antwortet (als Reply) mit den Daten des eigenen Crewmitglieds aus dem neuesten UBOAT-Spielstand: Typ, Offiziersklasse, Stufe, Erfahrung, Auszeichnungen, Charakterzüge und Fähigkeiten (deutsche Spielnamen), ggf. Todesdatum, Stand des Speicherns. Nur in der Twitch-Kategorie UBOAT, je Zuschauer einmal pro Minute. Zuordnung über den Namen (ohne Rücksicht auf Groß-/Kleinschreibung, Leerzeichen, Umlaute) oder `uboat_crew_map.json`. Der Server liest den Saves-Ordner nur (`UBOAT_SAVES_DIR`), erst nach 3 s Ruhe, und behält bei defekten Dateien den letzten gültigen Stand. Neu: `lib/uboat-save.js`, `lib/uboat-crew.js`, Endpoint `/api/uboat/crew`, Felder `uboat_*` in `/status`, Konsolenbefehle `uboat show|reload|map|unmap`, EventSub `channel.update` für die Kategorie (ADR 0016).
+
+### Changed
+- `sendChatMessage` kann als Reply posten und kürzt auf 500 Zeichen (`CHAT_MAX_CHARS`).
+
 ### Fixed
 - Tests: Unter Windows brachen alle älteren Tests beim Aufräumen mit `EPERM` ab, weil der Prozess noch im zu löschenden Arbeitsverzeichnis stand; sie wechseln jetzt vorher heraus.
+
+### Documentation
+- ADR 0016 (UBOAT-Crew aus dem Spielstand), Spec `uboat-personalakte.md`, ARCHITEKTUR, OFFEN, `.env.example`.
 
 ## [1.1.1] – 2026-11-06
 

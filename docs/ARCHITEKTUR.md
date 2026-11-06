@@ -1,6 +1,6 @@
 # Architektur (Ist-Zustand)
 
-Einzelne Datei `server.js`. Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
+Hauptdatei `server.js`; die UBOAT-Personalakte liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
 
 ## 1. Datenfluss
 
@@ -10,6 +10,7 @@ Twitch --EventSub WebSocket--> server.js
 server.js --scheduleEffect()--> effectQueue --POST--> HA_WEBHOOK_URL
 Chat "!raidstats" --> server.js --> Leaderboard in Twitch-Chat
 Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST /api/bdu/answer--> server.js --> "FT vom BdU: …" im Chat
+UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!personalakte" --> server.js --> Akte im Chat ; Widget --GET /api/uboat/crew
 Konsole (readline) --> server.js
 ```
 
@@ -26,8 +27,10 @@ Konsole (readline) --> server.js
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `runManualConfirmation`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
-| EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `handleChatNotification` |
-| Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage`, `sendShoutout` |
+| EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification` |
+| Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`), `sendShoutout` |
+| Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
+| UBOAT-Personalakte (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`), `normalizeName`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
 | BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
@@ -44,6 +47,9 @@ Konsole (readline) --> server.js
 | `events.json` | Array, max. 200 Einträge: `{type, ...meta, count, timestamp[, skippedManualTimeout]}` |
 | `effect_mode.json` | `{mode}` mit `auto`, `manual` oder `off`; fehlt die Datei oder ist ungültig: `auto` |
 | `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
+| `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
+
+Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data Sheets\UBOAT - Locales.dat` (deutsche Namen).
 
 ## 4. HTTP-Endpoints
 
@@ -60,13 +66,14 @@ Zugriffsschutz (ADR 0013):
 | `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen) | – |
 | `/callback?code=` | Tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden | 400 ohne `code`, 500 bei Fehler |
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
-| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, bdu_widget_connected, bdu_silence_until, pid, started_at}` (`bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
+| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
 | `/api/effects/mode/:mode` | Setzt Modus (`auto`/`manual`/`off`), `{ok:true, mode}` | 400 `{error}` |
 | `/api/effects/mode` | `{mode, queueLength, pendingConfirmation: {type,count} oder null}` | – |
 | `/api/effects/confirm` | `{ok, message}`; bestätigt den wartenden Effekt im Modus `manual` | – |
+| `/api/uboat/crew` | `{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew[{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, decorations, died, traits, skills, status}]}`; ohne `UBOAT_SAVES_DIR` `{enabled:false, active:false, category, crew:[]}` (ADR 0016) | – |
 | `/api/bdu/stream` | Server-Sent Events für das Enigma-Widget: `retry: 5000`, Ereignis `hello`, Ereignis `request` mit `{id, text}`, Kommentar-Ping alle 30 s. Nur lokal (wie `/token`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet „FT vom BdU: …“ als Reply, `quota` startet Funkstille; Antwort `{ok:true}`, bei `quota` `{ok:true, silenceUntil}` (Millisekunden-Zeitstempel; beim Tageskontingent `null`, weil intern `Infinity`). `ok` ohne Text wird wie `error` behandelt. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
 
@@ -87,6 +94,10 @@ Zugriffsschutz (ADR 0013):
 | `effects show` | Modus, Queue-Länge, wartende Bestätigung anzeigen |
 | `bdu show` | BdU-Chat: Widget verbunden, Funkstille, offene Anfragen, Tageszähler, nächste mögliche Annahme |
 | `bdu silence off` | BdU-Chat: Funkstille sofort aufheben |
+| `uboat show` | UBOAT: Ordner, gelesener Spielstand mit Stand und Spielversion, Kategorie, Crew mit Zuordnungen, Zuordnungen ohne passendes Crewmitglied |
+| `uboat reload` | UBOAT: neuesten Spielstand sofort einlesen |
+| `uboat map <login> <Name im Spiel>` | UBOAT: Zuordnung in `uboat_crew_map.json` setzen (Name darf Leerzeichen enthalten) |
+| `uboat unmap <login>` | UBOAT: Zuordnung entfernen |
 | `help` | Befehlsübersicht (auch beim Start) |
 
 Es gibt keinen Konsolenbefehl zum Bestätigen eines Effekts.
@@ -98,13 +109,16 @@ Alle Subscriptions werden beim `session_welcome` einer frischen Verbindung angel
 | Typ | Version | Condition | Verarbeitung |
 |---|---|---|---|
 | `channel.raid` | 1 | `to_broadcaster_user_id` | `enqueueRaidEvent` |
-| `channel.chat.message` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatCommand`, `handleBduCommand`, `handleWhitelistShoutout` |
+| `channel.chat.message` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatCommand`, `handleBduCommand`, `handleUboatCommand`, `handleWhitelistShoutout` |
 | `stream.online` | 1 | `broadcaster_user_id` | `shoutedOutThisSession` leeren, `refreshSubGoalCache` |
 | `channel.subscribe` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
 | `channel.subscription.gift` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
 | `channel.subscription.message` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
 | `channel.chat.notification` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatNotification` |
 | `channel.follow` | 2 | `broadcaster_user_id`, `moderator_user_id` (Broadcaster) | `scheduleEffect('follow')` |
+| `channel.update` | 2 | `broadcaster_user_id` | `setCurrentCategory(category_name)`; kein Scope nötig |
+
+Nach den Subscriptions holt `refreshChannelCategory()` die aktuelle Kategorie per `GET /helix/channels`.
 
 Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` wird ignoriert.
 
@@ -159,6 +173,15 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `BDU_SSE_PING_MS` | 30000 | Lebenszeichen auf der Events-Verbindung |
 | `BDU_REPLY_PREFIX` / `BDU_CHAT_MAX_CHARS` | `FT vom BdU: ` / 500 | Präfix und Twitch-Längengrenze |
 | `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
+| `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
+| `UBOAT_COMMAND` | `!personalakte` | Chat-Befehl (Groß-/Kleinschreibung egal) |
+| `UBOAT_USER_COOLDOWN_MS` | 60000 | Höchstens eine Antwort je Zuschauer |
+| `UBOAT_CATEGORY_NAMES` | `['UBOAT']` | Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name bei Twitch prüfen] |
+| `UBOAT_SAVE_SETTLE_MS` | 3000 | Spielstand erst lesen, wenn so lange unverändert |
+| `UBOAT_POLL_MS` | 60000 | Abfrage des Ordners zusätzlich zur Dateibeobachtung |
+| `UBOAT_KNOWN_GAME_VERSIONS` | `['2026.1 Patch 21']` | Erprobte Spielversionen; andere: Konsolenhinweis |
+| `UBOAT_HIDDEN_SKILLS` | `['Authority', 'Skipper']` | In der Akte nicht genannt |
+| `UBOAT_TEXT_NOT_FOUND` / `UBOAT_TEXT_UNAVAILABLE` | „Zu deinem Namen liegt keine Personalakte vor.“ / „Die Personalakten sind gerade nicht verfügbar.“ | Antworttexte |
 | Viewer-Schwelle Raid-Shoutout | 3 (inline, `viewers >= 3`) | |
 | Shoutout-Verzögerung nach Begrüßung | 2000 ms (inline) | |
 | Zusatztext Begrüßung | `viewers > 50` (inline) | |
@@ -194,4 +217,4 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 ## 9. Umgebungsvariablen
 
-`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft). Vorlage: `.env.example`.
+`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft), `UBOAT_SAVES_DIR` (optional; Saves-Ordner von UBOAT, `%VARIABLE%` wird aufgelöst; leer = UBOAT-Personalakte aus). Vorlage: `.env.example`.
