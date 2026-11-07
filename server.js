@@ -1870,8 +1870,12 @@ function handleBduCommand(evt) {
   }
   // 4./5. Globales Limit und Nutzerlimit
   const userKey = evt.chatter_user_id || login;
-  const recent = (bduAcceptedByUser.get(userKey) || []).filter(t => now - t < BDU_USER_WINDOW_MS);
-  bduAcceptedByUser.set(userKey, recent);
+  // Abgelaufene Zeitpunkte aller Nutzer entfernen und leere Einträge löschen, sonst wächst die Liste mit jedem Zuschauer
+  for (const [key, times] of bduAcceptedByUser) {
+    const kept = times.filter(t => now - t < BDU_USER_WINDOW_MS);
+    if (kept.length) bduAcceptedByUser.set(key, kept); else bduAcceptedByUser.delete(key);
+  }
+  const recent = bduAcceptedByUser.get(userKey) || [];
   const globalBlocked = now - bduLastAcceptedAt < BDU_GLOBAL_COOLDOWN_MS;
   const userBlocked = recent.length >= BDU_USER_MAX;
   if (globalBlocked || userBlocked) {
@@ -1891,6 +1895,7 @@ function handleBduCommand(evt) {
   // 6. Annehmen: zählt sofort, auch wenn die KI später scheitert
   bduLastAcceptedAt = now;
   recent.push(now);
+  bduAcceptedByUser.set(userKey, recent);
   bduDailyCount++;
   const id = `bdu-${now}-${++bduRequestCounter}`;
   const timer = setTimeout(() => {
