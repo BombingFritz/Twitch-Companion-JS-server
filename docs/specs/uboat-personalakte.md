@@ -28,7 +28,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!soldbuch` bekommt ein Zuscha
 - `channel.chat.message`, Text ist `!soldbuch` (Groß-/Kleinschreibung egal, also auch `!Soldbuch`; Text danach wird ignoriert, es gibt nur das eigene Soldbuch). `!personalakte` löst nicht mehr aus.
 - Nachrichten aus fremdem Shared-Chat-Kanal ignorieren (wie `handleBduCommand`).
 - Für alle Zuschauer, kein Mod-Check (wie `!BdU`).
-- Modul aus oder Kategorie nicht UBOAT: keine Ausgabe.
+- Modul aus (`UBOAT_SAVES_DIR` leer), per Konsole deaktiviert (`uboat deactivate`, gespeichert in `modules.json`, Nutzer 07.11.2026) oder Kategorie nicht UBOAT: keine Ausgabe, nur Konsolenzeile. Deaktiviert liest der Server den Spielstand weiter ein, `/api/uboat/crew` bleibt aktuell.
 - Je Nutzer höchstens eine Antwort je `UBOAT_USER_COOLDOWN_MS` (60 s); innerhalb des Cooldowns keine Ausgabe.
 - Zuordnung Zuschauer → Crewmitglied, erste Regel mit Treffer gilt:
   1. Eintrag für `chatter_user_login` in `uboat_crew_map.json` → Name im Spiel.
@@ -61,6 +61,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!soldbuch` bekommt ein Zuscha
 - `uboat show`: Ordner, gelesener Spielstand mit Zeit und Spielversion, Kategorie, Crew mit Typ und Stufe, Zuordnungen.
 - `uboat reload`: neuesten Spielstand sofort einlesen.
 - `uboat map <login> <Name im Spiel>` / `uboat unmap <login>`: Zuordnung setzen bzw. entfernen.
+- `uboat activate` / `uboat deactivate`: Soldbuch ein- bzw. ausschalten (bleibt nach Neustart, `/status` → `modules.uboat`). `uboat show` und die Kategorie-Meldung nennen den Schalter.
 
 ### Konstanten (oben in `server.js`)
 `UBOAT_COMMAND = '!soldbuch'`, `UBOAT_USER_COOLDOWN_MS = 60 s`, `UBOAT_CATEGORY_NAMES = ['UBOAT']`, `UBOAT_SAVE_SETTLE_MS = 3 s`, `UBOAT_POLL_MS = 60 s`, `UBOAT_FRESH_MS = 60 min`, `UBOAT_CREW_MAP_FILE = 'uboat_crew_map.json'`, `UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21']`, `UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper']`, `UBOAT_TEXT_UNAVAILABLE`. In `lib/uboat-crew.js`: `STATUS_LABELS`, `WOUNDED_STATUS_LABELS` (Werte aus dem Spielcode).

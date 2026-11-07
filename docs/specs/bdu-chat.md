@@ -10,6 +10,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 - Nachrichten aus fremdem Shared-Chat-Kanal ignorieren (`source_broadcaster_user_id`, wie in `handleChatNotification`).
 
 ### Prüfreihenfolge (erste zutreffende Regel gilt)
+0. **Modul deaktiviert** (Konsole `bdu deactivate`, gespeichert in `modules.json`, Nutzer 07.11.2026): ignorieren, nichts zählen, keine Ausgabe im Chat; Konsolenzeile „ignoriert – BdU-Chat deaktiviert“.
 1. **Kein Widget verbunden** (keine offene Events-Verbindung): ignorieren. Nichts zählen, keine Warnung.
 2. **Funkstille aktiv:** ignorieren, keine Ausgabe.
 3. **Tagesobergrenze erreicht** (`BDU_DAILY_LIMIT` = 60 je Kalendertag in Ortszeit des Servers, 0 = aus): ignorieren. Bei einem Stream über Mitternacht beginnt der Zähler um 0:00 neu; das ist so gewollt (Nutzer, 04.11.2026).
@@ -46,8 +47,8 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Funkstille bis, offene Anfragen `id → {message_id, angenommen}`, verbundene Events-Clients.
 
 ### Status und Konsole
-- `/status`: `bdu_widget_connected`, `bdu_silence_until`.
-- Konsole (Vorschlag): `bdu show` (Limits, Funkstille, offene Anfrage), `bdu silence off` (Funkstille beenden).
+- `/status`: `bdu_widget_connected`, `bdu_silence_until`, `modules.bdu`.
+- Konsole: `bdu show` (Schalter, Limits, Funkstille, offene Anfrage), `bdu silence off` (Funkstille beenden), `bdu activate` / `bdu deactivate` (Modul ein- bzw. ausschalten, bleibt nach Neustart; beim Deaktivieren werden offene Anfragen verworfen, eine späte Antwort des Widgets bekommt 404 und wird nicht gepostet; die Widget-Verbindung bleibt bestehen).
 
 ## Nicht-Ziele
 - KI-Aufruf, Prompt oder Funkverlauf im Server.

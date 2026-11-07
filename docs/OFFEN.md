@@ -56,6 +56,7 @@ Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2
 ## Geplant: Bot-Account „DerBdu“ für BdU-Antworten (Nutzer, 03.11.2026)
 Ziel: Antworten, Warnung und Funkstille-Ansage des BdU erscheinen nicht als Broadcaster, sondern vom eigenen Bot-Konto „DerBdu“. Reihenfolge laut Nutzer: nach dem Livestream-Test und dem Release Enigma-Widget 1.2.0.
 - Stand 05.11.2026: Das Konto „DerBdu“ ist angelegt. Twitch lehnt das Partner-Bot-Abo (dauerhaftes Abo Stufe 3) ab; „DerBdu“ wird als normaler Bot geführt. Das Abo hätte nur Emotes und Abo-Abzeichen betroffen; der technische Plan unten gilt unverändert. Das „Chat Bot“-Abzeichen hängt nach bisherigem Kenntnisstand nicht am Abo, sondern an App-Access-Token, `user:bot` und `channel:bot` bzw. Moderatorrechten [UNGEKLÄRT, beim Umsetzen prüfen].
+- Stand 07.11.2026: Laut Nutzer ist „DerBdu“ als Bot-Account genehmigt; Einbindung kann beginnen. Vorher zu entscheiden: die offene Frage unten (nur BdU oder auch Raid-Begrüßung/`!raidstats`) und Moderator-Rolle vs. `channel:bot`.
 - Weiterer möglicher Nutzen: Bewertungen per Flüstern an den Bot statt offen im Chat (siehe specs/stream-bericht.md, Spielbewertung).
 - Technischer Plan (Vorschlag, noch nicht entschieden):
   - Senden über die Helix-API „Send Chat Message“ mit App-Access-Token (Client-Credentials) und `sender_id` = Bot. Damit zeigt Twitch das „Chat Bot“-Abzeichen; mit Nutzer-Token des Bots erscheint es nicht.

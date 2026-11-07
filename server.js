@@ -29,6 +29,8 @@ const EVENTLOG_FILE = './events.json';
 const EFFECT_MODE_FILE = './effect_mode.json';
 const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
+const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
+const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Konsole schaltbare Chat-Module, Standard: an
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
@@ -506,6 +508,44 @@ function saveEffectMode(mode) {
 
 let effectMode = loadEffectMode();       // Startet mit dem zuletzt gespeicherten Modus
 let pendingManualConfirmation = null;    // { job, resolve } während im Manuell-Modus gewartet wird
+
+// ═══════════════════════════════════════════════════════════════════
+// MODUL-SCHALTER (BdU-Chat, UBOAT-Soldbuch) – per Konsole, gespeichert in modules.json
+// ═══════════════════════════════════════════════════════════════════
+
+// Fehlende Datei oder fehlender Eintrag: Modul an (Verhalten wie vor Einführung der Schalter)
+function loadModuleSwitches() {
+  const switches = Object.fromEntries(Object.keys(MODULE_NAMES).map(k => [k, true]));
+  if (!fs.existsSync(MODULES_FILE)) return switches;
+  try {
+    const data = JSON.parse(fs.readFileSync(MODULES_FILE, 'utf8'));
+    for (const k of Object.keys(switches)) if (typeof data[k] === 'boolean') switches[k] = data[k];
+  } catch { /* defekte Datei: alle Module an */ }
+  return switches;
+}
+
+function saveModuleSwitches(switches) {
+  fs.writeFileSync(MODULES_FILE, JSON.stringify(switches, null, 2), 'utf8');
+}
+
+let moduleSwitches = loadModuleSwitches();
+
+function moduleStateLabel(key) {
+  return moduleSwitches[key] ? 'aktiviert' : `deaktiviert ("${key} activate" schaltet ein)`;
+}
+
+// Gemeinsamer Teil von "bdu activate|deactivate" und "uboat activate|deactivate"
+function setModuleSwitch(key, on) {
+  const name = MODULE_NAMES[key];
+  if (moduleSwitches[key] === on) {
+    console.log(`${name} ist bereits ${on ? 'aktiviert' : 'deaktiviert'}`);
+    return false;
+  }
+  moduleSwitches = { ...moduleSwitches, [key]: on };
+  saveModuleSwitches(moduleSwitches);
+  console.log(`${name} ${on ? 'aktiviert' : 'deaktiviert – Befehle im Chat werden ignoriert'} (gespeichert, gilt auch nach Neustart)`);
+  return true;
+}
 
 // Setzt den Effekt-Modus (HTTP-Endpoint und Konsole). Beim Wechsel auf OFF wird eine
 // wartende Bestätigung verworfen, damit /api/effects/confirm den Effekt nicht trotzdem
@@ -1040,6 +1080,7 @@ app.get('/status', (req, res) => {
     effect_mode: effectMode,
     effect_queue_length: effectQueue.length,
     allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
+    modules: { ...moduleSwitches },
     bdu_widget_connected: bduClients.length > 0,
     // isBduSilenceActive() räumt eine abgelaufene Funkstille ab, sonst stünde hier die alte Uhrzeit (K9)
     bdu_silence_until: isBduSilenceActive() ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
@@ -1641,6 +1682,11 @@ function handleBduCommand(evt) {
   const login = evt.chatter_user_login || evt.chatter_user_name || 'unbekannt';
   const now = Date.now();
 
+  // 0. Modul per Konsole deaktiviert: still ignorieren, nichts zählen
+  if (!moduleSwitches.bdu) {
+    console.log(`[BdU] !BdU von @${login} ignoriert – BdU-Chat deaktiviert`);
+    return;
+  }
   // 1. Kein Widget verbunden: still ignorieren, nichts zählen
   if (bduClients.length === 0) {
     console.log(`[BdU] !BdU von @${login} ignoriert – kein Enigma-Widget verbunden`);
@@ -1697,6 +1743,7 @@ function printBduStatus() {
     : 'nein';
   const nextFree = Math.max(0, Math.ceil((BDU_GLOBAL_COOLDOWN_MS - (now - bduLastAcceptedAt)) / 1000));
   bduDailyLimitReached(now);
+  console.log(`[BdU] Modul: ${moduleStateLabel('bdu')}`);
   console.log(`[BdU] Widget verbunden: ${bduClients.length > 0 ? 'ja (' + bduClients.length + ')' : 'nein'} | Funkstille: ${silence} | offene Anfragen: ${bduPending.size} | heute angenommen: ${bduDailyCount}${BDU_DAILY_LIMIT ? '/' + BDU_DAILY_LIMIT : ''} | nächste Annahme frühestens in ${nextFree} s`);
 }
 
@@ -1997,7 +2044,7 @@ function isUboatCategoryActive() {
 function setCurrentCategory(name, source) {
   if (name === currentCategory) return;
   currentCategory = name;
-  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
+  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${!moduleSwitches.uboat ? 'deaktiviert' : isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
 }
 
 // Kategorie beim Verbindungsaufbau holen; danach hält channel.update sie aktuell.
@@ -2046,6 +2093,10 @@ async function handleUboatCommand(evt) {
     console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – UBOAT_SAVES_DIR nicht gesetzt`);
     return;
   }
+  if (!moduleSwitches.uboat) {
+    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – UBOAT-Soldbuch deaktiviert`);
+    return;
+  }
   if (!isUboatCategoryActive()) {
     console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – Kategorie „${currentCategory || 'unbekannt'}“`);
     return;
@@ -2073,9 +2124,10 @@ async function handleUboatCommand(evt) {
 
 function printUboatStatus() {
   if (!uboatCrew) {
-    console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)');
+    console.log(`UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen); Schalter: ${moduleStateLabel('uboat')}`);
     return;
   }
+  console.log(`UBOAT-Soldbuch: ${moduleStateLabel('uboat')}`);
   const s = uboatCrew.getState();
   const map = loadUboatCrewMap();
   const mappedBy = {};
@@ -2112,10 +2164,12 @@ function printConsoleHelp() {
   console.log(' effects show               - Aktuellen Effekt-Modus & Queue-Status anzeigen');
   console.log(' bdu show                   - BdU-Chat: Widget-Verbindung, Funkstille, Limits anzeigen');
   console.log(' bdu silence off            - BdU-Chat: Funkstille sofort aufheben');
+  console.log(' bdu activate|deactivate    - BdU-Chat ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' uboat show                 - UBOAT: gelesener Spielstand, Kategorie, Crew und Zuordnungen anzeigen');
   console.log(' uboat reload               - UBOAT: neuesten Spielstand sofort einlesen');
   console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
   console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
+  console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' help                      - Diese Hilfe anzeigen');
   console.log('');
 }
@@ -2269,7 +2323,19 @@ rl.on('line', async (input) => {
       console.log('[BdU] Funkstille aufgehoben');
       return;
     }
-    console.log('Nutzung: bdu show | bdu silence off');
+    if (sub === 'activate') {
+      setModuleSwitch('bdu', true);
+      return;
+    }
+    if (sub === 'deactivate') {
+      if (setModuleSwitch('bdu', false) && bduPending.size) {
+        // Antworten auf bereits weitergereichte Anfragen nicht mehr posten
+        for (const [id, p] of bduPending) { clearTimeout(p.timer); bduPending.delete(id); }
+        console.log('[BdU] Offene Anfragen verworfen');
+      }
+      return;
+    }
+    console.log('Nutzung: bdu show | bdu silence off | bdu activate | bdu deactivate');
     return;
   }
 
@@ -2303,7 +2369,16 @@ rl.on('line', async (input) => {
       console.log(`[UBOAT] Zuordnung für @${login} entfernt`);
       return;
     }
-    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login>');
+    if (sub === 'activate') {
+      setModuleSwitch('uboat', true);
+      if (!uboatCrew) console.log('[UBOAT] Hinweis: UBOAT_SAVES_DIR ist nicht gesetzt – das Soldbuch antwortet erst, wenn der Ordner in der .env steht (Neustart nötig)');
+      return;
+    }
+    if (sub === 'deactivate') {
+      setModuleSwitch('uboat', false);
+      return;
+    }
+    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login> | uboat activate | uboat deactivate');
     return;
   }
 
@@ -2340,7 +2415,8 @@ app.listen(PORT_NUM, (err) => {
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
   console.log(`Home-Assistant-Webhook: ${HA_WEBHOOK_URL ? 'eingetragen' : 'NICHT eingetragen – Effekte werden nur lokal geloggt (HA_WEBHOOK_URL in .env)'}`);
-  console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}`);
+  console.log(`BdU-Chat: ${moduleStateLabel('bdu')}`);
+  console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}${moduleSwitches.uboat ? '' : ' – deaktiviert ("uboat activate" schaltet ein)'}`);
   console.log('═════════════════════════════════════════════');
   if (uboatCrew) uboatCrew.start();
 

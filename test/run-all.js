@@ -27,6 +27,9 @@ const runs = [
   ['aktiv-test.js', ['grammatik', '0.8']],
   ['uboat-test.js', ['an']],
   ['uboat-test.js', ['aus']],
+  ['modul-test.js', ['schalten']],
+  ['modul-test.js', ['gespeichert']],
+  ['modul-test.js', ['defekt']],
 ];
 
 let ok = 0, fail = 0;
