@@ -2305,7 +2305,7 @@ function printUboatStatus() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// KONSOLEN-BEFEHLE (readline) – WHITELIST, SUB-GOAL & EVENTS VERWALTEN
+// KONSOLEN-BEFEHLE (readline) – Übersicht mit "help" (printConsoleHelp)
 // ═══════════════════════════════════════════════════════════════════
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
