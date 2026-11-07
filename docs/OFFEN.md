@@ -31,13 +31,15 @@ Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen 
 - **K8 Test- und Live-Daten:** Alle JSON-Dateien liegen im Arbeitsverzeichnis, einen Testmodus gibt es nicht. Ein Testlauf im Projektordner würde echte Raid-Statistik und Event-Log verändern und echte Chat-Nachrichten senden. Das passt zur Entwicklungsrichtung „Stream-, Langzeit- und Testdaten trennen“, ist aber noch nicht umgesetzt.
 - **K9 `/status` zeigt abgelaufene Funkstille (Bug, klein, gefunden 03.11.2026) – erledigt (Nov. 2026):** `bdu_silence_until` liest `bduSilenceUntil` direkt. Nach Ablauf einer 30-min-Funkstille bleibt dort die alte Uhrzeit stehen, bis `isBduSilenceActive()` das nächste Mal läuft (nächstes `!BdU` oder `bdu show`). Auf das Verhalten im Chat hat das keinen Einfluss. Fix: in `/status` `isBduSilenceActive()` aufrufen, bevor der Wert gelesen wird.
 
-## UBOAT-Personalakte (`!personalakte`) – umgesetzt, noch nicht im Stream erprobt
-Umgesetzt nach `docs/specs/uboat-personalakte.md`, ADR 0016. Vor dem ersten Einsatz `UBOAT_SAVES_DIR` in der `.env` setzen.
+## UBOAT-Soldbuch (`!soldbuch`) – umgesetzt, noch nicht im Stream erprobt
+Umgesetzt nach `docs/specs/uboat-personalakte.md`, ADR 0016. Vor dem ersten Einsatz `UBOAT_SAVES_DIR` in der `.env` setzen. Befehl bis 06.11.2026 `!personalakte`, seit 07.11.2026 `!soldbuch` (Nutzer).
 - Beim ersten UBOAT-Stream prüfen: Kategoriename in der Konsole („[Kategorie] Twitch-Kategorie: …“), muss zu `UBOAT_CATEGORY_NAMES` passen [UNGEKLÄRT].
-- `status` 0/1 = Reserve/an Bord (Nutzer, 06.11.2026), in der Akte umgesetzt. Abgleich mit dem Crew-Bildschirm (Screenshot vom Nutzer erbeten) steht noch aus, ebenso die Anzeige der Stufe [UNGEKLÄRT].
-- Matrosen unterscheiden sich im Spielstand kaum (alle Stufe 0, kaum EP). Weitere individuelle Angaben, die vorhanden wären (Entscheidung Nutzer offen): Geburtsdatum bzw. Jahrgang (`birthDateTicks`, Spielzeit) und Hintergrundgeschichte (`backgroundStory` → `Locales/UI/RecruitmentUI/Backgrounds/Story <n>`, deutscher Text mit Platzhalter für den Namen, etwa 300 Zeichen; Offiziere haben keine).
+- `status` 0/1/2 = Reserve/an Bord/gefallen: im Spielcode bestätigt (Enum `PlayableCharacterStatus`, 07.11.2026). Offen bleibt die Anzeige der Stufe im Spiel (Sterne oder Zahl) [UNGEKLÄRT].
+- Matrosen: Jahrgang steht jetzt hinter dem Namen (Nutzer, 07.11.2026). Hintergrundgeschichte (`backgroundStory`) bleibt draußen (Nutzer, 07.11.2026).
 - Fester Posten bzw. Schicht: Rollen-Objekte wie „Frühschicht“ stehen im Spielstand, hängen vermutlich am Szenen-Charakter (`PlayableCharacter`), noch nicht ausgelesen.
-- Verwundungen und `fate`-Werte: noch nicht in einem Spielstand beobachtet; Spielstand mit verwundetem bzw. gefallenem Crewmitglied zum Prüfen.
+- Verwundung: umgesetzt nach den Klassennamen im Spielcode (`Bleeding`, `Treatment` → „verwundet“, `Hospitalization` → „im Krankenhaus“), aber noch in keinem echten Spielstand gesehen. Beim ersten Verwundeten einen Spielstand sichern und prüfen, ob „verwundet“ erscheint (`uboat show` bzw. `node lib/uboat-save.js <Kopie>`) [UNGEKLÄRT].
+- `fate`-Werte: noch nicht in einem Spielstand beobachtet [UNGEKLÄRT].
+- Kein Treffer im Chat: keine Antwort mehr, nur Konsolenzeile „Kein Soldbuch für @… – keine Antwort im Chat“ mit `uboat map`-Vorschlag. Zuschauer merken also nicht, dass sie nicht gefunden wurden.
 - Namen im Spiel weichen teils vom Twitch-Namen ab; Nutzer überlegt, sie im Spiel anzupassen. Bis dahin `uboat map <login> <Name>`.
 - Später: Widget „Heute an Bord“ (Daten über `/api/uboat/crew`), Crew-Ereignisse (befördert, verwundet, gefallen) über die Effekt-Queue und den Stream-Bericht.
 - Ein Spiel-Update kann das Format ändern: dann Konsolenhinweis „Ungetestete Spielversion“ bzw. „nicht lesbar“; Diagnose mit `node lib/uboat-save.js <Kopie des Spielstands>`.

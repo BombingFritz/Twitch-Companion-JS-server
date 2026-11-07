@@ -1,6 +1,6 @@
 # Architektur (Ist-Zustand)
 
-Hauptdatei `server.js`; die UBOAT-Personalakte liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
+Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
 
 ## 1. Datenfluss
 
@@ -10,7 +10,7 @@ Twitch --EventSub WebSocket--> server.js
 server.js --scheduleEffect()--> effectQueue --POST--> HA_WEBHOOK_URL
 Chat "!raidstats" --> server.js --> Leaderboard in Twitch-Chat
 Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST /api/bdu/answer--> server.js --> "FT vom BdU: …" im Chat
-UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!personalakte" --> server.js --> Akte im Chat ; Widget --GET /api/uboat/crew
+UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!soldbuch" --> server.js --> Soldbuch im Chat (kein Treffer: nur Konsole) ; Widget --GET /api/uboat/crew
 Konsole (readline) --> server.js
 ```
 
@@ -30,7 +30,7 @@ Konsole (readline) --> server.js
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification` |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`), `sendShoutout` |
 | Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
-| UBOAT-Personalakte (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`), `normalizeName`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
+| UBOAT-Soldbuch (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`), `normalizeName`, `STATUS_LABELS`, `WOUNDED_STATUS_LABELS`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
 | BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
@@ -73,7 +73,7 @@ Zugriffsschutz (ADR 0013):
 | `/api/effects/mode/:mode` | Setzt Modus (`auto`/`manual`/`off`), `{ok:true, mode}` | 400 `{error}` |
 | `/api/effects/mode` | `{mode, queueLength, pendingConfirmation: {type,count} oder null}` | – |
 | `/api/effects/confirm` | `{ok, message}`; bestätigt den wartenden Effekt im Modus `manual` | – |
-| `/api/uboat/crew` | `{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew[{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, decorations, died, traits, skills, status, statusLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“ oder `null`); ohne `UBOAT_SAVES_DIR` `{enabled:false, active:false, category, crew:[]}` (ADR 0016) | – |
+| `/api/uboat/crew` | `{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew[{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, born, decorations, died, traits, skills, status, statusLabel, wounded, woundLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“, „gefallen“ oder `null`; `woundLabel`: „verwundet“, „im Krankenhaus“ oder `null`); ohne `UBOAT_SAVES_DIR` `{enabled:false, active:false, category, crew:[]}` (ADR 0016) | – |
 | `/api/bdu/stream` | Server-Sent Events für das Enigma-Widget: `retry: 5000`, Ereignis `hello`, Ereignis `request` mit `{id, text}`, Kommentar-Ping alle 30 s. Nur lokal (wie `/token`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet „FT vom BdU: …“ als Reply, `quota` startet Funkstille; Antwort `{ok:true}`, bei `quota` `{ok:true, silenceUntil}` (Millisekunden-Zeitstempel; beim Tageskontingent `null`, weil intern `Infinity`). `ok` ohne Text wird wie `error` behandelt. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
 
@@ -174,7 +174,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `BDU_REPLY_PREFIX` / `BDU_CHAT_MAX_CHARS` | `FT vom BdU: ` / 500 | Präfix und Twitch-Längengrenze |
 | `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
 | `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
-| `UBOAT_COMMAND` | `!personalakte` | Chat-Befehl (Groß-/Kleinschreibung egal) |
+| `UBOAT_COMMAND` | `!soldbuch` | Chat-Befehl (Groß-/Kleinschreibung egal) |
 | `UBOAT_USER_COOLDOWN_MS` | 60000 | Höchstens eine Antwort je Zuschauer |
 | `UBOAT_CATEGORY_NAMES` | `['UBOAT']` | Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name bei Twitch prüfen] |
 | `UBOAT_SAVE_SETTLE_MS` | 3000 | Spielstand erst lesen, wenn so lange unverändert |
@@ -182,7 +182,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `UBOAT_KNOWN_GAME_VERSIONS` | `['2026.1 Patch 21']` | Erprobte Spielversionen; andere: Konsolenhinweis |
 | `UBOAT_HIDDEN_SKILLS` | `['Authority', 'Skipper']` | Im Soldbuch nicht genannt |
 | `UBOAT_FRESH_MS` | 3600000 | Spielstand höchstens so alt: „Der Eintrag ist aktuell.“ im Soldbuch |
-| `UBOAT_TEXT_NOT_FOUND` / `UBOAT_TEXT_UNAVAILABLE` | „Zu deinem Namen liegt kein Soldbuch vor.“ / „Die Soldbücher sind gerade nicht verfügbar.“ | Antworttexte |
+| `UBOAT_TEXT_UNAVAILABLE` | „Die Soldbücher sind gerade nicht verfügbar.“ | Antwort, solange kein Spielstand gelesen ist; kein Treffer: keine Chat-Antwort, nur Konsole |
 | Viewer-Schwelle Raid-Shoutout | 3 (inline, `viewers >= 3`) | |
 | Shoutout-Verzögerung nach Begrüßung | 2000 ms (inline) | |
 | Zusatztext Begrüßung | `viewers > 50` (inline) | |
@@ -218,4 +218,4 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 ## 9. Umgebungsvariablen
 
-`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft), `UBOAT_SAVES_DIR` (optional; Saves-Ordner von UBOAT, `%VARIABLE%` wird aufgelöst; leer = UBOAT-Personalakte aus). Vorlage: `.env.example`.
+`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft), `UBOAT_SAVES_DIR` (optional; Saves-Ordner von UBOAT, `%VARIABLE%` wird aufgelöst; leer = UBOAT-Soldbuch aus). Vorlage: `.env.example`.

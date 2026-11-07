@@ -24,3 +24,7 @@
 - Neue Umgebungsvariable `UBOAT_SAVES_DIR`, neue Laufzeitdatei `uboat_crew_map.json` (in `.gitignore`), neuer Ordner `lib/`.
 - Neue EventSub-Subscription `channel.update` (kein zusätzlicher Scope).
 - Tests nutzen erzeugte Spielstände im gleichen Format; echte Spielstände (Zuschauernamen, mehrere MB) kommen nicht ins Repository.
+
+**Nachträge (ohne Änderung der Entscheidung):**
+- 06.11.2026: Antwort heißt „Soldbuch“; statt Datum und Uhrzeit nur „Der Eintrag ist aktuell.“, wenn der Spielstand höchstens 60 min alt ist (Nutzer).
+- 07.11.2026: Befehl umbenannt in `!soldbuch`; kein Treffer → keine Chat-Antwort, nur Konsole (Nutzer). Bedeutung von `status` und die Verwundungs-Zustände per Reflexion aus der Spiel-Assembly `com.uboat.game.dll` gelesen (nur lesend, ohne Code auszuführen): `PlayableCharacterStatus` Reserve = 0, Onboard = 1, Deceased = 2; `IWoundedStatus` bei `Bleeding`, `Treatment`, `Hospitalization`.

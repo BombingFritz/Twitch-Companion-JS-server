@@ -62,7 +62,7 @@ function buildSave({ version = '2026.1 Patch 21', crew = [] } = {}) {
       statusList.push(objHead(typeName, STATUS_DATA_ORDER, ownerRef), field(str(s)), field(u8(1)), field(u8(0, ...i32(4242))), i32(0));
     }
     const values = {
-      name: str(c.name), level: i32(c.level || 0), birthDateTicks: i64(ticks('1910-05-01')),
+      name: str(c.name), level: i32(c.level || 0), birthDateTicks: i64(ticks(c.born || '1910-05-01')),
       enrollmentTicks: i64(c.enrolled === false ? 0n : ticks(c.enrolled || '1939-08-01')), commandStartTicks: i64(0n),
       deathTicks: i64(ticks(c.died)), experiencePoints: i32(c.xp || 0), experiencePointsFromLastPatrol: i32(c.xpLP || 0),
       characterType: i32(c.type || 0), characterClass: c.cls ? str(c.cls) : Buffer.alloc(0), availableSkills: i32(0),
@@ -94,7 +94,7 @@ const DEFAULT_CREW = [
   { name: 'Fritz Unsinkbar', type: 2, cls: 'Leader', level: 4, xp: 281, xpLP: 200, decorations: 4, statuses: ['Skipper', 'Weak', 'Move', 'Leader', 'Spanish Speaker'] },
   { name: 'Alpaka', type: 1, cls: 'Radioman', level: 3, xp: 484, xpLP: 140, decorations: 1, statuses: ['AnxiousPersonality', 'Officer', 'Move', 'Radioman', 'Authority', 'Sensitive Hearing'] },
   { name: 'Gefallener Gustav', type: 1, cls: 'Leader', level: 2, xp: 50, died: '1941-03-12', statuses: ['SeaWolf'] },
-  { name: 'Kobold', type: 0, level: 0, xp: 0, statuses: ['AnxiousPersonality', 'Sailor', 'Tough'] },
+  { name: 'Kobold', type: 0, level: 0, xp: 0, born: '1911-02-14', statuses: ['AnxiousPersonality', 'Sailor', 'Tough'] },
   { name: 'Major Mac', type: 0, level: 0, xp: 25, xpLP: 25, statuses: ['SeaWolf', 'Sailor', 'Runner'] },
   { name: 'Jürgen Müller', type: 0, statuses: ['Weak', 'Sailor'] },
   { name: 'Zwergwildsau', type: 0, status: 0, statuses: ['SeaWolf', 'Sailor'] },

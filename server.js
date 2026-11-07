@@ -75,8 +75,8 @@ const BDU_REPLY_PREFIX = 'FT vom BdU: ';
 const BDU_CHAT_MAX_CHARS = 500;                   // Twitch-Limit je Chat-Nachricht
 const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
 
-// UBOAT-Personalakte (!personalakte, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
-const UBOAT_COMMAND = '!personalakte';
+// UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
+const UBOAT_COMMAND = '!soldbuch';                // Vergleich ohne Groß-/Kleinschreibung, "!Soldbuch" geht auch
 const UBOAT_USER_COOLDOWN_MS = 60 * 1000;         // je Zuschauer höchstens eine Antwort pro Minute
 const UBOAT_CATEGORY_NAMES = ['UBOAT'];           // Twitch-Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name beim ersten Stream prüfen]
 const UBOAT_SAVE_SETTLE_MS = 3 * 1000;            // Spielstand erst lesen, wenn er so lange unverändert ist
@@ -84,7 +84,7 @@ const UBOAT_POLL_MS = 60 * 1000;                  // zusätzlich zur Dateibeobac
 const UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21'];   // Parser daran erprobt; andere: Hinweis in der Konsole
 const UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper'];    // in der Akte nicht nennen (Spielmechanik bzw. doppelt zum Typ)
 const UBOAT_FRESH_MS = 60 * 60 * 1000;           // Spielstand höchstens so alt: "Der Eintrag ist aktuell." im Soldbuch
-const UBOAT_TEXT_NOT_FOUND = 'Zu deinem Namen liegt kein Soldbuch vor.';
+// Kein Soldbuch zum Namen: keine Antwort im Chat, nur Hinweis in der Konsole
 const UBOAT_TEXT_UNAVAILABLE = 'Die Soldbücher sind gerade nicht verfügbar.';
 const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachricht
 
@@ -1955,7 +1955,7 @@ async function handleRaidEvent(evt) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// UBOAT-PERSONALAKTE – Crew aus dem letzten Spielstand (ADR 0016)
+// UBOAT-SOLDBUCH – Crew aus dem letzten Spielstand (ADR 0016)
 // Formatlogik und Einlesen in lib/uboat-save.js und lib/uboat-crew.js; hier nur
 // Kategorie, Chat-Befehl, Zuordnungsdatei und Anzeige.
 // ═══════════════════════════════════════════════════════════════════
@@ -1997,7 +1997,7 @@ function isUboatCategoryActive() {
 function setCurrentCategory(name, source) {
   if (name === currentCategory) return;
   currentCategory = name;
-  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Personalakte ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
+  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
 }
 
 // Kategorie beim Verbindungsaufbau holen; danach hält channel.update sie aktuell.
@@ -2028,13 +2028,13 @@ async function subscribeToChannelUpdate(sessionId) {
       },
       { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
     );
-    console.log('Channel-Update-Subscription aktiv (Kategorie für die UBOAT-Personalakte)');
+    console.log('Channel-Update-Subscription aktiv (Kategorie für das UBOAT-Soldbuch)');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.update:', err.response?.data || err.message);
   }
 }
 
-// "!personalakte": Akte des eigenen Matrosen. Für alle Zuschauer, nur in der UBOAT-Kategorie.
+// "!soldbuch": Soldbuch des eigenen Matrosen. Für alle Zuschauer, nur in der UBOAT-Kategorie.
 async function handleUboatCommand(evt) {
   const text = (evt.message?.text || '').trim().toLowerCase();
   if (!(text === UBOAT_COMMAND || text.startsWith(UBOAT_COMMAND + ' '))) return;
@@ -2064,17 +2064,16 @@ async function handleUboatCommand(evt) {
     console.warn(`[UBOAT] @${login} passt auf mehrere Crewmitglieder (${found.ambiguous.join(', ')}) – mit "uboat map ${login} <Name im Spiel>" festlegen`);
   }
   if (!found || !found.member) {
-    console.log(`[UBOAT] Keine Personalakte für @${login}`);
-    await sendChatMessage(UBOAT_TEXT_NOT_FOUND, evt.message_id);
+    console.log(`[UBOAT] Kein Soldbuch für @${login} (${evt.chatter_user_name || login}) – keine Antwort im Chat; ggf. "uboat map ${login} <Name im Spiel>"`);
     return;
   }
-  console.log(`[UBOAT] Personalakte für @${login}: ${found.member.name}`);
+  console.log(`[UBOAT] Soldbuch für @${login}: ${found.member.name}`);
   await sendChatMessage(uboatCrew.formatAkte(found.member), evt.message_id);
 }
 
 function printUboatStatus() {
   if (!uboatCrew) {
-    console.log('UBOAT-Personalakte: aus (UBOAT_SAVES_DIR in .env setzen)');
+    console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)');
     return;
   }
   const s = uboatCrew.getState();
@@ -2281,7 +2280,7 @@ rl.on('line', async (input) => {
       return;
     }
     if (sub === 'reload') {
-      if (!uboatCrew) { console.log('UBOAT-Personalakte: aus (UBOAT_SAVES_DIR in .env setzen)'); return; }
+      if (!uboatCrew) { console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)'); return; }
       if (!uboatCrew.reload()) console.log('[UBOAT] Kein lesbarer Spielstand gefunden');
       return;
     }
@@ -2341,7 +2340,7 @@ app.listen(PORT_NUM, (err) => {
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
   console.log(`Home-Assistant-Webhook: ${HA_WEBHOOK_URL ? 'eingetragen' : 'NICHT eingetragen – Effekte werden nur lokal geloggt (HA_WEBHOOK_URL in .env)'}`);
-  console.log(`UBOAT-Personalakte: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}`);
+  console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}`);
   console.log('═════════════════════════════════════════════');
   if (uboatCrew) uboatCrew.start();
 
