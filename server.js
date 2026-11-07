@@ -4,6 +4,7 @@ const cors = require('cors');
 const fs = require('fs');
 const readline = require('readline');
 const WebSocket = require('ws');
+const { createUboatCrew } = require('./lib/uboat-crew');
 require('dotenv').config();
 
 const app = express();
@@ -17,6 +18,7 @@ const {
   SCOPES,
   HA_WEBHOOK_URL,
   CORS_ORIGINS,
+  UBOAT_SAVES_DIR,
 } = process.env;
 
 const TOKEN_FILE = './tokens.json';
@@ -26,6 +28,7 @@ const SUBGOAL_FILE = './subgoal_cache.json';
 const EVENTLOG_FILE = './events.json';
 const EFFECT_MODE_FILE = './effect_mode.json';
 const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht
+const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
@@ -71,6 +74,19 @@ const BDU_SSE_PING_MS = 30 * 1000;                // Lebenszeichen auf der Event
 const BDU_REPLY_PREFIX = 'FT vom BdU: ';
 const BDU_CHAT_MAX_CHARS = 500;                   // Twitch-Limit je Chat-Nachricht
 const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
+
+// UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
+const UBOAT_COMMAND = '!soldbuch';                // Vergleich ohne Groß-/Kleinschreibung, "!Soldbuch" geht auch
+const UBOAT_USER_COOLDOWN_MS = 60 * 1000;         // je Zuschauer höchstens eine Antwort pro Minute
+const UBOAT_CATEGORY_NAMES = ['UBOAT'];           // Twitch-Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name beim ersten Stream prüfen]
+const UBOAT_SAVE_SETTLE_MS = 3 * 1000;            // Spielstand erst lesen, wenn er so lange unverändert ist
+const UBOAT_POLL_MS = 60 * 1000;                  // zusätzlich zur Dateibeobachtung
+const UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21'];   // Parser daran erprobt; andere: Hinweis in der Konsole
+const UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper'];    // in der Akte nicht nennen (Spielmechanik bzw. doppelt zum Typ)
+const UBOAT_FRESH_MS = 60 * 60 * 1000;           // Spielstand höchstens so alt: "Der Eintrag ist aktuell." im Soldbuch
+// Kein Soldbuch zum Namen: keine Antwort im Chat, nur Hinweis in der Konsole
+const UBOAT_TEXT_UNAVAILABLE = 'Die Soldbücher sind gerade nicht verfügbar.';
+const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachricht
 
 // ═══════════════════════════════════════════════════════════════════
 // LOGGING-HILFSFUNKTIONEN (reduziert Log-Spam bei wiederholten/Polling-Ereignissen)
@@ -984,6 +1000,22 @@ app.get('/api/effects/confirm', (req, res) => {
   res.json({ ok: true, message: 'Effekt bestätigt und wird ausgelöst.' });
 });
 
+// UBOAT-Crew aus dem letzten Spielstand (ADR 0016), z. B. für ein späteres Widget „Heute an Bord“
+app.get('/api/uboat/crew', (req, res) => {
+  if (!uboatCrew) return res.json({ enabled: false, active: false, category: currentCategory, crew: [] });
+  const s = uboatCrew.getState();
+  res.json({
+    enabled: true,
+    active: isUboatCategoryActive(),
+    category: currentCategory,
+    source: s.source,
+    savedAt: s.savedAt ? new Date(s.savedAt).toISOString() : null,
+    loadedAt: s.loadedAt ? new Date(s.loadedAt).toISOString() : null,
+    gameVersion: s.gameVersion,
+    crew: s.crew
+  });
+});
+
 app.get('/status', (req, res) => {
   const tokens = loadTokens();
   if (!tokens) {
@@ -1011,6 +1043,10 @@ app.get('/status', (req, res) => {
     bdu_widget_connected: bduClients.length > 0,
     // isBduSilenceActive() räumt eine abgelaufene Funkstille ab, sonst stünde hier die alte Uhrzeit (K9)
     bdu_silence_until: isBduSilenceActive() ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
+    uboat_enabled: Boolean(uboatCrew),
+    uboat_active: isUboatCategoryActive(),
+    uboat_save: uboatCrew ? uboatCrew.getState().source : null,
+    uboat_saved_at: uboatCrew && uboatCrew.getState().savedAt ? new Date(uboatCrew.getState().savedAt).toISOString() : null,
     pid: process.pid,
     started_at: SERVER_STARTED_AT
   });
@@ -1133,6 +1169,8 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToSubscriptions(sessionId);
       await subscribeToChatNotifications(sessionId);
       await subscribeToFollows(sessionId);
+      await subscribeToChannelUpdate(sessionId);
+      await refreshChannelCategory();
     }
 
     if (msgType === 'notification') {
@@ -1150,7 +1188,12 @@ function connectEventSub(reconnectUrl = null) {
       if (subType === 'channel.chat.message') {
         await handleChatCommand(msg.payload.event);
         handleBduCommand(msg.payload.event);
+        await handleUboatCommand(msg.payload.event);
         await handleWhitelistShoutout(msg.payload.event);
+      }
+
+      if (subType === 'channel.update') {
+        setCurrentCategory(msg.payload.event.category_name || null, 'channel.update');
       }
 
       if (subType === 'stream.online') {
@@ -1413,12 +1456,15 @@ function isModOrBroadcaster(evt) {
 }
 
 // Postet eine Chat-Nachricht als Broadcaster. Fehler werden geloggt, kein Retry.
-async function sendChatMessage(message) {
+// Postet als Broadcaster; mit replyToMessageId als Antwort auf diese Chat-Nachricht. Über CHAT_MAX_CHARS wird gekürzt.
+async function sendChatMessage(text, replyToMessageId = null) {
+  const message = text.length > CHAT_MAX_CHARS ? text.slice(0, CHAT_MAX_CHARS - 1) + '…' : text;
   try {
     const accessToken = await getValidAccessToken();
     const tokens = loadTokens();
-    await axios.post('https://api.twitch.tv/helix/chat/messages',
-      { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message },
+    const body = { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message };
+    if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
+    await axios.post('https://api.twitch.tv/helix/chat/messages', body,
       { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('Fehler beim Senden in den Chat:', err.response?.data || err.message, '– Text:', message);
@@ -1909,6 +1955,142 @@ async function handleRaidEvent(evt) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// UBOAT-SOLDBUCH – Crew aus dem letzten Spielstand (ADR 0016)
+// Formatlogik und Einlesen in lib/uboat-save.js und lib/uboat-crew.js; hier nur
+// Kategorie, Chat-Befehl, Zuordnungsdatei und Anzeige.
+// ═══════════════════════════════════════════════════════════════════
+
+// %USERPROFILE% o. Ä. im Pfad aus der .env auflösen (dotenv tut das nicht)
+const uboatSavesDir = (UBOAT_SAVES_DIR || '').trim().replace(/%([^%]+)%/g, (m, v) => process.env[v] ?? m);
+const uboatCrew = uboatSavesDir
+  ? createUboatCrew({
+    savesDir: uboatSavesDir,
+    knownGameVersions: UBOAT_KNOWN_GAME_VERSIONS,
+    hiddenSkills: UBOAT_HIDDEN_SKILLS,
+    settleMs: UBOAT_SAVE_SETTLE_MS,
+    pollMs: UBOAT_POLL_MS,
+    freshMs: UBOAT_FRESH_MS
+  })
+  : null;
+const uboatLastAnswerByUser = new Map();   // user_id -> Zeitpunkt der letzten Antwort
+let currentCategory = null;                // Twitch-Kategorie des eigenen Kanals, null = unbekannt
+
+function loadUboatCrewMap() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(UBOAT_CREW_MAP_FILE, 'utf8'));
+    const map = {};
+    for (const [login, name] of Object.entries(raw)) map[login.toLowerCase()] = String(name);
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function saveUboatCrewMap(map) {
+  fs.writeFileSync(UBOAT_CREW_MAP_FILE, JSON.stringify(map, null, 2));
+}
+
+function isUboatCategoryActive() {
+  return Boolean(currentCategory) && UBOAT_CATEGORY_NAMES.some(n => n.toLowerCase() === currentCategory.toLowerCase());
+}
+
+function setCurrentCategory(name, source) {
+  if (name === currentCategory) return;
+  currentCategory = name;
+  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
+}
+
+// Kategorie beim Verbindungsaufbau holen; danach hält channel.update sie aktuell.
+async function refreshChannelCategory() {
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+    const res = await axios.get(`https://api.twitch.tv/helix/channels?broadcaster_id=${tokens.broadcaster_id}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } });
+    setCurrentCategory(res.data?.data?.[0]?.game_name || null, 'Abruf');
+  } catch (err) {
+    console.warn('[Kategorie] Abruf der Twitch-Kategorie gescheitert:', err.response?.data || err.message);
+  }
+}
+
+async function subscribeToChannelUpdate(sessionId) {
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+
+    await axios.post(
+      'https://api.twitch.tv/helix/eventsub/subscriptions',
+      {
+        type: 'channel.update',
+        version: '2',
+        condition: { broadcaster_user_id: tokens.broadcaster_id },
+        transport: { method: 'websocket', session_id: sessionId }
+      },
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
+    );
+    console.log('Channel-Update-Subscription aktiv (Kategorie für das UBOAT-Soldbuch)');
+  } catch (err) {
+    console.error('Fehler beim Abonnieren von channel.update:', err.response?.data || err.message);
+  }
+}
+
+// "!soldbuch": Soldbuch des eigenen Matrosen. Für alle Zuschauer, nur in der UBOAT-Kategorie.
+async function handleUboatCommand(evt) {
+  const text = (evt.message?.text || '').trim().toLowerCase();
+  if (!(text === UBOAT_COMMAND || text.startsWith(UBOAT_COMMAND + ' '))) return;
+  // Shared Chat: Nachrichten aus fremden Kanälen ignorieren
+  if (evt.source_broadcaster_user_id && evt.source_broadcaster_user_id !== evt.broadcaster_user_id) return;
+
+  const login = evt.chatter_user_login;
+  if (!uboatCrew) {
+    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – UBOAT_SAVES_DIR nicht gesetzt`);
+    return;
+  }
+  if (!isUboatCategoryActive()) {
+    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – Kategorie „${currentCategory || 'unbekannt'}“`);
+    return;
+  }
+  if (wasRecentlyTriggered(uboatLastAnswerByUser, evt.chatter_user_id || login, UBOAT_USER_COOLDOWN_MS)) {
+    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – Cooldown (${UBOAT_USER_COOLDOWN_MS / 1000} s)`);
+    return;
+  }
+  if (!uboatCrew.hasData()) {
+    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login}: noch kein Spielstand eingelesen`);
+    await sendChatMessage(UBOAT_TEXT_UNAVAILABLE, evt.message_id);
+    return;
+  }
+  const found = uboatCrew.findMember(login, evt.chatter_user_name, loadUboatCrewMap());
+  if (found && found.ambiguous) {
+    console.warn(`[UBOAT] @${login} passt auf mehrere Crewmitglieder (${found.ambiguous.join(', ')}) – mit "uboat map ${login} <Name im Spiel>" festlegen`);
+  }
+  if (!found || !found.member) {
+    console.log(`[UBOAT] Kein Soldbuch für @${login} (${evt.chatter_user_name || login}) – keine Antwort im Chat; ggf. "uboat map ${login} <Name im Spiel>"`);
+    return;
+  }
+  console.log(`[UBOAT] Soldbuch für @${login}: ${found.member.name}`);
+  await sendChatMessage(uboatCrew.formatAkte(found.member), evt.message_id);
+}
+
+function printUboatStatus() {
+  if (!uboatCrew) {
+    console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)');
+    return;
+  }
+  const s = uboatCrew.getState();
+  const map = loadUboatCrewMap();
+  const mappedBy = {};
+  for (const [login, name] of Object.entries(map)) mappedBy[name.toLowerCase()] = login;
+  console.log(`UBOAT-Spielstände: ${uboatSavesDir}`);
+  console.log(`Spielstand: ${s.source || 'keiner'}${s.savedAt ? ` (Stand ${uboatCrew.formatStand(s.savedAt)}, Spielversion ${s.gameVersion || 'unbekannt'})` : ''}${s.error ? ` – letzter Fehler: ${s.error}` : ''}`);
+  console.log(`Kategorie: ${currentCategory || 'unbekannt'} – Befehl ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}`);
+  console.log(`Crew (${s.crew.length}):`);
+  s.crew.forEach(m => console.log(` - ${m.typeLabel.padEnd(10)} Stufe ${m.level}  ${m.name}${mappedBy[m.name.toLowerCase()] ? `  ← @${mappedBy[m.name.toLowerCase()]}` : ''}`));
+  const crewNames = new Set(s.crew.map(m => m.name.toLowerCase()));
+  const orphaned = Object.entries(map).filter(([, name]) => !crewNames.has(name.toLowerCase()));
+  if (orphaned.length) console.log(`Zuordnungen ohne passendes Crewmitglied: ${orphaned.map(([l, n]) => `@${l} → ${n}`).join(', ')}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // KONSOLEN-BEFEHLE (readline) – WHITELIST, SUB-GOAL & EVENTS VERWALTEN
 // ═══════════════════════════════════════════════════════════════════
 
@@ -1930,7 +2112,11 @@ function printConsoleHelp() {
   console.log(' effects show               - Aktuellen Effekt-Modus & Queue-Status anzeigen');
   console.log(' bdu show                   - BdU-Chat: Widget-Verbindung, Funkstille, Limits anzeigen');
   console.log(' bdu silence off            - BdU-Chat: Funkstille sofort aufheben');
-  console.log(' help                       - Diese Hilfe anzeigen');
+  console.log(' uboat show                 - UBOAT: gelesener Spielstand, Kategorie, Crew und Zuordnungen anzeigen');
+  console.log(' uboat reload               - UBOAT: neuesten Spielstand sofort einlesen');
+  console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
+  console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
+  console.log(' help                      - Diese Hilfe anzeigen');
   console.log('');
 }
 
@@ -2087,6 +2273,40 @@ rl.on('line', async (input) => {
     return;
   }
 
+  if (cmd === 'uboat') {
+    const sub = (parts[1] || '').toLowerCase();
+    if (sub === 'show') {
+      printUboatStatus();
+      return;
+    }
+    if (sub === 'reload') {
+      if (!uboatCrew) { console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)'); return; }
+      if (!uboatCrew.reload()) console.log('[UBOAT] Kein lesbarer Spielstand gefunden');
+      return;
+    }
+    if (sub === 'map' && parts[2] && parts[3]) {
+      const login = parts[2].replace(/^@/, '').toLowerCase();
+      const name = parts.slice(3).join(' ');
+      const map = loadUboatCrewMap();
+      map[login] = name;
+      saveUboatCrewMap(map);
+      const known = uboatCrew && uboatCrew.getState().crew.some(m => m.name.toLowerCase() === name.toLowerCase());
+      console.log(`[UBOAT] @${login} → ${name} gespeichert${uboatCrew && !known ? ' (Hinweis: im gelesenen Spielstand gibt es kein Crewmitglied mit diesem Namen)' : ''}`);
+      return;
+    }
+    if (sub === 'unmap' && parts[2]) {
+      const login = parts[2].replace(/^@/, '').toLowerCase();
+      const map = loadUboatCrewMap();
+      if (!(login in map)) { console.log(`[UBOAT] Für @${login} gibt es keine Zuordnung`); return; }
+      delete map[login];
+      saveUboatCrewMap(map);
+      console.log(`[UBOAT] Zuordnung für @${login} entfernt`);
+      return;
+    }
+    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login>');
+    return;
+  }
+
   console.log(`Unbekannter Befehl "${trimmed}". Tippe "help" für eine Übersicht.`);
 });
 
@@ -2120,7 +2340,9 @@ app.listen(PORT_NUM, (err) => {
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
   console.log(`Home-Assistant-Webhook: ${HA_WEBHOOK_URL ? 'eingetragen' : 'NICHT eingetragen – Effekte werden nur lokal geloggt (HA_WEBHOOK_URL in .env)'}`);
+  console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}`);
   console.log('═════════════════════════════════════════════');
+  if (uboatCrew) uboatCrew.start();
 
   const tokens = loadTokens();
   if (tokens) {

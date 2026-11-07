@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
+### Added
+- UBOAT-Soldbuch: Chat-Befehl `!soldbuch` (auch `!Soldbuch`) antwortet (als Reply) mit dem Soldbuch des eigenen Crewmitglieds aus dem neuesten UBOAT-Spielstand: Name mit Jahrgang, Typ, Offiziersklasse, Stufe und Erfahrung (nur Offiziere und Kommandant), Auszeichnungen, Charakterzüge und Fähigkeiten (deutsche Spielnamen), ggf. Todesdatum; „Der Eintrag ist aktuell.“, wenn der Spielstand höchstens 60 min alt ist (keine Zeitangabe). Dazu „an Bord“ bzw. „in Reserve“ (Feld `status`, Werte im Spielcode bestätigt) und „verwundet“ bzw. „im Krankenhaus“ (Zustände mit `IWoundedStatus` im Spielcode, noch nicht an einem echten Verwundeten erprobt). Kein passendes Crewmitglied: keine Chat-Antwort, nur Hinweis in der Konsole. Nur in der Twitch-Kategorie UBOAT, je Zuschauer einmal pro Minute. Zuordnung über den Namen (ohne Rücksicht auf Groß-/Kleinschreibung, Leerzeichen, Umlaute) oder `uboat_crew_map.json`. Der Server liest den Saves-Ordner nur (`UBOAT_SAVES_DIR`), erst nach 3 s Ruhe, und behält bei defekten Dateien den letzten gültigen Stand. Neu: `lib/uboat-save.js`, `lib/uboat-crew.js`, Endpoint `/api/uboat/crew`, Felder `uboat_*` in `/status`, Konsolenbefehle `uboat show|reload|map|unmap`, EventSub `channel.update` für die Kategorie (ADR 0016).
+
+### Changed
+- `sendChatMessage` kann als Reply posten und kürzt auf 500 Zeichen (`CHAT_MAX_CHARS`).
+
+### Fixed
+- Tests: Unter Windows brachen alle älteren Tests beim Aufräumen mit `EPERM` ab, weil der Prozess noch im zu löschenden Arbeitsverzeichnis stand; sie wechseln jetzt vorher heraus.
+
+### Documentation
+- ADR 0016 (UBOAT-Crew aus dem Spielstand), Spec `uboat-personalakte.md`, ARCHITEKTUR, OFFEN, `.env.example`.
+
 ## [1.1.1] – 2026-11-06
 
 Wartungs-Version ohne Codeänderung am Server.

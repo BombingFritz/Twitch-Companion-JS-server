@@ -132,6 +132,6 @@ function check(name, cond, info = '') { results.push({ name, ok: !!cond, info })
   for (const r of results) realLog(`${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.ok ? '' : '  -> ' + r.info}`);
   realLog(`\n${results.filter(r => r.ok).length}/${results.length} bestanden`);
   realLog('Log-Auszug Effekt-Modus:\n' + logs.filter(l => /Effekt-Modus|verworfen/.test(l)).map(l => '  ' + l).join('\n'));
-  fs.rmSync(workDir, { recursive: true, force: true });
+  process.chdir(os.tmpdir()); fs.rmSync(workDir, { recursive: true, force: true });
   process.exit(results.every(r => r.ok) ? 0 : 1);
 })().catch(e => { console.log = realLog; console.error(e); process.exit(2); });

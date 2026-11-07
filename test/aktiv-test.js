@@ -83,5 +83,5 @@ const chatFor = name => chat.filter(m => m.includes('@' + name));
   console.log = real;
   for (const r of results) real(`${r.ok ? 'OK  ' : 'FAIL'} ${r.nm}${r.ok ? '' : '  -> ' + JSON.stringify(r.i)}`);
   if (mode === 'aktiv') { real('--- Chat-Hinweise im Test:'); chat.forEach(m => real('  ' + m)); }
-  fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
+  process.chdir(os.tmpdir()); fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
 })();

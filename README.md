@@ -23,6 +23,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - Effekt-Queue mit Modi `auto`/`manual`/`off` und Home-Assistant-Webhook
 - Event-Log (Follow/Sub/Gift) und Konsolenbefehle
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet als „FT vom BdU: …“ (ADR 0014)
+- UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
 
 ## Dokumentation
 

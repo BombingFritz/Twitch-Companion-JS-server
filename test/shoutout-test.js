@@ -74,6 +74,6 @@ const has = re => logs.some(l => re.test(l));
   }
   console.log = realLog;
   for (const r of results) realLog(`${r.ok ? 'OK  ' : 'FAIL'} [${scenario}] ${r.name}${r.ok ? '' : '  -> ' + r.info}`);
-  fs.rmSync(workDir, { recursive: true, force: true });
+  process.chdir(os.tmpdir()); fs.rmSync(workDir, { recursive: true, force: true });
   process.exit(results.every(r => r.ok) ? 0 : 1);
 })();

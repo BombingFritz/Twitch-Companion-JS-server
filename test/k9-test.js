@@ -35,5 +35,5 @@ const req = (method, p, body) => new Promise(res => { const r = http.request({ h
     ['Hilfe nennt "whitelist add <id>"', logs.some(l => /^ whitelist add <id> {9}- /.test(l))],
   ];
   for (const [n, ok, i] of res) real(`${ok ? 'OK  ' : 'FAIL'} ${n}${ok ? '' : '  -> ' + JSON.stringify(i)}`);
-  fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
+  process.chdir(os.tmpdir()); fs.rmSync(dir, { recursive: true, force: true }); process.exit(0);
 })();
