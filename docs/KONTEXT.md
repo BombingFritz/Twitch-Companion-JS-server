@@ -1,6 +1,6 @@
 # Kontext: Einordnung im Stream-Ökosystem
 
-Quelle: „Genereller Kontext Fritz, Okt. 2026“. Die Quelle ist eine lebendige Beschreibung und keine technische Spezifikation. Hier steht nur, was für diesen Server relevant ist. Bei Abweichungen gilt der Code (siehe AGENTS.md); Konflikte stehen in [OFFEN.md](OFFEN.md) unter „Abgleich mit dem Gesamtkontext“.
+Quelle: „Genereller Kontext Fritz, Okt. 2026“ (vom Nutzer gepflegtes Word-Dokument, am 08.11.2026 mit dem Stand von Server, Enigma- und Polling-Widget abgeglichen). Die Quelle ist eine lebendige Beschreibung und keine technische Spezifikation. Hier steht nur, was für diesen Server relevant ist. Bei Abweichungen gilt der Code (siehe AGENTS.md); Konflikte stehen in [OFFEN.md](OFFEN.md) unter „Abgleich mit dem Gesamtkontext“.
 
 ## Ziel des Ökosystems
 
@@ -49,9 +49,9 @@ Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand 
 ### OBS-Widgets
 | Widget | Zweck | Status laut Kontext |
 |---|---|---|
-| Polling-Widget | Abstimmungen mit Branding, Animation, Sound, Chat-Ausgabe; Referenz für neue Widgets | aktiv |
-| Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand | aktiv |
-| Enigma-Widget | immersive Kommunikation für U-Boot-Streams; ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), aktuell 1.3.0 mit Benchmark zur Modellwahl im eigenen Repository | aktiv |
+| Polling-Widget (SpargelPoll) | Abstimmungen mit Branding, Animation, Sound, Chat-Ausgabe; Referenz für neue Widgets. Repository `BombingFritz/TwitchPoll` (öffentlich), Stand 0.8.2: holt Token, Client-ID und Broadcaster-ID über `/token` | aktiv |
+| Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand. Repository `BombingFritz/CoinFlip` (privat), Stand 0.1.0 | aktiv |
+| Enigma-Widget | immersive Kommunikation für U-Boot-Streams; Repository `BombingFritz/Uboat-Widget` (öffentlich, CC-BY 4.0). Ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), aktuell 1.3.0 mit Benchmark zur Modellwahl; funktioniert ohne Server, der Chat-Modus ist dort optional und eingeklappt | aktiv |
 | Companion-Widget | Anzeige und Steuerung von Sub-Goals, Effekten, Server-Daten | geplant / in Arbeit |
 | Spiel-Statistik-Widgets | spielbezogene Statistiken | angefangen |
 | Flavor-KI-Widgets | thematische KI-Interaktion | Idee / angefangen |
