@@ -1765,23 +1765,8 @@ async function handleChatCommand(evt) {
 
   lastRaidstatsCommandAt = now;
 
-  try {
-    const accessToken = await getValidAccessToken();
-    const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/chat/messages',
-      {
-        broadcaster_id: tokens.broadcaster_id,
-        sender_id: tokens.broadcaster_id,
-        message: getLeaderboardText()
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
-    console.log('Leaderboard auf !raidstats-Befehl gesendet');
-  } catch (err) {
-    console.error('Fehler bei !raidstats:', err.response?.data || err.message);
-  }
+  // Als Broadcaster (kein feature); Fehler meldet sendChatMessage selbst
+  if (await sendChatMessage(getLeaderboardText())) console.log('Leaderboard auf !raidstats-Befehl gesendet');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2069,10 +2054,9 @@ async function handleRaidEvent(evt) {
   console.log(' Whitelist-Konsolenbefehl:', `whitelist add ${fromId} ${fromName}`);
   console.log(' Rohes Event-Objekt:', JSON.stringify(evt, null, 2));
 
-  let accessToken, tokens, headers;
+  let headers;
   try {
-    accessToken = await getValidAccessToken();
-    tokens = loadTokens();
+    const accessToken = await getValidAccessToken();
     headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID };
   } catch (err) {
     console.error('Konnte Access-Token für Raid-Verarbeitung nicht laden:', err.message);
@@ -2151,16 +2135,10 @@ async function handleRaidEvent(evt) {
   const message = msgParts.join(' ');
   console.log(' Finale Chat-Nachricht:', message);
 
-  try {
-    await axios.post(
-      'https://api.twitch.tv/helix/chat/messages',
-      {
-        broadcaster_id: tokens.broadcaster_id,
-        sender_id: tokens.broadcaster_id,
-        message
-      },
-      { headers: { ...headers, 'Content-Type': 'application/json' } }
-    );
+  // Als Broadcaster (kein feature). Shoutout nur, wenn Twitch die Begrüßung angenommen hat.
+  if (!(await sendChatMessage(message))) {
+    console.error(`Raid-Begrüßung für @${fromName} nicht gesendet – kein Shoutout`);
+  } else {
     console.log(`Raid-Begrüßung erfolgreich gesendet für @${fromName}`);
 
     if (viewers >= 3) {
@@ -2176,8 +2154,6 @@ async function handleRaidEvent(evt) {
     } else {
       console.log(`Kein Shoutout – nur ${viewers} Viewer (Schwelle: 3)`);
     }
-  } catch (e) {
-    console.error('Fehler beim Senden der Raid-Chat-Nachricht:', e.response?.data || e.message);
   }
 
   console.log('=== RAID-EVENT VERARBEITUNG ABGESCHLOSSEN ===');
