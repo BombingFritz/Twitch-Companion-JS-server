@@ -20,6 +20,7 @@ Konsole (readline) --> server.js
 | Bereich | Funktionen / Zustand |
 |---|---|
 | Tokens | `loadTokens`, `saveTokens`, `getValidAccessToken` |
+| Zugriffsschutz (ADR 0013) | `isAllowedOrigin` (Browser-Herkunft), `isLoopbackRequest` (Aufruf vom eigenen Rechner), `hasLoopbackHost` (Host-Header, gegen DNS-Rebinding); Middleware für Herkunftsprüfung, CORS und `Cache-Control: no-store` |
 | Login (ADR 0013, 0017) | `requireLocalRequest` (nur lokal für `/login`, `/login-bot`, `/callback`), `createLoginState`, `takeLoginState`; RAM: `pendingLogins` (state → Art, einmal gültig) |
 | Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLastError` |
 | Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `getPeriodWord`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
@@ -31,7 +32,7 @@ Konsole (readline) --> server.js
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `runManualConfirmation`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
-| EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification` |
+| EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification`; in `connectEventSub` intern `armKeepalive` (Zeitgeber für die Keepalive-Überwachung) |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`; mit `feature` aus `BOT_FEATURES` über den Bot), `sendShoutout` |
 | Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
 | UBOAT-Soldbuch (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`); intern `normalizeName`, `STATUS_LABELS`, `WOUNDED_STATUS_LABELS`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
@@ -160,6 +161,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `SHOUTOUT_ACTIVITY_STRICT` | `false` | Testphase: bei unklarer Aktivität (kein Video, API-Fehler) trotzdem Shoutout; später `true` |
 | `WHITELIST_SHOUTOUT_DELAY_MS` | 2000 | Abstand zwischen Chat-Hinweis und Whitelist-Shoutout |
 | `WHITELIST_CHECKS_MAX` | 500 | Einträge in `whitelist_checks.json` |
+| `WHITELIST_CHECK_LABELS` | Texte je Ergebnis (`live`, `inaktiv`, `unklar`) | Anzeige in `whitelist checks` |
+| `MODULE_NAMES` | `{bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch'}` | Per Konsole schaltbare Chat-Module und ihre Anzeigenamen; Dateinamen der Laufzeitdateien stehen in Abschnitt 3 |
 | `EFFECT_BURST_WINDOW_MS` | 2500 | Bündelungsfenster je Effekt-Typ, Timer startet bei jedem Ereignis neu |
 | `EFFECT_MIN_GAP_MS` | 4000 | Abstand zwischen zwei Effekten |
 | `EFFECT_MANUAL_CONFIRM_TIMEOUT_MS` | 30000 | Wartezeit auf Bestätigung im Modus `manual` |
