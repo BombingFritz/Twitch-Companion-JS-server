@@ -30,6 +30,9 @@ const runs = [
   ['modul-test.js', ['schalten']],
   ['modul-test.js', ['gespeichert']],
   ['modul-test.js', ['defekt']],
+  ['bot-test.js', ['ablauf']],
+  ['bot-test.js', ['eingerichtet']],
+  ['bot-test.js', ['ohne-bot']],
 ];
 
 let ok = 0, fail = 0;

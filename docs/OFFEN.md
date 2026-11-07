@@ -53,7 +53,11 @@ Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2
 - Zustand im RAM: Limits und Funkstille beginnen nach einem Neustart neu.
 - Erste dauerhafte Widget-Verbindung des Servers; Anknüpfungspunkt für die Idee „Widgets melden sich an“ (nächster Abschnitt).
 
-## Geplant: Bot-Account „DerBdu“ für BdU-Antworten (Nutzer, 03.11.2026)
+## Bot-Account „DerBdu“ – umgesetzt (ADR 0017, `docs/specs/bot-account.md`), Einrichtung und Test mit echtem Twitch stehen aus
+- Entscheidung Nutzer 07.11.2026: DerBdu sendet BdU- und Soldbuch-Nachrichten. Raid- und Whitelist-Shoutouts bleiben vorerst beim Broadcaster; später umverteilbar, am liebsten per Konsole (Wunsch Nutzer, noch nicht umgesetzt; Grundlage: `BOT_FEATURES`).
+- Einrichtung: `/mod DerBdu` im Chat, dann `http://localhost:3000/login-bot` in einem Browserfenster, in dem DerBdu bei Twitch angemeldet ist. Prüfen: erscheint das „Chat Bot“-Abzeichen [UNGEKLÄRT].
+
+Bisheriger Planungsstand:
 Ziel: Antworten, Warnung und Funkstille-Ansage des BdU erscheinen nicht als Broadcaster, sondern vom eigenen Bot-Konto „DerBdu“. Reihenfolge laut Nutzer: nach dem Livestream-Test und dem Release Enigma-Widget 1.2.0.
 - Stand 05.11.2026: Das Konto „DerBdu“ ist angelegt. Twitch lehnt das Partner-Bot-Abo (dauerhaftes Abo Stufe 3) ab; „DerBdu“ wird als normaler Bot geführt. Das Abo hätte nur Emotes und Abo-Abzeichen betroffen; der technische Plan unten gilt unverändert. Das „Chat Bot“-Abzeichen hängt nach bisherigem Kenntnisstand nicht am Abo, sondern an App-Access-Token, `user:bot` und `channel:bot` bzw. Moderatorrechten [UNGEKLÄRT, beim Umsetzen prüfen].
 - Stand 07.11.2026: Laut Nutzer ist „DerBdu“ als Bot-Account genehmigt; Einbindung kann beginnen. Vorher zu entscheiden: die offene Frage unten (nur BdU oder auch Raid-Begrüßung/`!raidstats`) und Moderator-Rolle vs. `channel:bot`.
@@ -109,6 +113,7 @@ Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-ber
 - Kurz: Nach jedem Stream ein Bericht mit zwei Teilen: (1) Stream-Dokumentation mit den wichtigsten Daten: Raids, Follows, Subs, Gifts, Hype Trains, Watch-Serien, Top 10 der Chatter, Whitelist-Auffälligkeiten (ADR 0015) und die Spielbewertung (je Spiel; bevorzugt per zwei Kanalpunkte-Belohnungen, Namen offen, falls unsichtbar einlösbar; später stündlicher Zwischenstand durch den Bot); (2) Clip-Kandidaten (Enigma-Antworten, Hype Trains, Alarm-Taste, Stream-Deck-Marker) mit Timecode und VOD-Link. Raids sind keine Clip-Kandidaten; die separate Raid-Statistik bleibt. Später Ein-Klick-Clips und Shorts.
 - Offene Punkte stehen in der Spec unter „Abgleich“: eigener Kandidaten-Sammler statt `scheduleEffect()`, neue EventSub-Typen (`stream.offline`, `channel.update`, Hype Train), neue Scopes und deren Wirkung auf `/token` (P2), Absicherung des Alarm-Endpoints (K1), Persistenz während des Streams, Testdaten (K8).
 - Vorgeschlagene Reihenfolge: 1a Spielbewertung, 1b Kandidaten-Sammler, 1c Bericht, 1d Marker und Hype Train, 1e Alarm-Endpoint.
+- Vorgaben Nutzer 07.11.2026: Bericht als `.txt`-Datei mit dem Datum des Streams, erstellt am Streamende. Auslöser noch offen: EventSub `stream.offline` (meldet Twitch beim Offline-Gehen), Beginn des Abschluss-Raids (Nutzer beendet jeden Stream mit einem Raid; EventSub `channel.raid` mit dem Broadcaster als Absender) oder ein manueller Befehl, damit der Bericht am Ende vorgelesen bzw. später in der Stream-Ende-Szene gezeigt werden kann. Erst nach DerBdu angehen.
 
 ## Priorität 2
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
