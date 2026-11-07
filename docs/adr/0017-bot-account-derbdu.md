@@ -1,6 +1,6 @@
 # ADR 0017: Bot-Account „DerBdu“ sendet BdU- und Soldbuch-Nachrichten
 
-**Status:** Akzeptiert (Nutzer, 07.11.2026: Bot genehmigt; „DerBdu“ sendet BdU- und Soldbuch-Nachrichten, Raid- und Whitelist-Shoutouts bleiben beim Broadcaster).
+**Status:** Akzeptiert. Vom Nutzer entschieden (07.11.2026): Bot einbinden; „DerBdu“ sendet BdU- und Soldbuch-Nachrichten, Raid- und Whitelist-Shoutouts bleiben beim Broadcaster; BdU-Antworten ohne „FT vom BdU:“. Von Claude festgelegt und nicht eigens zur Wahl gestellt: App-Access-Token, Moderatorrolle statt `channel:bot`, Rückfall auf den Broadcaster, keine Bot-Tokens speichern. Der Nutzer hat den Bot danach so eingerichtet (`/mod`, `/login-bot`) und den Versand im Chat bestätigt.
 
 **Kontext:** Bisher postet der Server alles als Broadcaster. Antworten des KI-BdU (ADR 0014) und das Soldbuch (ADR 0016) sollen von einem eigenen Konto kommen, damit sie im Chat als Bot erkennbar sind. Das Konto „DerBdu“ existiert und ist laut Nutzer genehmigt. Laut Twitch-Doku (Chat-Übersicht, geprüft 07.11.2026) zeigt Twitch das „Chat Bot“-Abzeichen nur, wenn der Bot mit einem App-Access-Token sendet. Dafür muss das Bot-Konto der App `user:bot` und `user:write:chat` erteilt haben, und im Kanal braucht es `channel:bot` vom Broadcaster oder Moderatorrechte des Bots.
 
