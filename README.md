@@ -32,7 +32,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - [AGENTS.md](AGENTS.md) – Regeln für KI-Assistenten (`CLAUDE.md` importiert sie für Claude Code)
 - [docs/KONTEXT.md](docs/KONTEXT.md) – Einordnung im Stream-Ökosystem
 - [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) – Ist-Zustand
-- [docs/adr/](docs/adr/) – Architekturentscheidungen
+- [docs/adr/](docs/adr/) – Architekturentscheidungen, nach Themen geordnet in [docs/adr/README.md](docs/adr/README.md)
 - [docs/specs/](docs/specs/) – Feature-Specs
 - [docs/BUGS.md](docs/BUGS.md) – Fehlerhistorie
 - [test/](test/) – Tests mit Attrappen, Start mit `npm test`
