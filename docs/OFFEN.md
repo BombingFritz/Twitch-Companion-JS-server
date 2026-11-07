@@ -46,7 +46,7 @@ Umgesetzt nach `docs/specs/uboat-personalakte.md`, ADR 0016. Vor dem ersten Eins
 - Ein Spiel-Update kann das Format ändern: dann Konsolenhinweis „Ungetestete Spielversion“ bzw. „nicht lesbar“; Diagnose mit `node lib/uboat-save.js <Kopie des Spielstands>`.
 
 ## BdU-Chat (`!BdU`) – umgesetzt, erster Livestream-Test 03.11.2026
-Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget 1.2.0 (`BombingFritz/Uboat-Widget`). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
+Umgesetzt nach `docs/specs/bdu-chat.md`, ADR 0014; Gegenstück Enigma-Widget ab 1.2.0, aktuell 1.3.0 (`BombingFritz/Uboat-Widget`; Schnittstelle unverändert, Abgleich 08.11.2026). Mit den vorgeschlagenen Werten: Funkstille bei Tageskontingent bis Streamstart, Tagesobergrenze 60, Anfragen an das zuletzt verbundene Widget (Konstanten oben in `server.js`).
 - Mit echtem Twitch-Chat erprobt (03.11.2026): Erkennung, Weitergabe an das Widget und Antwort als Reply funktionieren (`reply_parent_message_id` bestätigt). Stolperstein: Widget-Quelle in OBS noch als „Lokale Datei“, dann kommt keine Verbindung an (Server meldet „kein Enigma-Widget verbunden“); Lösung `file:///`.
 - Livestream-Test 03.11.2026: 6 Anfragen (5 vom Broadcaster, 1 aus dem Publikum), Antworten nach 1–3 s, keine Fehler. Limits, Warnung und Funkstille wurden nicht erreicht, also unter Last weiter unerprobt. Rückmeldung: wenig genutzt, aber Lob für die Idee.
 - Das Widget trennt sich beim Ein-/Ausblenden der Quelle bzw. bei manchen Szenenwechseln und verbindet sich neu (OBS lädt die Quelle neu). Erwartet, kein Fehler; in der Zwischenzeit wird `!BdU` still ignoriert.
