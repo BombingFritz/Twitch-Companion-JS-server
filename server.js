@@ -37,7 +37,7 @@ const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Kons
 const BOT_FILE = './bot.json';                    // nur ID und Name des Bots, keine Tokens
 const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Konto über /login-bot
 const BOT_FEATURES = ['bdu', 'uboat'];            // diese Funktionen senden über den Bot; alles andere als Broadcaster
-const BOT_LOGIN_STATE_TTL_MS = 10 * 60 * 1000;    // so lange gilt ein über /login-bot begonnener Login
+const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;        // so lange gilt ein über /login oder /login-bot begonnener Login (state)
 const APP_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;   // App-Access-Token so lange vor Ablauf neu holen
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
@@ -133,7 +133,9 @@ app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on('finish', () => {
     const durationMs = Date.now() - startedAt;
-    const line = `[HTTP] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${durationMs}ms)`;
+    // OAuth-Code und state aus /callback nicht ins Protokoll schreiben
+    const url = req.originalUrl.replace(/([?&](?:code|state)=)[^&]*/g, '$1…');
+    const line = `[HTTP] ${req.method} ${url} -> ${res.statusCode} (${durationMs}ms)`;
     if (line !== lastRequestLogLine) {
       console.log(line);
       lastRequestLogLine = line;
@@ -267,7 +269,6 @@ function saveBotConfig(config) {
 }
 
 let appAccessToken = null;          // { token, expiresAt } – nur im RAM (Client-Credentials)
-let botLoginState = null;           // { value, createdAt } – offener Login über /login-bot
 let botLastError = null;            // { at, text } – letzter Fehler beim Senden über den Bot
 
 async function getAppAccessToken(forceNew = false) {
@@ -820,48 +821,70 @@ function buildClosingMessage() {
 // ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════
 
+// Anmeldung nur vom eigenen Rechner (ADR 0013, Nachtrag 07.11.2026): REDIRECT_URI zeigt auf localhost, die Rückkehr
+// von Twitch kommt also immer lokal an. Ohne diese Prüfung könnte ein Gerät im Heimnetz einen Code für ein fremdes
+// Konto an /callback schicken und tokens.json überschreiben.
+function requireLocalRequest(req, res, label) {
+  if (isLoopbackRequest(req) && hasLoopbackHost(req)) return true;
+  logIfChanged(
+    `local-only-denied:${label}:${req.socket.remoteAddress}|${req.headers.host}`,
+    `[Zugriffsschutz] ${label} abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Nur lokale Aufrufe über localhost oder 127.0.0.1.`,
+    'warn'
+  );
+  res.status(403).send('Nur für lokale Aufrufe über localhost oder 127.0.0.1');
+  return false;
+}
+
+// Offene Logins: state -> { kind: 'broadcaster' | 'bot', createdAt }. Jeder state gilt einmal und LOGIN_STATE_TTL_MS lang.
+const pendingLogins = new Map();
+
+function createLoginState(kind) {
+  const now = Date.now();
+  for (const [value, entry] of pendingLogins) if (now - entry.createdAt > LOGIN_STATE_TTL_MS) pendingLogins.delete(value);
+  const value = crypto.randomBytes(16).toString('hex');
+  pendingLogins.set(value, { kind, createdAt: now });
+  return value;
+}
+
+// Liefert 'broadcaster', 'bot' oder null (unbekannt, abgelaufen, schon benutzt) und verbraucht den state.
+function takeLoginState(value) {
+  if (typeof value !== 'string') return null;
+  const entry = pendingLogins.get(value);
+  if (!entry) return null;
+  pendingLogins.delete(value);
+  return Date.now() - entry.createdAt > LOGIN_STATE_TTL_MS ? null : entry.kind;
+}
+
 app.get('/login', (req, res) => {
+  if (!requireLocalRequest(req, res, '/login')) return;
   const scope = SCOPES.replace(/\+/g, ' ');
   const authUrl = `https://id.twitch.tv/oauth2/authorize`
     + `?response_type=code`
     + `&client_id=${CLIENT_ID}`
     + `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`
-    + `&scope=${encodeURIComponent(scope)}`;
+    + `&scope=${encodeURIComponent(scope)}`
+    + `&state=${createLoginState('broadcaster')}`;
   console.log('Leite zu Twitch Login weiter...');
   res.redirect(authUrl);
 });
 
 // Einmalige Freigabe des Bot-Kontos (ADR 0017). Nur lokal, wie /token.
 app.get('/login-bot', (req, res) => {
-  if (!isLoopbackRequest(req) || !hasLoopbackHost(req)) {
-    logIfChanged(
-      `login-bot-denied:${req.socket.remoteAddress}|${req.headers.host}`,
-      `[Zugriffsschutz] /login-bot abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Nur lokale Aufrufe über localhost oder 127.0.0.1.`,
-      'warn'
-    );
-    return res.status(403).send('Nur für lokale Aufrufe über localhost oder 127.0.0.1');
-  }
-  botLoginState = { value: crypto.randomBytes(16).toString('hex'), createdAt: Date.now() };
+  if (!requireLocalRequest(req, res, '/login-bot')) return;
   const authUrl = `https://id.twitch.tv/oauth2/authorize`
     + `?response_type=code`
     + `&client_id=${CLIENT_ID}`
     + `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`
     + `&scope=${encodeURIComponent(BOT_SCOPES)}`
     + `&force_verify=true`
-    + `&state=${botLoginState.value}`;
+    + `&state=${createLoginState('bot')}`;
   console.log('[Bot] Leite zur Twitch-Freigabe für den Bot-Account weiter (im Browser als DerBdu angemeldet sein)...');
   res.redirect(authUrl);
 });
 
-// Rückkehr von /login-bot: nur ID und Name des Bots speichern, das Bot-Token wird nicht gebraucht (App-Token reicht).
+// Rückkehr von /login-bot (state schon geprüft): nur ID und Name des Bots speichern, das Bot-Token wird nicht gebraucht (App-Token reicht).
 async function handleBotCallback(req, res) {
-  const { code, state } = req.query;
-  const open = botLoginState;
-  if (!open || state !== open.value || Date.now() - open.createdAt > BOT_LOGIN_STATE_TTL_MS) {
-    console.warn('[Bot] Freigabe abgelehnt: unbekannter oder abgelaufener Login – bitte /login-bot erneut aufrufen');
-    return res.status(400).send('Bot-Freigabe ungültig oder abgelaufen. Bitte http://localhost:' + PORT + '/login-bot erneut aufrufen.');
-  }
-  botLoginState = null;   // jeder state gilt nur einmal
+  const { code } = req.query;
   if (!code) return res.status(400).send('Kein Code erhalten (Freigabe abgebrochen?)');
   try {
     const params = new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, code, grant_type: 'authorization_code', redirect_uri: REDIRECT_URI });
@@ -892,10 +915,16 @@ async function handleBotCallback(req, res) {
 }
 
 app.get('/callback', async (req, res) => {
-  // Mit state: Rückkehr von /login-bot. Ohne state: Broadcaster-Login wie bisher.
-  if (req.query.state !== undefined) return handleBotCallback(req, res);
+  if (!requireLocalRequest(req, res, '/callback')) return;
+  // Der state entscheidet, welcher Login zurückkehrt; ohne gültigen state wird nichts gespeichert.
+  const kind = takeLoginState(req.query.state);
+  if (kind === 'bot') return handleBotCallback(req, res);
+  if (kind !== 'broadcaster') {
+    console.warn('[Zugriffsschutz] /callback abgelehnt: unbekannter, abgelaufener oder schon benutzter Login (state) – nichts gespeichert');
+    return res.status(400).send(`Anmeldung ungültig oder abgelaufen. Bitte http://localhost:${PORT}/login bzw. /login-bot erneut aufrufen.`);
+  }
   const { code } = req.query;
-  if (!code) return res.status(400).send('Kein Code erhalten');
+  if (!code) return res.status(400).send('Kein Code erhalten (Anmeldung abgebrochen?)');
 
   try {
     console.log('Tausche Authorization Code gegen Tokens...');

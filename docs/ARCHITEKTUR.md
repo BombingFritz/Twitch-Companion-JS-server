@@ -20,7 +20,8 @@ Konsole (readline) --> server.js
 | Bereich | Funktionen / Zustand |
 |---|---|
 | Tokens | `loadTokens`, `saveTokens`, `getValidAccessToken` |
-| Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLoginState`, `botLastError` |
+| Login (ADR 0013, 0017) | `requireLocalRequest` (nur lokal für `/login`, `/login-bot`, `/callback`), `createLoginState`, `takeLoginState`; RAM: `pendingLogins` (state → Art, einmal gültig) |
+| Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLastError` |
 | Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `getPeriodWord`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
@@ -68,9 +69,9 @@ Zugriffsschutz (ADR 0013):
 
 | Pfad | Antwort | Fehler |
 |---|---|---|
-| `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen) | – |
+| `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen; `state`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/login-bot` | Redirect zu Twitch OAuth für das Bot-Konto (`BOT_SCOPES`, `force_verify`, `state`; ADR 0017) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
-| `/callback?code=` | Ohne `state`: tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden. Mit `state` (von `/login-bot`): schreibt nur `bot.json` | 400 ohne `code`; mit `state`: 400 bei unbekanntem/abgelaufenem `state`, Broadcaster-Konto oder fehlenden Scopes; 500 bei Fehler |
+| `/callback?code=&state=` | `state` von `/login`: tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden. `state` von `/login-bot`: schreibt nur `bot.json`. Jeder `state` gilt einmal, 10 min | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 400 ohne gültigen `state` (nichts gespeichert), ohne `code`, bei Bot-Login mit Broadcaster-Konto oder fehlenden Scopes; 500 bei Fehler |
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bot_configured, bot_login, bot_features, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `bot_*`: Bot-Account laut `bot.json` und `BOT_FEATURES`; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
@@ -186,7 +187,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
 | `BOT_SCOPES` | `user:bot user:write:chat` | Freigabe des Bot-Kontos über `/login-bot` (ADR 0017) |
 | `BOT_FEATURES` | `['bdu', 'uboat']` | Diese Funktionen senden über den Bot; alles andere als Broadcaster |
-| `BOT_LOGIN_STATE_TTL_MS` / `APP_TOKEN_REFRESH_MARGIN_MS` | 600000 / 300000 | Gültigkeit eines Bot-Logins; App-Token so lange vor Ablauf erneuern |
+| `LOGIN_STATE_TTL_MS` / `APP_TOKEN_REFRESH_MARGIN_MS` | 600000 / 300000 | Gültigkeit eines begonnenen Logins (`state`, Broadcaster und Bot); App-Token so lange vor Ablauf erneuern |
 | `UBOAT_COMMAND` | `!soldbuch` | Chat-Befehl (Groß-/Kleinschreibung egal) |
 | `UBOAT_USER_COOLDOWN_MS` | 60000 | Höchstens eine Antwort je Zuschauer |
 | `UBOAT_CATEGORY_NAMES` | `['UBOAT']` | Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name bei Twitch prüfen] |

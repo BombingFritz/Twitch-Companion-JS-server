@@ -12,12 +12,12 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 
 ### `/login-bot` (GET)
 - Nur lokal (Loopback-Adresse und Host `localhost`/`127.0.0.1`, wie `/token`, ADR 0013); sonst 403.
-- Erzeugt einen zufälligen `state` (gültig `BOT_LOGIN_STATE_TTL_MS` = 10 min, im RAM) und leitet zu `https://id.twitch.tv/oauth2/authorize` weiter: `response_type=code`, `client_id`, `redirect_uri` = `REDIRECT_URI`, `scope` = `BOT_SCOPES` (`user:bot user:write:chat`), `force_verify=true`, `state`.
+- Erzeugt einen zufälligen `state` (gültig `LOGIN_STATE_TTL_MS` = 10 min, im RAM, gemeinsam mit dem Broadcaster-Login seit ADR 0013 Nachtrag 07.11.2026) und leitet zu `https://id.twitch.tv/oauth2/authorize` weiter: `response_type=code`, `client_id`, `redirect_uri` = `REDIRECT_URI`, `scope` = `BOT_SCOPES` (`user:bot user:write:chat`), `force_verify=true`, `state`.
 
 ### `/callback` (bestehend, erweitert)
-- Ohne `state`: unverändert Broadcaster-Login.
-- Mit `state`, der nicht zum offenen Bot-Login passt oder abgelaufen ist: 400, nichts gespeichert, `tokens.json` unverändert.
-- Mit passendem `state` (danach verbraucht): Code tauschen, `GET /helix/users` mit dem erhaltenen Token. Abgelehnt (400, nichts gespeichert), wenn
+- Nur lokal; der `state` entscheidet zwischen Broadcaster-Login (`/login`) und Bot-Login (seit ADR 0013 Nachtrag 07.11.2026; vorher: ohne `state` Broadcaster-Login).
+- Unbekannter, abgelaufener oder schon benutzter `state`: 400, nichts gespeichert, `tokens.json` unverändert.
+- Mit `state` eines Bot-Logins (danach verbraucht): Code tauschen, `GET /helix/users` mit dem erhaltenen Token. Abgelehnt (400, nichts gespeichert), wenn
   - das Konto der Broadcaster ist (Hinweis: im Browser als DerBdu anmelden),
   - die erteilten Scopes nicht `user:bot` und `user:write:chat` enthalten.
 - Sonst `bot.json` = `{bot_id, bot_login, bot_name, authorized_at}` schreiben (`saveBotConfig`). Das Bot-Token wird nicht gespeichert. `tokens.json` bleibt unverändert.
@@ -41,7 +41,7 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - `/status`: `bot_configured`, `bot_login`, `bot_features`.
 
 ### Konstanten (oben in `server.js`)
-`BOT_FILE = './bot.json'`, `BOT_SCOPES = 'user:bot user:write:chat'`, `BOT_FEATURES = ['bdu', 'uboat']`, `BOT_LOGIN_STATE_TTL_MS = 10 min`, `APP_TOKEN_REFRESH_MARGIN_MS = 5 min`.
+`BOT_FILE = './bot.json'`, `BOT_SCOPES = 'user:bot user:write:chat'`, `BOT_FEATURES = ['bdu', 'uboat']`, `LOGIN_STATE_TTL_MS = 10 min`, `APP_TOKEN_REFRESH_MARGIN_MS = 5 min`.
 
 ## Nicht-Ziele (vorerst)
 - Umstellen per Konsole, welche Funktion über den Bot sendet (Wunsch Nutzer, später).

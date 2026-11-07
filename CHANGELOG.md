@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
+### Security
+- Login-CSRF geschlossen: `/login`, `/login-bot` und `/callback` nehmen nur noch Aufrufe vom eigenen Rechner an (wie `/token`). Der Broadcaster-Login trägt jetzt einen zufälligen, einmal gültigen `state`; `/callback` speichert nur mit gültigem `state`. Vorher konnte ein Gerät im Heimnetz einen Code für ein fremdes Konto an `/callback` schicken und `tokens.json` überschreiben (ADR 0013, Nachtrag 07.11.2026).
+- Das HTTP-Protokoll in der Konsole zeigt `code` und `state` aus der URL nicht mehr.
+
+### Changed
+- `BOT_LOGIN_STATE_TTL_MS` heißt jetzt `LOGIN_STATE_TTL_MS` und gilt für beide Logins.
+
+### Documentation
+- ADR 0013 (Nachtrag), ARCHITEKTUR, Spec `bot-account.md`, OFFEN (K1). Neuer Test `test/login-test.js`.
+
 ## [1.1.5] – 2026-11-07
 
 Versionsnummer nach Wahl des Nutzers: Version 1.2 bleibt der geplanten Webkonsole vorbehalten. Nach Semantic Versioning wären die neuen Funktionen eine Minor-Version (1.2); 1.1.2 bis 1.1.4 gibt es nicht.
