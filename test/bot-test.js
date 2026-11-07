@@ -181,7 +181,6 @@ function connectWidget() {
     check('A20 bot remove ohne Bot: Hinweis', has(/Es ist kein Bot-Account eingerichtet/));
     await cmd('help');
     check('A21 Hilfe listet bot show/remove', has(/^ bot show /) && has(/^ bot remove /));
-    check('A22 Rückfall-Pfad: Raid-Begrüßung und Whitelist-Hinweis unverändert (kein feature-Parameter)', fs.readFileSync(serverPath, 'utf8').includes('await sendChatMessage(buildWhitelistShoutoutMessage(chatterName, activity));'));
   }
 
   // BdU-Antwort durchspielen: Anfrage im Chat, Antwort des Widgets; Rückgabe: alle Sendeversuche danach
@@ -203,6 +202,20 @@ function connectWidget() {
     const bdu = await bduRoundTrip('anna', 'Lage?', 'Halten Sie Kurs.');
     check('E3 Rückfall bei BdU-Antwort: Bot ohne, Broadcaster mit „FT vom BdU:“', bdu.length === 2 && bdu[0].body.sender_id === '99' && bdu[0].body.message === 'Halten Sie Kurs.'
       && bdu[1].body.sender_id === '1' && bdu[1].body.message === 'FT vom BdU: Halten Sie Kurs.' && bdu[1].body.reply_parent_message_id, JSON.stringify(bdu));
+    failMode = null;
+
+    // Nicht in BOT_FEATURES: bleibt beim Broadcaster, auch wenn der Bot eingerichtet ist
+    let before = chatPosts.length;
+    send('notification', 'channel.chat.message', { event: { chatter_user_id: 'u-mod', chatter_user_login: 'mod', chatter_user_name: 'Mod', broadcaster_user_id: '1',
+      message_id: 'c-raidstats', message: { text: '!raidstats' }, badges: [{ set_id: 'moderator' }] } });
+    await sleep(250);
+    const stats = chatPosts.slice(before);
+    check('E4 !raidstats bei eingerichtetem Bot: als Broadcaster', stats.length === 1 && stats[0].auth === 'Bearer fake' && stats[0].body.sender_id === '1', JSON.stringify(stats));
+    before = chatPosts.length;
+    send('notification', 'channel.raid', { event: { from_broadcaster_user_id: '77', from_broadcaster_user_login: 'raider', to_broadcaster_user_id: '1', viewers: 1 } });
+    await sleep(500);
+    const greet = chatPosts.slice(before);
+    check('E5 Raid-Begrüßung bei eingerichtetem Bot: als Broadcaster', greet.length === 1 && greet[0].auth === 'Bearer fake' && greet[0].body.sender_id === '1' && greet[0].body.message.includes('raider'), JSON.stringify(greet));
   }
 
   if (scenario === 'ohne-bot') {

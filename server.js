@@ -82,7 +82,6 @@ const BDU_SILENCE_MS = 30 * 60 * 1000;            // Funkstille nach erschöpfte
 const BDU_DAILY_LIMIT = 60;                       // angenommene Chat-Anfragen je Kalendertag (0 = keine Grenze)
 const BDU_SSE_PING_MS = 30 * 1000;                // Lebenszeichen auf der Events-Verbindung
 const BDU_REPLY_PREFIX = 'FT vom BdU: ';         // nur wenn der Broadcaster sendet; DerBdu postet die Antwort ohne Präfix (ADR 0017)
-const BDU_CHAT_MAX_CHARS = 500;                   // Twitch-Limit je Chat-Nachricht
 const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
 
 // UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
@@ -1648,8 +1647,7 @@ function isModOrBroadcaster(evt) {
 // Sonst als Broadcaster. Fehler werden geloggt; Rückgabe true, wenn Twitch die Nachricht angenommen hat.
 // options.broadcasterPrefix: nur beim Versand als Broadcaster vor den Text setzen (Absenderangabe, z. B. "FT vom BdU: ").
 async function sendChatMessage(text, replyToMessageId = null, feature = null, options = {}) {
-  const maxChars = options.maxChars || CHAT_MAX_CHARS;
-  const cut = t => (t.length > maxChars ? t.slice(0, maxChars - 1) + '…' : t);
+  const cut = t => (t.length > CHAT_MAX_CHARS ? t.slice(0, CHAT_MAX_CHARS - 1) + '…' : t);
   const logPrefix = feature === 'bdu' ? '[BdU] ' : feature === 'uboat' ? '[UBOAT] ' : '';
   const bot = feature && BOT_FEATURES.includes(feature) ? loadBotConfig() : null;
   if (bot) {
@@ -1765,23 +1763,8 @@ async function handleChatCommand(evt) {
 
   lastRaidstatsCommandAt = now;
 
-  try {
-    const accessToken = await getValidAccessToken();
-    const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/chat/messages',
-      {
-        broadcaster_id: tokens.broadcaster_id,
-        sender_id: tokens.broadcaster_id,
-        message: getLeaderboardText()
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
-    console.log('Leaderboard auf !raidstats-Befehl gesendet');
-  } catch (err) {
-    console.error('Fehler bei !raidstats:', err.response?.data || err.message);
-  }
+  // Als Broadcaster (kein feature); Fehler meldet sendChatMessage selbst
+  if (await sendChatMessage(getLeaderboardText())) console.log('Leaderboard auf !raidstats-Befehl gesendet');
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1824,7 +1807,7 @@ function formatClock(ts) {
 // Postet eine BdU-Nachricht (über den Bot, wenn eingerichtet; ADR 0017), optional als Antwort auf eine Chat-Nachricht.
 // broadcasterPrefix (z. B. "FT vom BdU: ") steht nur davor, wenn der Broadcaster sendet; DerBdu braucht keine Absenderangabe.
 async function sendBduChatMessage(text, replyToMessageId, broadcasterPrefix = '') {
-  return sendChatMessage(text, replyToMessageId || null, 'bdu', { broadcasterPrefix, maxChars: BDU_CHAT_MAX_CHARS });
+  return sendChatMessage(text, replyToMessageId || null, 'bdu', { broadcasterPrefix });
 }
 
 // Funkstille nach erschöpftem KI-Kontingent. Betrifft nur den Chat.
@@ -1887,8 +1870,12 @@ function handleBduCommand(evt) {
   }
   // 4./5. Globales Limit und Nutzerlimit
   const userKey = evt.chatter_user_id || login;
-  const recent = (bduAcceptedByUser.get(userKey) || []).filter(t => now - t < BDU_USER_WINDOW_MS);
-  bduAcceptedByUser.set(userKey, recent);
+  // Abgelaufene Zeitpunkte aller Nutzer entfernen und leere Einträge löschen, sonst wächst die Liste mit jedem Zuschauer
+  for (const [key, times] of bduAcceptedByUser) {
+    const kept = times.filter(t => now - t < BDU_USER_WINDOW_MS);
+    if (kept.length) bduAcceptedByUser.set(key, kept); else bduAcceptedByUser.delete(key);
+  }
+  const recent = bduAcceptedByUser.get(userKey) || [];
   const globalBlocked = now - bduLastAcceptedAt < BDU_GLOBAL_COOLDOWN_MS;
   const userBlocked = recent.length >= BDU_USER_MAX;
   if (globalBlocked || userBlocked) {
@@ -1908,6 +1895,7 @@ function handleBduCommand(evt) {
   // 6. Annehmen: zählt sofort, auch wenn die KI später scheitert
   bduLastAcceptedAt = now;
   recent.push(now);
+  bduAcceptedByUser.set(userKey, recent);
   bduDailyCount++;
   const id = `bdu-${now}-${++bduRequestCounter}`;
   const timer = setTimeout(() => {
@@ -2069,10 +2057,9 @@ async function handleRaidEvent(evt) {
   console.log(' Whitelist-Konsolenbefehl:', `whitelist add ${fromId} ${fromName}`);
   console.log(' Rohes Event-Objekt:', JSON.stringify(evt, null, 2));
 
-  let accessToken, tokens, headers;
+  let headers;
   try {
-    accessToken = await getValidAccessToken();
-    tokens = loadTokens();
+    const accessToken = await getValidAccessToken();
     headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID };
   } catch (err) {
     console.error('Konnte Access-Token für Raid-Verarbeitung nicht laden:', err.message);
@@ -2151,16 +2138,10 @@ async function handleRaidEvent(evt) {
   const message = msgParts.join(' ');
   console.log(' Finale Chat-Nachricht:', message);
 
-  try {
-    await axios.post(
-      'https://api.twitch.tv/helix/chat/messages',
-      {
-        broadcaster_id: tokens.broadcaster_id,
-        sender_id: tokens.broadcaster_id,
-        message
-      },
-      { headers: { ...headers, 'Content-Type': 'application/json' } }
-    );
+  // Als Broadcaster (kein feature). Shoutout nur, wenn Twitch die Begrüßung angenommen hat.
+  if (!(await sendChatMessage(message))) {
+    console.error(`Raid-Begrüßung für @${fromName} nicht gesendet – kein Shoutout`);
+  } else {
     console.log(`Raid-Begrüßung erfolgreich gesendet für @${fromName}`);
 
     if (viewers >= 3) {
@@ -2176,8 +2157,6 @@ async function handleRaidEvent(evt) {
     } else {
       console.log(`Kein Shoutout – nur ${viewers} Viewer (Schwelle: 3)`);
     }
-  } catch (e) {
-    console.error('Fehler beim Senden der Raid-Chat-Nachricht:', e.response?.data || e.message);
   }
 
   console.log('=== RAID-EVENT VERARBEITUNG ABGESCHLOSSEN ===');
@@ -2326,7 +2305,7 @@ function printUboatStatus() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// KONSOLEN-BEFEHLE (readline) – WHITELIST, SUB-GOAL & EVENTS VERWALTEN
+// KONSOLEN-BEFEHLE (readline) – Übersicht mit "help" (printConsoleHelp)
 // ═══════════════════════════════════════════════════════════════════
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });

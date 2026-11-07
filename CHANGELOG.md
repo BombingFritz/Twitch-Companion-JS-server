@@ -10,6 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ### Changed
 - `BOT_LOGIN_STATE_TTL_MS` heißt jetzt `LOGIN_STATE_TTL_MS` und gilt für beide Logins.
+- Raid-Begrüßung und `!raidstats` senden über `sendChatMessage` (Kürzung auf 500 Zeichen, Prüfung von `is_sent`). Der Raid-Shoutout folgt nur, wenn Twitch die Begrüßung angenommen hat.
+- Aufgeräumt nach der Code-Prüfung: `BDU_CHAT_MAX_CHARS` entfernt (gleich `CHAT_MAX_CHARS`), `formatDateDe` in `lib/uboat-crew.js` heißt `formatIsoDateDe`, die UBOAT-Module exportieren nur noch, was `server.js` nutzt, das BdU-Nutzerlimit löscht abgelaufene Einträge.
+
+### Tests
+- Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation
 - ADR 0013 (Nachtrag), ARCHITEKTUR, Spec `bot-account.md`, OFFEN (K1). Neuer Test `test/login-test.js`.

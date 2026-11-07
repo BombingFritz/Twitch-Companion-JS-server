@@ -52,11 +52,11 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - Ohne `bot.json`: BdU und Soldbuch posten als Broadcaster (wie bisher); Startanzeige nennt `/login-bot`.
 - `/login-bot` lokal: Weiterleitung mit Bot-Scopes, `force_verify` und `state`; mit fremdem Host: 403.
 - `/callback` mit falschem `state`: 400, `bot.json` fehlt, `tokens.json` unverändert. Mit passendem `state` und Bot-Konto: `bot.json` geschrieben, `tokens.json` unverändert. Mit Broadcaster-Konto oder fehlenden Scopes: 400.
-- Mit Bot: BdU-Antwort, BdU-Warnung und Soldbuch werden mit App-Token und `sender_id` = Bot gesendet, Antworten als Reply. Raid-Begrüßung und Whitelist-Hinweis bleiben beim Broadcaster (Code unverändert; im Test nur per Quelltextprüfung abgedeckt).
+- Mit Bot: BdU-Antwort, BdU-Warnung und Soldbuch werden mit App-Token und `sender_id` = Bot gesendet, Antworten als Reply. Raid-Begrüßung, `!raidstats` und Whitelist-Hinweis bleiben beim Broadcaster (Test E4/E5 für `!raidstats` und Raid-Begrüßung; Whitelist-Hinweis nutzt denselben Weg ohne `feature`, kein eigener Test).
 - App-Token wird für mehrere Nachrichten nur einmal geholt; nach 401 einmal neu.
 - HTTP 403 vom Bot-Versand: Rückfall auf den Broadcaster, Warnung mit Moderator-Hinweis. `is_sent: false`: kein Rückfall.
 - `bot remove`: Datei weg, nächste Nachricht vom Broadcaster. `/status` zeigt die Bot-Felder.
 - Tests mit Attrappen (`test/bot-test.js`), kein echter Twitch-Aufruf.
 
 ## Status
-umgesetzt (Branch `feat/bot-derbdu`). Test mit Attrappen: 26/26 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Gegen echtes Twitch noch nicht erprobt: Freigabe über `/login-bot`, Abzeichen „Chat Bot“, Verhalten ohne Moderatorrolle [UNGEKLÄRT, bei der Einrichtung prüfen].
+umgesetzt (Branch `feat/bot-derbdu`). Test mit Attrappen: 27/27 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Gegen echtes Twitch noch nicht erprobt: Freigabe über `/login-bot`, Abzeichen „Chat Bot“, Verhalten ohne Moderatorrolle [UNGEKLÄRT, bei der Einrichtung prüfen].
