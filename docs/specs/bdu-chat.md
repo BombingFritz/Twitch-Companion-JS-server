@@ -24,7 +24,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 - Keine Ausnahmen für Broadcaster oder Mods.
 
 ### Antwort des Widgets (`POST /api/bdu/answer`, JSON)
-- `{id, status: "ok", text}`: Bekannte, noch offene `id` → „FT vom BdU: “ + Text, auf 500 Zeichen gekürzt (Twitch-Limit), per `POST /helix/chat/messages` mit `reply_parent_message_id` posten. Unbekannte oder abgelaufene `id`: verwerfen, loggen.
+- `{id, status: "ok", text}`: Bekannte, noch offene `id` → „FT vom BdU: “ + Text, auf 500 Zeichen gekürzt (Twitch-Limit), per `POST /helix/chat/messages` mit `reply_parent_message_id` posten. Seit ADR 0017 über den Bot „DerBdu“, wenn eingerichtet (gilt auch für Warnung und Funkstille-Ansage); sonst als Broadcaster. Unbekannte oder abgelaufene `id`: verwerfen, loggen.
 - `{id, status: "quota", error}`: **Funkstille** starten (siehe unten), nichts zur Anfrage posten. Antwort an das Widget: `{ok: true, silenceUntil}` (Zeitstempel in ms; beim Tageskontingent `null`).
 - `{id, status: "error"}`: nichts posten, loggen.
 - Kommt binnen `BDU_ANSWER_TIMEOUT_MS` (120 s; das Widget hält Anfragen bis zu 60 s für den Kaleu zurück) keine Antwort: Anfrage verwerfen, loggen.

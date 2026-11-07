@@ -36,7 +36,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!soldbuch` bekommt ein Zuscha
   3. Anzeigename (`chatter_user_name`) gleich Name im Spiel nach Normalisierung.
   - Normalisierung: Kleinbuchstaben, ä→ae, ö→oe, ü→ue, ß→ss, alles außer a–z und 0–9 entfernen.
   - Passt eine Regel auf mehrere Crewmitglieder: kein Treffer, Hinweis in der Konsole. Kein ungefährer Abgleich.
-- Antworten (als Reply auf die Nachricht, `reply_parent_message_id`, höchstens 500 Zeichen):
+- Antworten (als Reply auf die Nachricht, `reply_parent_message_id`, höchstens 500 Zeichen; über den Bot „DerBdu“, wenn eingerichtet, ADR 0017):
   - Treffer („Soldbuch“, Wunsch Nutzer 06.11.2026): `Soldbuch <Name>[, Jahrgang <JJJJ>] – <Typ>[ (<Klasse>)][, an Bord|, in Reserve][, verwundet|, im Krankenhaus][: <Details>].[ Charakter: <…>.][ Fähigkeiten: <…>.][ Gefallen am <TT.MM.JJJJ>.][ Der Eintrag ist aktuell.]` (Klammern = nur wenn vorhanden bzw. größer 0).
     - Jahrgang: Geburtsjahr aus `birthDateTicks` (Wunsch Nutzer 07.11.2026), bei allen Typen.
     - Details: bei Offizieren und Kommandant `Stufe <n>, <EP> EP[ (+<EP> letzte Feindfahrt)]`; bei Matrosen entfällt das (im Spielstand vom 04.11.2026 haben alle 22 Matrosen Stufe 0, nur zwei haben überhaupt EP). Dazu bei allen `<n> Auszeichnung(en)`, wenn größer 0.

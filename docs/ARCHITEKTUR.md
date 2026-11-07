@@ -9,8 +9,9 @@ Widget --GET /token, /api/...--> server.js --> Twitch Helix API
 Twitch --EventSub WebSocket--> server.js
 server.js --scheduleEffect()--> effectQueue --POST--> HA_WEBHOOK_URL
 Chat "!raidstats" --> server.js --> Leaderboard in Twitch-Chat
-Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST /api/bdu/answer--> server.js --> "FT vom BdU: …" im Chat
-UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!soldbuch" --> server.js --> Soldbuch im Chat (kein Treffer: nur Konsole) ; Widget --GET /api/uboat/crew
+Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST /api/bdu/answer--> server.js --> "FT vom BdU: …" im Chat (über Bot DerBdu)
+UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!soldbuch" --> server.js --> Soldbuch im Chat über Bot DerBdu (kein Treffer: nur Konsole) ; Widget --GET /api/uboat/crew
+Bot-Nachrichten: server.js --App-Access-Token, sender_id = Bot--> Helix /chat/messages (Rückfall: Broadcaster-Token; ADR 0017)
 Konsole (readline) --> server.js
 ```
 
@@ -19,6 +20,7 @@ Konsole (readline) --> server.js
 | Bereich | Funktionen / Zustand |
 |---|---|
 | Tokens | `loadTokens`, `saveTokens`, `getValidAccessToken` |
+| Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLoginState`, `botLastError` |
 | Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `getPeriodWord`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
@@ -29,7 +31,7 @@ Konsole (readline) --> server.js
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification` |
-| Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`), `sendShoutout` |
+| Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`; mit `feature` aus `BOT_FEATURES` über den Bot), `sendShoutout` |
 | Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
 | UBOAT-Soldbuch (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`), `normalizeName`, `STATUS_LABELS`, `WOUNDED_STATUS_LABELS`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
 | BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
@@ -50,6 +52,7 @@ Konsole (readline) --> server.js
 | `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
 | `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
 | `modules.json` | `{bdu, uboat}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an |
+| `bot.json` | `{bot_id, bot_login, bot_name, authorized_at}` (ADR 0017), keine Tokens; fehlt die Datei: kein Bot, alles als Broadcaster |
 
 Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data Sheets\UBOAT - Locales.dat` (deutsche Namen).
 
@@ -66,9 +69,10 @@ Zugriffsschutz (ADR 0013):
 | Pfad | Antwort | Fehler |
 |---|---|---|
 | `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen) | – |
-| `/callback?code=` | Tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden | 400 ohne `code`, 500 bei Fehler |
+| `/login-bot` | Redirect zu Twitch OAuth für das Bot-Konto (`BOT_SCOPES`, `force_verify`, `state`; ADR 0017) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
+| `/callback?code=` | Ohne `state`: tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden. Mit `state` (von `/login-bot`): schreibt nur `bot.json` | 400 ohne `code`; mit `state`: 400 bei unbekanntem/abgelaufenem `state`, Broadcaster-Konto oder fehlenden Scopes; 500 bei Fehler |
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
-| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
+| `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bot_configured, bot_login, bot_features, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `bot_*`: Bot-Account laut `bot.json` und `BOT_FEATURES`; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
@@ -102,6 +106,8 @@ Zugriffsschutz (ADR 0013):
 | `uboat map <login> <Name im Spiel>` | UBOAT: Zuordnung in `uboat_crew_map.json` setzen (Name darf Leerzeichen enthalten) |
 | `uboat unmap <login>` | UBOAT: Zuordnung entfernen |
 | `uboat activate` / `uboat deactivate` | UBOAT-Soldbuch ein- bzw. ausschalten, gespeichert in `modules.json`. Deaktiviert: `!soldbuch` wird still ignoriert; der Spielstand wird weiter eingelesen, `/api/uboat/crew` bleibt aktuell. Ohne `UBOAT_SAVES_DIR` bleibt das Soldbuch trotz `activate` aus |
+| `bot show` | Bot-Account: Name und ID, Funktionen über den Bot, letzter Sendefehler; ohne Bot Einrichtungshinweis |
+| `bot remove` | `bot.json` löschen, danach sendet wieder der Broadcaster (Freigabe bei Twitch bleibt bis zum Entzug durch das Bot-Konto) |
 | `help` | Befehlsübersicht (auch beim Start) |
 
 Es gibt keinen Konsolenbefehl zum Bestätigen eines Effekts.
@@ -178,6 +184,9 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `BDU_REPLY_PREFIX` / `BDU_CHAT_MAX_CHARS` | `FT vom BdU: ` / 500 | Präfix und Twitch-Längengrenze |
 | `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
 | `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
+| `BOT_SCOPES` | `user:bot user:write:chat` | Freigabe des Bot-Kontos über `/login-bot` (ADR 0017) |
+| `BOT_FEATURES` | `['bdu', 'uboat']` | Diese Funktionen senden über den Bot; alles andere als Broadcaster |
+| `BOT_LOGIN_STATE_TTL_MS` / `APP_TOKEN_REFRESH_MARGIN_MS` | 600000 / 300000 | Gültigkeit eines Bot-Logins; App-Token so lange vor Ablauf erneuern |
 | `UBOAT_COMMAND` | `!soldbuch` | Chat-Befehl (Groß-/Kleinschreibung egal) |
 | `UBOAT_USER_COOLDOWN_MS` | 60000 | Höchstens eine Antwort je Zuschauer |
 | `UBOAT_CATEGORY_NAMES` | `['UBOAT']` | Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name bei Twitch prüfen] |

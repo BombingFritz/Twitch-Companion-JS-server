@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const fs = require('fs');
+const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
 const { createUboatCrew } = require('./lib/uboat-crew');
@@ -31,6 +32,13 @@ const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten d
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
 const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
 const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Konsole schaltbare Chat-Module, Standard: an
+
+// Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
+const BOT_FILE = './bot.json';                    // nur ID und Name des Bots, keine Tokens
+const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Konto über /login-bot
+const BOT_FEATURES = ['bdu', 'uboat'];            // diese Funktionen senden über den Bot; alles andere als Broadcaster
+const BOT_LOGIN_STATE_TTL_MS = 10 * 60 * 1000;    // so lange gilt ein über /login-bot begonnener Login
+const APP_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;   // App-Access-Token so lange vor Ablauf neu holen
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
@@ -240,6 +248,51 @@ async function getValidAccessToken() {
     console.error('Token-Refresh fehlgeschlagen:', err.response?.data || err.message);
     throw new Error('Token-Refresh fehlgeschlagen. Bitte neu einloggen.');
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HILFSFUNKTIONEN – BOT-ACCOUNT „DerBdu“ (ADR 0017)
+// ═══════════════════════════════════════════════════════════════════
+
+function loadBotConfig() {
+  if (!fs.existsSync(BOT_FILE)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(BOT_FILE, 'utf8'));
+    return data && data.bot_id ? data : null;
+  } catch { return null; }
+}
+
+function saveBotConfig(config) {
+  fs.writeFileSync(BOT_FILE, JSON.stringify(config, null, 2), 'utf8');
+}
+
+let appAccessToken = null;          // { token, expiresAt } – nur im RAM (Client-Credentials)
+let botLoginState = null;           // { value, createdAt } – offener Login über /login-bot
+let botLastError = null;            // { at, text } – letzter Fehler beim Senden über den Bot
+
+async function getAppAccessToken(forceNew = false) {
+  if (!forceNew && appAccessToken && Date.now() < appAccessToken.expiresAt - APP_TOKEN_REFRESH_MARGIN_MS) {
+    return appAccessToken.token;
+  }
+  const params = new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'client_credentials' });
+  const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
+  appAccessToken = { token: response.data.access_token, expiresAt: Date.now() + response.data.expires_in * 1000 };
+  return appAccessToken.token;
+}
+
+function botFeatureLabels() {
+  return BOT_FEATURES.map(f => MODULE_NAMES[f] || f).join(', ');
+}
+
+function printBotStatus() {
+  const bot = loadBotConfig();
+  if (!bot) {
+    console.log(`[Bot] Nicht eingerichtet – alle Nachrichten kommen vom Broadcaster. Einrichten: /mod DerBdu im Chat, dann http://localhost:${PORT}/login-bot in einem Browser, in dem DerBdu bei Twitch angemeldet ist`);
+    return;
+  }
+  console.log(`[Bot] ${bot.bot_name || bot.bot_login} (ID ${bot.bot_id}), freigegeben am ${new Date(bot.authorized_at).toLocaleString('de-DE')}`);
+  console.log(`[Bot] Sendet: ${botFeatureLabels()}; alles andere sendet der Broadcaster`);
+  console.log(`[Bot] Letzter Sendefehler: ${botLastError ? `${new Date(botLastError.at).toLocaleString('de-DE')} – ${botLastError.text}` : 'keiner'}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -778,7 +831,69 @@ app.get('/login', (req, res) => {
   res.redirect(authUrl);
 });
 
+// Einmalige Freigabe des Bot-Kontos (ADR 0017). Nur lokal, wie /token.
+app.get('/login-bot', (req, res) => {
+  if (!isLoopbackRequest(req) || !hasLoopbackHost(req)) {
+    logIfChanged(
+      `login-bot-denied:${req.socket.remoteAddress}|${req.headers.host}`,
+      `[Zugriffsschutz] /login-bot abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Nur lokale Aufrufe über localhost oder 127.0.0.1.`,
+      'warn'
+    );
+    return res.status(403).send('Nur für lokale Aufrufe über localhost oder 127.0.0.1');
+  }
+  botLoginState = { value: crypto.randomBytes(16).toString('hex'), createdAt: Date.now() };
+  const authUrl = `https://id.twitch.tv/oauth2/authorize`
+    + `?response_type=code`
+    + `&client_id=${CLIENT_ID}`
+    + `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`
+    + `&scope=${encodeURIComponent(BOT_SCOPES)}`
+    + `&force_verify=true`
+    + `&state=${botLoginState.value}`;
+  console.log('[Bot] Leite zur Twitch-Freigabe für den Bot-Account weiter (im Browser als DerBdu angemeldet sein)...');
+  res.redirect(authUrl);
+});
+
+// Rückkehr von /login-bot: nur ID und Name des Bots speichern, das Bot-Token wird nicht gebraucht (App-Token reicht).
+async function handleBotCallback(req, res) {
+  const { code, state } = req.query;
+  const open = botLoginState;
+  if (!open || state !== open.value || Date.now() - open.createdAt > BOT_LOGIN_STATE_TTL_MS) {
+    console.warn('[Bot] Freigabe abgelehnt: unbekannter oder abgelaufener Login – bitte /login-bot erneut aufrufen');
+    return res.status(400).send('Bot-Freigabe ungültig oder abgelaufen. Bitte http://localhost:' + PORT + '/login-bot erneut aufrufen.');
+  }
+  botLoginState = null;   // jeder state gilt nur einmal
+  if (!code) return res.status(400).send('Kein Code erhalten (Freigabe abgebrochen?)');
+  try {
+    const params = new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, code, grant_type: 'authorization_code', redirect_uri: REDIRECT_URI });
+    const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
+    const granted = Array.isArray(response.data.scope) ? response.data.scope : String(response.data.scope || '').split(' ');
+    const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
+      headers: { 'Authorization': `Bearer ${response.data.access_token}`, 'Client-ID': CLIENT_ID }
+    });
+    const user = userResponse.data.data[0];
+    const tokens = loadTokens();
+    if (tokens && user.id === tokens.broadcaster_id) {
+      console.warn(`[Bot] Freigabe abgelehnt: angemeldet war der Broadcaster ${user.login}, nicht der Bot`);
+      return res.status(400).send(`Du warst bei Twitch als ${user.login} (Broadcaster) angemeldet. Bitte in einem privaten Browserfenster als DerBdu anmelden und /login-bot erneut aufrufen.`);
+    }
+    const missing = BOT_SCOPES.split(' ').filter(s => !granted.includes(s));
+    if (missing.length) {
+      console.warn(`[Bot] Freigabe abgelehnt: es fehlen die Rechte ${missing.join(', ')}`);
+      return res.status(400).send(`Es fehlen die Rechte ${missing.join(', ')}. Bitte /login-bot erneut aufrufen und alles bestätigen.`);
+    }
+    saveBotConfig({ bot_id: user.id, bot_login: user.login, bot_name: user.display_name || user.login, authorized_at: new Date().toISOString() });
+    botLastError = null;
+    console.log(`[Bot] Bot-Account eingerichtet: ${user.display_name || user.login} (ID ${user.id}). Sendet ab jetzt: ${botFeatureLabels()}`);
+    res.send(`\n\nBot-Account eingerichtet: ${user.display_name || user.login}\n\nSendet ab jetzt: ${botFeatureLabels()}\n\nWichtig: DerBdu muss Moderator in deinem Kanal sein (/mod ${user.login}).\n\nDu kannst diesen Tab jetzt schließen.`);
+  } catch (err) {
+    console.error('[Bot] Fehler bei der Freigabe:', err.response?.data || err.message);
+    res.status(500).send(`Fehler: ${err.message}`);
+  }
+}
+
 app.get('/callback', async (req, res) => {
+  // Mit state: Rückkehr von /login-bot. Ohne state: Broadcaster-Login wie bisher.
+  if (req.query.state !== undefined) return handleBotCallback(req, res);
   const { code } = req.query;
   if (!code) return res.status(400).send('Kein Code erhalten');
 
@@ -1081,6 +1196,9 @@ app.get('/status', (req, res) => {
     effect_queue_length: effectQueue.length,
     allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
     modules: { ...moduleSwitches },
+    bot_configured: Boolean(loadBotConfig()),
+    bot_login: loadBotConfig()?.bot_login || null,
+    bot_features: BOT_FEATURES,
     bdu_widget_connected: bduClients.length > 0,
     // isBduSilenceActive() räumt eine abgelaufene Funkstille ab, sonst stünde hier die alte Uhrzeit (K9)
     bdu_silence_until: isBduSilenceActive() ? (bduSilenceUntil === Infinity ? 'bis Streamstart' : new Date(bduSilenceUntil).toISOString()) : null,
@@ -1496,19 +1614,65 @@ function isModOrBroadcaster(evt) {
   return badges.some(b => b.set_id === 'moderator' || b.set_id === 'broadcaster');
 }
 
-// Postet eine Chat-Nachricht als Broadcaster. Fehler werden geloggt, kein Retry.
-// Postet als Broadcaster; mit replyToMessageId als Antwort auf diese Chat-Nachricht. Über CHAT_MAX_CHARS wird gekürzt.
-async function sendChatMessage(text, replyToMessageId = null) {
+// Postet eine Chat-Nachricht; mit replyToMessageId als Antwort auf diese Chat-Nachricht. Über CHAT_MAX_CHARS wird gekürzt.
+// feature in BOT_FEATURES und Bot eingerichtet: über den Bot (App-Token, ADR 0017), bei HTTP-Fehler Rückfall auf den Broadcaster.
+// Sonst als Broadcaster. Fehler werden geloggt; Rückgabe true, wenn Twitch die Nachricht angenommen hat.
+async function sendChatMessage(text, replyToMessageId = null, feature = null) {
   const message = text.length > CHAT_MAX_CHARS ? text.slice(0, CHAT_MAX_CHARS - 1) + '…' : text;
+  const logPrefix = feature === 'bdu' ? '[BdU] ' : feature === 'uboat' ? '[UBOAT] ' : '';
+  const bot = feature && BOT_FEATURES.includes(feature) ? loadBotConfig() : null;
+  if (bot) {
+    const result = await sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix);
+    if (result !== 'fallback') return result;
+  }
   try {
     const accessToken = await getValidAccessToken();
     const tokens = loadTokens();
     const body = { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message };
     if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
-    await axios.post('https://api.twitch.tv/helix/chat/messages', body,
+    const response = await axios.post('https://api.twitch.tv/helix/chat/messages', body,
       { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
+    return checkChatSendResult(response, message, logPrefix);
   } catch (err) {
-    console.error('Fehler beim Senden in den Chat:', err.response?.data || err.message, '– Text:', message);
+    console.error(`${logPrefix}Fehler beim Senden in den Chat:`, err.response?.data || err.message, '– Text:', message);
+    return false;
+  }
+}
+
+function checkChatSendResult(response, message, logPrefix) {
+  const result = response?.data?.data?.[0];
+  if (result && result.is_sent === false) {
+    console.warn(`${logPrefix}Twitch hat die Nachricht nicht gesendet (${result.drop_reason?.message || 'ohne Grund'}): ${message}`);
+    return false;
+  }
+  return true;
+}
+
+// Ergebnis: true/false (Twitch hat geantwortet; bei is_sent:false kein Rückfall, damit der Broadcaster keine Filter umgeht)
+// oder 'fallback' (HTTP-Fehler, Broadcaster soll senden).
+async function sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix) {
+  const tokens = loadTokens();
+  if (!tokens) return 'fallback';
+  const body = { broadcaster_id: tokens.broadcaster_id, sender_id: bot.bot_id, message };
+  if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
+  const post = async token => axios.post('https://api.twitch.tv/helix/chat/messages', body,
+    { headers: { 'Authorization': `Bearer ${token}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
+  try {
+    let response;
+    try {
+      response = await post(await getAppAccessToken());
+    } catch (err) {
+      if (err.response?.status !== 401) throw err;
+      response = await post(await getAppAccessToken(true));   // App-Token abgelaufen oder widerrufen: einmal neu
+    }
+    return checkChatSendResult(response, message, logPrefix);
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data?.message || err.message;
+    const hint = status === 403 ? ' – Ist DerBdu Moderator (/mod DerBdu) und ist die Freigabe noch gültig (/login-bot)?' : '';
+    botLastError = { at: Date.now(), text: `${status || 'kein HTTP-Status'}: ${detail}` };
+    console.warn(`${logPrefix}Senden über den Bot ${bot.bot_login} fehlgeschlagen (${status || '-'}: ${detail})${hint} – sende als Broadcaster`);
+    return 'fallback';
   }
 }
 
@@ -1625,23 +1789,10 @@ function formatClock(ts) {
   return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-// Postet eine Nachricht als Broadcaster, optional als Antwort auf eine Chat-Nachricht.
+// Postet eine BdU-Nachricht (über den Bot, wenn eingerichtet; ADR 0017), optional als Antwort auf eine Chat-Nachricht.
 async function sendBduChatMessage(text, replyToMessageId) {
   const message = text.length > BDU_CHAT_MAX_CHARS ? text.slice(0, BDU_CHAT_MAX_CHARS - 1) + '…' : text;
-  try {
-    const accessToken = await getValidAccessToken();
-    const tokens = loadTokens();
-    const body = { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message };
-    if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
-    const response = await axios.post('https://api.twitch.tv/helix/chat/messages', body,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
-    const result = response.data?.data?.[0];
-    if (result && result.is_sent === false) {
-      console.warn(`[BdU] Twitch hat die Nachricht nicht gesendet (${result.drop_reason?.message || 'ohne Grund'}): ${message}`);
-    }
-  } catch (err) {
-    console.error('[BdU] Fehler beim Senden in den Chat:', err.response?.data || err.message, '– Text:', message);
-  }
+  return sendChatMessage(message, replyToMessageId || null, 'bdu');
 }
 
 // Funkstille nach erschöpftem KI-Kontingent. Betrifft nur den Chat.
@@ -2107,7 +2258,7 @@ async function handleUboatCommand(evt) {
   }
   if (!uboatCrew.hasData()) {
     console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login}: noch kein Spielstand eingelesen`);
-    await sendChatMessage(UBOAT_TEXT_UNAVAILABLE, evt.message_id);
+    await sendChatMessage(UBOAT_TEXT_UNAVAILABLE, evt.message_id, 'uboat');
     return;
   }
   const found = uboatCrew.findMember(login, evt.chatter_user_name, loadUboatCrewMap());
@@ -2119,7 +2270,7 @@ async function handleUboatCommand(evt) {
     return;
   }
   console.log(`[UBOAT] Soldbuch für @${login}: ${found.member.name}`);
-  await sendChatMessage(uboatCrew.formatAkte(found.member), evt.message_id);
+  await sendChatMessage(uboatCrew.formatAkte(found.member), evt.message_id, 'uboat');
 }
 
 function printUboatStatus() {
@@ -2170,6 +2321,8 @@ function printConsoleHelp() {
   console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
   console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
   console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
+  console.log(' bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler');
+  console.log(' bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)');
   console.log(' help                      - Diese Hilfe anzeigen');
   console.log('');
 }
@@ -2382,6 +2535,22 @@ rl.on('line', async (input) => {
     return;
   }
 
+  if (cmd === 'bot') {
+    const sub = (parts[1] || '').toLowerCase();
+    if (sub === 'show') {
+      printBotStatus();
+      return;
+    }
+    if (sub === 'remove') {
+      if (!loadBotConfig()) { console.log('[Bot] Es ist kein Bot-Account eingerichtet'); return; }
+      fs.unlinkSync(BOT_FILE);
+      console.log('[Bot] Bot-Account vergessen – alle Nachrichten kommen wieder vom Broadcaster. Die Freigabe bei Twitch entziehst du als DerBdu unter twitch.tv → Einstellungen → Verbindungen.');
+      return;
+    }
+    console.log('Nutzung: bot show | bot remove');
+    return;
+  }
+
   console.log(`Unbekannter Befehl "${trimmed}". Tippe "help" für eine Übersicht.`);
 });
 
@@ -2415,6 +2584,8 @@ app.listen(PORT_NUM, (err) => {
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
   console.log(`Home-Assistant-Webhook: ${HA_WEBHOOK_URL ? 'eingetragen' : 'NICHT eingetragen – Effekte werden nur lokal geloggt (HA_WEBHOOK_URL in .env)'}`);
+  const bot = loadBotConfig();
+  console.log(`Bot-Account: ${bot ? `${bot.bot_name || bot.bot_login} (${botFeatureLabels()})` : `nicht eingerichtet – http://localhost:${PORT_NUM}/login-bot (vorher /mod DerBdu im Chat)`}`);
   console.log(`BdU-Chat: ${moduleStateLabel('bdu')}`);
   console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}${moduleSwitches.uboat ? '' : ' – deaktiviert ("uboat activate" schaltet ein)'}`);
   console.log('═════════════════════════════════════════════');
