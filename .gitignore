@@ -15,6 +15,7 @@ events.json
 effect_mode.json
 whitelist_checks.json
 uboat_crew_map.json
+modules.json
 # Spielstände (Zuschauernamen, mehrere MB) gehören nicht ins Repository; Tests erzeugen eigene
 *.save
 # Sicherungskopien von Tokens (z. B. BACKUPtokens.json)
