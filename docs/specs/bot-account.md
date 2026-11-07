@@ -59,4 +59,4 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - Tests mit Attrappen (`test/bot-test.js`), kein echter Twitch-Aufruf.
 
 ## Status
-umgesetzt (Branch `feat/bot-derbdu`). Test mit Attrappen: 27/27 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Gegen echtes Twitch noch nicht erprobt: Freigabe über `/login-bot`, Abzeichen „Chat Bot“, Verhalten ohne Moderatorrolle [UNGEKLÄRT, bei der Einrichtung prüfen].
+umgesetzt, veröffentlicht in Version 1.1.5 (PR #16). Test mit Attrappen: 27/27 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Mit echtem Twitch erprobt (07.11.2026): Freigabe über `/login-bot` und BdU-Antwort über DerBdu funktionieren. Noch offen: ob das Abzeichen „Chat Bot“ erscheint und wie sich Twitch ohne Moderatorrolle verhält [UNGEKLÄRT].

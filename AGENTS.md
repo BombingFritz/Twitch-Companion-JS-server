@@ -1,7 +1,7 @@
 # AGENTS.md – Regeln für KI-Assistenten
 
 ## Vor jeder Änderung
-- Lies docs/ARCHITEKTUR.md und docs/adr/.
+- Lies docs/ARCHITEKTUR.md und docs/adr/ (Übersicht nach Themen: docs/adr/README.md; neue ADRs dort eintragen).
 - Lies docs/KONTEXT.md für die Einordnung im Stream-Ökosystem (Home Assistant, OBS-Widgets, Stream Deck).
 - Lies die passende Spec in docs/specs/.
 - Bei Konflikt mit einem ADR: nachfragen, nicht umgehen.

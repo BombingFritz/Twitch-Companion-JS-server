@@ -16,7 +16,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 
 ## Features
 
-- OAuth2 mit Auto-Refresh, Token-Ausgabe an Widgets (`/token` mit Token, Client-ID und Broadcaster-ID; nur lokal und für erlaubte Widget-Herkünfte, siehe ADR 0013)
+- OAuth2 mit Auto-Refresh (Login nur am Streaming-PC), Token-Ausgabe an Widgets (`/token` mit Token, Client-ID und Broadcaster-ID; nur lokal und für erlaubte Widget-Herkünfte, siehe ADR 0013)
 - Predictions-API und Sub-Goal-Counter für Widgets
 - Raid-Begrüßung mit Warteschlange, Quartals-Leaderboard, `!raidstats`
 - Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist nur an Streamer, die in den letzten 40 Tagen aktiv waren)
@@ -25,13 +25,14 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet von DerBdu bzw. ohne Bot als „FT vom BdU: …“ (ADR 0014, 0017)
 - UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
 - Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu (ADR 0017)
+- Modul-Schalter: BdU-Chat und Soldbuch per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten
 
 ## Dokumentation
 
 - [AGENTS.md](AGENTS.md) – Regeln für KI-Assistenten (`CLAUDE.md` importiert sie für Claude Code)
 - [docs/KONTEXT.md](docs/KONTEXT.md) – Einordnung im Stream-Ökosystem
 - [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) – Ist-Zustand
-- [docs/adr/](docs/adr/) – Architekturentscheidungen
+- [docs/adr/](docs/adr/) – Architekturentscheidungen, nach Themen geordnet in [docs/adr/README.md](docs/adr/README.md)
 - [docs/specs/](docs/specs/) – Feature-Specs
 - [docs/BUGS.md](docs/BUGS.md) – Fehlerhistorie
 - [test/](test/) – Tests mit Attrappen, Start mit `npm test`
