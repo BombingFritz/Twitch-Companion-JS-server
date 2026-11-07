@@ -20,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - ADR 0013 (Nachtrag), ARCHITEKTUR, Spec `bot-account.md`, OFFEN (K1). Neuer Test `test/login-test.js`.
 - Doku-Lücken aus der Code-Prüfung: KONTEXT mit eigenen Abschnitten zu DerBdu und UBOAT-Soldbuch; ARCHITEKTUR mit Zugriffsschutz-Funktionen, `armKeepalive`, `MODULE_NAMES`, `WHITELIST_CHECK_LABELS`; Status der Specs `bdu-chat`, `bot-account`, `uboat-personalakte` aktualisiert; README nennt Modul-Schalter und Login nur am Streaming-PC.
 - Neue Übersicht `docs/adr/README.md`: ADRs nach Themen gruppiert, je ein Satz, Verweise und Herkunft, Anleitung für neue ADRs; Verweis in README und AGENTS.md.
+- KONTEXT: Widget-Tabelle mit Repositories und Ständen (SpargelPoll 0.8.2, CoinFlip 0.1.0, Enigma 1.3.0); Quelle „Genereller Kontext“ am 08.11.2026 abgeglichen.
 - Abgleich mit Enigma-Widget 1.3.0 (Schnittstelle unverändert): Spec `bdu-chat.md` mit neuem Abschnitt „Verhalten des Widgets“, Einleitung nennt DerBdu statt nur „FT vom BdU“, `hello`-Ereignis beschrieben; OFFEN und KONTEXT nennen die aktuelle Widget-Version.
 
 ## [1.1.5] – 2026-11-07
