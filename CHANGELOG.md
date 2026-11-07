@@ -9,7 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 - Modul-Schalter: Konsolenbefehle `bdu activate|deactivate` und `uboat activate|deactivate` schalten BdU-Chat bzw. UBOAT-Soldbuch ein und aus. Der Zustand steht in `modules.json` und gilt auch nach einem Neustart (fehlt die Datei: beide an). Deaktiviert werden die Chat-Befehle still ignoriert (nur Konsolenzeile); beim Deaktivieren des BdU-Chats werden offene Anfragen verworfen. Anzeige in der Startmeldung, in `bdu show`/`uboat show` und in `/status` (`modules`).
 
-- Bot-Account „DerBdu“: BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch kommen vom Bot statt vom Broadcaster, gesendet mit App-Access-Token, damit Twitch das „Chat Bot“-Abzeichen zeigt. Einmalige Freigabe über `/login-bot` (nur lokal); gespeichert werden nur ID und Name in `bot.json`, keine Bot-Tokens. Lehnt Twitch den Bot ab (z. B. fehlende Moderatorrolle), sendet der Broadcaster. Konsolenbefehle `bot show` und `bot remove`, Felder `bot_*` in `/status` (ADR 0017).
+- Bot-Account „DerBdu“: BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch kommen vom Bot statt vom Broadcaster, gesendet mit App-Access-Token, damit Twitch das „Chat Bot“-Abzeichen zeigt. DerBdu postet BdU-Antworten ohne „FT vom BdU: “; das Präfix steht nur noch davor, wenn der Broadcaster sendet. Einmalige Freigabe über `/login-bot` (nur lokal); gespeichert werden nur ID und Name in `bot.json`, keine Bot-Tokens. Lehnt Twitch den Bot ab (z. B. fehlende Moderatorrolle), sendet der Broadcaster. Konsolenbefehle `bot show` und `bot remove`, Felder `bot_*` in `/status` (ADR 0017).
 
 ### Changed
 - `sendChatMessage` kann als Reply posten und kürzt auf 500 Zeichen (`CHAT_MAX_CHARS`).

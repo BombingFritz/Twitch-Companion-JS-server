@@ -1,7 +1,7 @@
 // Bot-Account „DerBdu“ (ADR 0017): /login-bot, /callback mit state, bot.json, Senden mit App-Token, 401-Erneuerung,
 // Rückfall bei 403, kein Rückfall bei is_sent:false, bot show/remove, /status, Startanzeige.
 // Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis, erzeugter Spielstand (test/uboat-fixture.js), Enigma-Widget als SSE-Client.
-// Aufruf: node bot-test.js <server.js> <szenario: ablauf | eingerichtet>
+// Aufruf: node bot-test.js <server.js> <szenario: ablauf | eingerichtet | ohne-bot>
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
 const fx = require('./uboat-fixture');
@@ -151,8 +151,8 @@ function connectWidget() {
     const ans = await request('/api/bdu/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sseRequests[0] && sseRequests[0].id, status: 'ok', text: 'Weiter so.' }) });
     await sleep(200);
     posts = chatPosts.slice(before);
-    check('A11 BdU-Antwort über den Bot als Reply', ans.status === 200 && posts.length === 1 && posts[0].auth === 'Bearer app-1' && posts[0].body.sender_id === '99'
-      && posts[0].body.message === 'FT vom BdU: Weiter so.' && posts[0].body.reply_parent_message_id, JSON.stringify(posts));
+    check('A11 BdU-Antwort über den Bot als Reply, ohne „FT vom BdU:“', ans.status === 200 && posts.length === 1 && posts[0].auth === 'Bearer app-1' && posts[0].body.sender_id === '99'
+      && posts[0].body.message === 'Weiter so.' && posts[0].body.reply_parent_message_id, JSON.stringify(posts));
     posts = await say('bert', 'Bert', '!BdU Noch eine Frage');
     check('A12 BdU-Warnung (Limit) über den Bot', posts.length === 1 && posts[0].body.sender_id === '99' && posts[0].body.message === 'Funkverkehr einschränken, Feind peilt ein!', JSON.stringify(posts));
     check('A13 App-Token für mehrere Nachrichten nur einmal geholt', appTokenCount === 1, String(appTokenCount));
@@ -184,10 +184,32 @@ function connectWidget() {
     check('A22 Rückfall-Pfad: Raid-Begrüßung und Whitelist-Hinweis unverändert (kein feature-Parameter)', fs.readFileSync(serverPath, 'utf8').includes('await sendChatMessage(buildWhitelistShoutoutMessage(chatterName, activity));'));
   }
 
+  // BdU-Antwort durchspielen: Anfrage im Chat, Antwort des Widgets; Rückgabe: alle Sendeversuche danach
+  async function bduRoundTrip(login, text, answer) {
+    if (!sseReq) { await connectWidget(); await sleep(100); }
+    const known = sseRequests.length;
+    chat(login, login, '!BdU ' + text); await sleep(200);
+    const before = chatPosts.length;
+    await request('/api/bdu/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sseRequests[known] && sseRequests[known].id, status: 'ok', text: answer }) });
+    await sleep(200);
+    return chatPosts.slice(before);
+  }
+
   if (scenario === 'eingerichtet') {
     check('E1 Startanzeige mit Bot', has(/^Bot-Account: DerBdu \(BdU-Chat, UBOAT-Soldbuch\)$/));
     const posts = await say('kobold', 'Kobold', '!soldbuch');
     check('E2 gespeicherter Bot sendet nach Neustart', posts.length === 1 && posts[0].body.sender_id === '99' && posts[0].auth === 'Bearer app-1', JSON.stringify(posts));
+    failMode = '403';
+    const bdu = await bduRoundTrip('anna', 'Lage?', 'Halten Sie Kurs.');
+    check('E3 Rückfall bei BdU-Antwort: Bot ohne, Broadcaster mit „FT vom BdU:“', bdu.length === 2 && bdu[0].body.sender_id === '99' && bdu[0].body.message === 'Halten Sie Kurs.'
+      && bdu[1].body.sender_id === '1' && bdu[1].body.message === 'FT vom BdU: Halten Sie Kurs.' && bdu[1].body.reply_parent_message_id, JSON.stringify(bdu));
+  }
+
+  if (scenario === 'ohne-bot') {
+    // ein Durchlauf je Testlauf (globales BdU-Limit 3 min); lange Antwort prüft zugleich die Kürzung inklusive Präfix
+    const bdu = await bduRoundTrip('anna', 'Lage?', 'Halten Sie Kurs. ' + 'x'.repeat(600));
+    check('O1 ohne Bot: BdU-Antwort als Broadcaster mit „FT vom BdU:“, gekürzt auf 500 Zeichen', bdu.length === 1 && bdu[0].auth === 'Bearer fake' && bdu[0].body.sender_id === '1'
+      && bdu[0].body.message.startsWith('FT vom BdU: Halten Sie Kurs.') && bdu[0].body.message.length === 500 && appTokenCount === 0, JSON.stringify(bdu.map(p => p.body.message.slice(0, 40))));
   }
 
   console.log = realLog;

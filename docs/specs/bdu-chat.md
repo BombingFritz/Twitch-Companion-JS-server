@@ -24,7 +24,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 - Keine Ausnahmen für Broadcaster oder Mods.
 
 ### Antwort des Widgets (`POST /api/bdu/answer`, JSON)
-- `{id, status: "ok", text}`: Bekannte, noch offene `id` → „FT vom BdU: “ + Text, auf 500 Zeichen gekürzt (Twitch-Limit), per `POST /helix/chat/messages` mit `reply_parent_message_id` posten. Seit ADR 0017 über den Bot „DerBdu“, wenn eingerichtet (gilt auch für Warnung und Funkstille-Ansage); sonst als Broadcaster. Unbekannte oder abgelaufene `id`: verwerfen, loggen.
+- `{id, status: "ok", text}`: Bekannte, noch offene `id` → Text, auf 500 Zeichen gekürzt (Twitch-Limit), per `POST /helix/chat/messages` mit `reply_parent_message_id` posten. Seit ADR 0017 über den Bot „DerBdu“, wenn eingerichtet (gilt auch für Warnung und Funkstille-Ansage), dann ohne Präfix (Nutzer, 07.11.2026: der Absender zeigt schon, wer spricht). Sendet der Broadcaster (kein Bot oder Rückfall), steht „FT vom BdU: “ davor; die Kürzung zählt das Präfix mit. Unbekannte oder abgelaufene `id`: verwerfen, loggen.
 - `{id, status: "quota", error}`: **Funkstille** starten (siehe unten), nichts zur Anfrage posten. Antwort an das Widget: `{ok: true, silenceUntil}` (Zeitstempel in ms; beim Tageskontingent `null`).
 - `{id, status: "error"}`: nichts posten, loggen.
 - Kommt binnen `BDU_ANSWER_TIMEOUT_MS` (120 s; das Widget hält Anfragen bis zu 60 s für den Kaleu zurück) keine Antwort: Anfrage verwerfen, loggen.
@@ -41,7 +41,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 - Mehrere Verbindungen: Anfrage nur an die zuletzt verbundene.
 
 ### Konstanten (oben in `server.js`)
-`BDU_MAX_INPUT_CHARS = 200`, `BDU_GLOBAL_COOLDOWN_MS = 3 min`, `BDU_USER_WINDOW_MS = 30 min`, `BDU_USER_MAX = 3`, `BDU_WARNING_COOLDOWN_MS = 10 min`, `BDU_ANSWER_TIMEOUT_MS = 120 s`, `BDU_SILENCE_MS = 30 min`, `BDU_REPLY_PREFIX = 'FT vom BdU: '`, Texte für Warnung und Funkstille.
+`BDU_MAX_INPUT_CHARS = 200`, `BDU_GLOBAL_COOLDOWN_MS = 3 min`, `BDU_USER_WINDOW_MS = 30 min`, `BDU_USER_MAX = 3`, `BDU_WARNING_COOLDOWN_MS = 10 min`, `BDU_ANSWER_TIMEOUT_MS = 120 s`, `BDU_SILENCE_MS = 30 min`, `BDU_REPLY_PREFIX = 'FT vom BdU: '` (nur beim Versand als Broadcaster), Texte für Warnung und Funkstille.
 
 ### Zustand (RAM, ADR 0002)
 Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Funkstille bis, offene Anfragen `id → {message_id, angenommen}`, verbundene Events-Clients.
@@ -57,7 +57,7 @@ Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Fu
 - Home-Assistant-Effekte für BdU-Funksprüche (später über `scheduleEffect` denkbar).
 
 ## Akzeptanzkriterien
-- `!BdU Feindkontakt` mit verbundenem Widget: genau eine Events-Nachricht; nach Antwort genau eine Chat-Nachricht „FT vom BdU: …“ als Reply.
+- `!BdU Feindkontakt` mit verbundenem Widget: genau eine Events-Nachricht; nach Antwort genau eine Chat-Nachricht als Reply (von DerBdu ohne Präfix, ohne Bot „FT vom BdU: …“ vom Broadcaster).
 - Ohne verbundenes Widget: keine Ausgabe, und die nächste Anfrage nach dem Verbinden wird angenommen.
 - Zweite Anfrage (anderer Nutzer) nach 2 min: keine Weiterleitung; Warnung, wenn seit 10 min keine Warnung kam.
 - Vierte angenommene Anfrage eines Nutzers binnen 30 min: Verstoß.

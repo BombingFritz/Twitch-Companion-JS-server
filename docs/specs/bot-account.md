@@ -31,7 +31,8 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
   - HTTP-Fehler (auch nach dem einen erneuten Versuch bei 401): Konsolenwarnung mit Status und Twitch-Meldung, dann Rückfall: Senden als Broadcaster. Bei 403 zusätzlich Hinweis „Ist DerBdu Moderator (/mod DerBdu) und ist die Freigabe noch gültig (/login-bot)?“.
   - Antwort `is_sent: false`: Konsolenwarnung mit `drop_reason`, kein Rückfall.
 - Sonst: Senden als Broadcaster wie bisher (Raid-, Whitelist-Shoutouts und alle übrigen Nachrichten).
-- `sendBduChatMessage` nutzt `sendChatMessage(…, 'bdu')`; das Soldbuch `sendChatMessage(…, 'uboat')`.
+- `sendBduChatMessage` nutzt `sendChatMessage(…, 'bdu', {broadcasterPrefix})`; das Soldbuch `sendChatMessage(…, 'uboat')`.
+- `options.broadcasterPrefix` steht nur vor dem Text, wenn der Broadcaster sendet. BdU-Antworten kommen von DerBdu also ohne „FT vom BdU: “ (Nutzer, 07.11.2026), im Rückfall mit. Gekürzt wird je Weg auf 500 Zeichen inklusive Präfix.
 
 ### Konsole und Status
 - `bot show`: eingerichtet ja/nein, Name und ID, welche Funktionen über den Bot laufen, letzter Sendefehler, Einrichtungshinweis.
@@ -58,4 +59,4 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - Tests mit Attrappen (`test/bot-test.js`), kein echter Twitch-Aufruf.
 
 ## Status
-umgesetzt (Branch `feat/bot-derbdu`). Test mit Attrappen: 24/24 (`test/bot-test.js`, Szenarien `ablauf` und `eingerichtet`). Gegen echtes Twitch noch nicht erprobt: Freigabe über `/login-bot`, Abzeichen „Chat Bot“, Verhalten ohne Moderatorrolle [UNGEKLÄRT, bei der Einrichtung prüfen].
+umgesetzt (Branch `feat/bot-derbdu`). Test mit Attrappen: 26/26 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Gegen echtes Twitch noch nicht erprobt: Freigabe über `/login-bot`, Abzeichen „Chat Bot“, Verhalten ohne Moderatorrolle [UNGEKLÄRT, bei der Einrichtung prüfen].

@@ -81,7 +81,7 @@ const BDU_ANSWER_TIMEOUT_MS = 120 * 1000;         // Widget hält Anfragen bis 6
 const BDU_SILENCE_MS = 30 * 60 * 1000;            // Funkstille nach erschöpftem KI-Kontingent (Minutenlimit)
 const BDU_DAILY_LIMIT = 60;                       // angenommene Chat-Anfragen je Kalendertag (0 = keine Grenze)
 const BDU_SSE_PING_MS = 30 * 1000;                // Lebenszeichen auf der Events-Verbindung
-const BDU_REPLY_PREFIX = 'FT vom BdU: ';
+const BDU_REPLY_PREFIX = 'FT vom BdU: ';         // nur wenn der Broadcaster sendet; DerBdu postet die Antwort ohne Präfix (ADR 0017)
 const BDU_CHAT_MAX_CHARS = 500;                   // Twitch-Limit je Chat-Nachricht
 const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
 
@@ -1026,7 +1026,7 @@ app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) =>
   clearTimeout(pending.timer);
 
   if (status === 'ok' && typeof text === 'string' && text.trim()) {
-    await sendBduChatMessage(BDU_REPLY_PREFIX + text.trim(), pending.messageId);
+    await sendBduChatMessage(text.trim(), pending.messageId, BDU_REPLY_PREFIX);
     console.log(`[BdU] Antwort an @${pending.userLogin} gepostet (${Math.round((Date.now() - pending.acceptedAt) / 1000)} s nach Annahme)`);
     return res.json({ ok: true });
   }
@@ -1617,14 +1617,17 @@ function isModOrBroadcaster(evt) {
 // Postet eine Chat-Nachricht; mit replyToMessageId als Antwort auf diese Chat-Nachricht. Über CHAT_MAX_CHARS wird gekürzt.
 // feature in BOT_FEATURES und Bot eingerichtet: über den Bot (App-Token, ADR 0017), bei HTTP-Fehler Rückfall auf den Broadcaster.
 // Sonst als Broadcaster. Fehler werden geloggt; Rückgabe true, wenn Twitch die Nachricht angenommen hat.
-async function sendChatMessage(text, replyToMessageId = null, feature = null) {
-  const message = text.length > CHAT_MAX_CHARS ? text.slice(0, CHAT_MAX_CHARS - 1) + '…' : text;
+// options.broadcasterPrefix: nur beim Versand als Broadcaster vor den Text setzen (Absenderangabe, z. B. "FT vom BdU: ").
+async function sendChatMessage(text, replyToMessageId = null, feature = null, options = {}) {
+  const maxChars = options.maxChars || CHAT_MAX_CHARS;
+  const cut = t => (t.length > maxChars ? t.slice(0, maxChars - 1) + '…' : t);
   const logPrefix = feature === 'bdu' ? '[BdU] ' : feature === 'uboat' ? '[UBOAT] ' : '';
   const bot = feature && BOT_FEATURES.includes(feature) ? loadBotConfig() : null;
   if (bot) {
-    const result = await sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix);
+    const result = await sendChatMessageAsBot(bot, cut(text), replyToMessageId, logPrefix);
     if (result !== 'fallback') return result;
   }
+  const message = cut((options.broadcasterPrefix || '') + text);
   try {
     const accessToken = await getValidAccessToken();
     const tokens = loadTokens();
@@ -1790,9 +1793,9 @@ function formatClock(ts) {
 }
 
 // Postet eine BdU-Nachricht (über den Bot, wenn eingerichtet; ADR 0017), optional als Antwort auf eine Chat-Nachricht.
-async function sendBduChatMessage(text, replyToMessageId) {
-  const message = text.length > BDU_CHAT_MAX_CHARS ? text.slice(0, BDU_CHAT_MAX_CHARS - 1) + '…' : text;
-  return sendChatMessage(message, replyToMessageId || null, 'bdu');
+// broadcasterPrefix (z. B. "FT vom BdU: ") steht nur davor, wenn der Broadcaster sendet; DerBdu braucht keine Absenderangabe.
+async function sendBduChatMessage(text, replyToMessageId, broadcasterPrefix = '') {
+  return sendChatMessage(text, replyToMessageId || null, 'bdu', { broadcasterPrefix, maxChars: BDU_CHAT_MAX_CHARS });
 }
 
 // Funkstille nach erschöpftem KI-Kontingent. Betrifft nur den Chat.
