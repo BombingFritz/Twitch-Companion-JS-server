@@ -182,7 +182,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `BDU_SILENCE_MS` | 1800000 | Funkstille nach Minutenlimit der KI |
 | `BDU_DAILY_LIMIT` | 60 | Angenommene Anfragen je Kalendertag (0 = aus) |
 | `BDU_SSE_PING_MS` | 30000 | Lebenszeichen auf der Events-Verbindung |
-| `BDU_REPLY_PREFIX` / `BDU_CHAT_MAX_CHARS` | `FT vom BdU: ` / 500 | Präfix (nur wenn der Broadcaster sendet, ADR 0017) und Twitch-Längengrenze |
+| `BDU_REPLY_PREFIX` | `FT vom BdU: ` | Präfix (nur wenn der Broadcaster sendet, ADR 0017); Längengrenze über `CHAT_MAX_CHARS` |
 | `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
 | `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
 | `BOT_SCOPES` | `user:bot user:write:chat` | Freigabe des Bot-Kontos über `/login-bot` (ADR 0017) |

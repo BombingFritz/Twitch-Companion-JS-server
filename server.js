@@ -82,7 +82,6 @@ const BDU_SILENCE_MS = 30 * 60 * 1000;            // Funkstille nach erschöpfte
 const BDU_DAILY_LIMIT = 60;                       // angenommene Chat-Anfragen je Kalendertag (0 = keine Grenze)
 const BDU_SSE_PING_MS = 30 * 1000;                // Lebenszeichen auf der Events-Verbindung
 const BDU_REPLY_PREFIX = 'FT vom BdU: ';         // nur wenn der Broadcaster sendet; DerBdu postet die Antwort ohne Präfix (ADR 0017)
-const BDU_CHAT_MAX_CHARS = 500;                   // Twitch-Limit je Chat-Nachricht
 const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
 
 // UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
@@ -1648,8 +1647,7 @@ function isModOrBroadcaster(evt) {
 // Sonst als Broadcaster. Fehler werden geloggt; Rückgabe true, wenn Twitch die Nachricht angenommen hat.
 // options.broadcasterPrefix: nur beim Versand als Broadcaster vor den Text setzen (Absenderangabe, z. B. "FT vom BdU: ").
 async function sendChatMessage(text, replyToMessageId = null, feature = null, options = {}) {
-  const maxChars = options.maxChars || CHAT_MAX_CHARS;
-  const cut = t => (t.length > maxChars ? t.slice(0, maxChars - 1) + '…' : t);
+  const cut = t => (t.length > CHAT_MAX_CHARS ? t.slice(0, CHAT_MAX_CHARS - 1) + '…' : t);
   const logPrefix = feature === 'bdu' ? '[BdU] ' : feature === 'uboat' ? '[UBOAT] ' : '';
   const bot = feature && BOT_FEATURES.includes(feature) ? loadBotConfig() : null;
   if (bot) {
@@ -1809,7 +1807,7 @@ function formatClock(ts) {
 // Postet eine BdU-Nachricht (über den Bot, wenn eingerichtet; ADR 0017), optional als Antwort auf eine Chat-Nachricht.
 // broadcasterPrefix (z. B. "FT vom BdU: ") steht nur davor, wenn der Broadcaster sendet; DerBdu braucht keine Absenderangabe.
 async function sendBduChatMessage(text, replyToMessageId, broadcasterPrefix = '') {
-  return sendChatMessage(text, replyToMessageId || null, 'bdu', { broadcasterPrefix, maxChars: BDU_CHAT_MAX_CHARS });
+  return sendChatMessage(text, replyToMessageId || null, 'bdu', { broadcasterPrefix });
 }
 
 // Funkstille nach erschöpftem KI-Kontingent. Betrifft nur den Chat.
