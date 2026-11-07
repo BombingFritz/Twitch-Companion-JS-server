@@ -15,7 +15,9 @@ Twitch (EventSub / Helix)
   └─ Twitch Companion JS server
        ├─ OBS-Browser-Widgets   (holen Token/Daten über HTTP)
        ├─ Effekt-Queue           (auto / manual / off)
+       ├─ Bot-Account „DerBdu“   (sendet BdU- und Soldbuch-Antworten im Chat)
        └─ Home-Assistant-Webhook ──> Scripts, Szenen, WLED, Matter
+UBOAT-Spielstände ──nur lesen──> Server (Soldbuch)
 Stream Deck ──HTTP──> Server (Effekt-Modus, Bestätigung)
 Stream Deck ──────> Home Assistant, OBS (direkt, nicht über den Server)
 Arduino / ESP32 ──> Home Assistant (ESPHome, Serial, Webhook) bzw. USB-HID an den PC
@@ -33,6 +35,7 @@ Physische Eingaben (ESP32/ESPHome, Zugschnurcontroller) und Lichteffekte vom Str
 | OBS | per Startskript, nach dem Server | Browser-Widgets pollen den Server |
 | WLED-Controller | per Startskript | nur indirekt über Home Assistant |
 | Stream Deck | bei Stream oder Arbeit | ruft Effekt-Endpoints auf |
+| Spiel UBOAT | bei UBOAT-Streams | schreibt Spielstände, die der Server liest |
 
 Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand OBS und der WLED-Controller. So initialisieren die OBS-Browser-Widgets zuverlässig. Den Server selbst startet `AuthServer.cmd` aus diesem Repository (Windows, eigenes Konsolenfenster im Projektordner). Die Gesamtreihenfolge mit den Wartezeiten steuert ein Skript auf dem Stream Deck: Es startet `AuthServer.cmd`, danach OBS und den WLED-Controller (Nutzer, 04.11.2026). Das Stream-Deck-Skript liegt nicht in diesem Repository; Wartezeiten [UNGEKLÄRT].
 
@@ -59,6 +62,18 @@ Widget-Prinzipien laut Kontext:
 - Flüchtiger Zustand darf im Widget liegen. Daten, die über einen Stream hinaus gelten oder korrigierbar sein sollen, kommen später persistent in den Server oder gezielt in den Browser-Speicher.
 
 Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT].
+
+### Bot-Account „DerBdu“
+- Eigenes Twitch-Konto mit „Chat Bot“-Abzeichen und Moderatorrolle im Kanal. Es antwortet als BdU auf `!BdU` (Antwort vom Enigma-Widget) und gibt das Soldbuch aus. Raid- und Whitelist-Shoutouts kommen weiter vom Broadcaster (ADR 0017).
+- Kein eigener Prozess: Der Server sendet im Namen des Bots. Lehnt Twitch den Bot ab, springt der Broadcaster ein.
+- Einmalige Einrichtung: `/mod DerBdu` im Chat und `/login-bot` am Streaming-PC. Ein- und Ausschalten der Chat-Module per Konsole (`bdu`/`uboat activate|deactivate`).
+- Später denkbar: weitere Nachrichten über den Bot, Umstellung per Konsole, Bewertungen per Flüstern an den Bot (siehe OFFEN.md).
+
+### Spiel UBOAT (Soldbuch)
+- Zuschauer sind im Spiel Crewmitglieder. Mit `!soldbuch` erhalten sie die Daten „ihres“ Matrosen aus dem neuesten Spielstand (ADR 0016).
+- Der Server liest die Spielstände nur, nach dem Speichern und erst nach kurzer Ruhezeit; am Spiel und an den Spielständen ändert sich nichts. Antworten nur in der Twitch-Kategorie UBOAT.
+- Zuordnung Twitch-Name ↔ Name im Spiel automatisch, abweichende Namen per Konsole (`uboat map`).
+- Später geplant: Widget „Heute an Bord“ (Daten über `/api/uboat/crew`), Crew-Ereignisse als Effekte und im Stream-Bericht.
 
 ### Stream Deck
 - Heute: OBS-Szenen und Overlays, Sounds, Videos, HA-Lichteffekte, Startskript, Werbung, Marker, Audio.
