@@ -1,7 +1,7 @@
 # Spec: BdU-Chat (`!BdU`)
 
 ## Ziel
-Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom BdU: …“ als Antwort. Die Antwort erzeugt das Enigma-Widget (Repository `BombingFritz/Uboat-Widget`, `docs/specs/chat-modus.md`); der Server erkennt, begrenzt und postet. Entscheidung: ADR 0014.
+Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten eine Antwort als Reply: vom Bot-Account „DerBdu“ ohne Präfix, ohne Bot vom Broadcaster als „FT vom BdU: …“ (ADR 0017). Die Antwort erzeugt das Enigma-Widget (Repository `BombingFritz/Uboat-Widget`, `docs/specs/chat-modus.md`); der Server erkennt, begrenzt und postet. Entscheidung: ADR 0014.
 
 ## Verhalten
 ### Erkennung
@@ -37,8 +37,17 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten „FT vom Bd
 
 ### Server-Sent Events (`GET /api/bdu/stream`)
 - Nur Loopback (Muster `/token`, ADR 0013), Herkunftsprüfung wie bei allen Browser-Anfragen.
-- Ereignis `request` mit `{id, text}`; Kommentarzeile alle 30 s gegen Verbindungsabbruch.
+- Beim Verbinden `retry: 5000` und Ereignis `hello` mit `{server, bduChat: true}` (das Widget wertet es nicht aus); danach Ereignis `request` mit `{id, text}`; Kommentarzeile alle 30 s gegen Verbindungsabbruch.
 - Mehrere Verbindungen: Anfrage nur an die zuletzt verbundene.
+
+### Verhalten des Widgets (Gegenstück, Stand Widget 1.3.0)
+Festgelegt im Widget-Repository (`docs/specs/chat-modus.md`, ADR 0004 dort); hier nur, was für den Server zählt:
+- Chat-Modus ist im Widget standardmäßig aus und steht seit 1.3.0 im eingeklappten Bereich „Für Streamer: Chat-Modus“. Server-Adresse dort, Standard `http://localhost:3000`.
+- Vorrang des Kaleu: Das Widget beantwortet eine Chat-Anfrage frühestens 60 s nach dem letzten eigenen Funkspruch und nie während eines laufenden. Die Antwort kommt deshalb bis zu etwa 60 s plus KI-Zeit später; `BDU_ANSWER_TIMEOUT_MS` (120 s) deckt das ab.
+- Es wartet höchstens eine Anfrage. Kommt eine zweite, solange eine wartet, antwortet das Widget sofort mit `{id, status: "error", error: "Warteschlange voll"}`. Mit dem globalen Limit (eine Anfrage je 3 min) kommt das praktisch nicht vor.
+- Antworten haben höchstens 400 Zeichen, eine Zeile, ohne Markdown und ohne Absendernamen; die Kürzung auf 500 Zeichen im Server greift also nur mit Präfix im Rückfall.
+- `status: "quota"` bei HTTP 429 bzw. `RESOURCE_EXHAUSTED` der KI, mit Fehlertext bis 300 Zeichen; daran unterscheidet der Server Minuten- und Tageskontingent. Der Widget-Hinweis empfiehlt Flash-Lite-Modelle wegen der kleinen kostenlosen Kontingente; zur Modellwahl gibt es seit 1.3.0 einen Benchmark im Widget-Repository.
+- Chat-Anfragen und -Antworten erscheinen nicht im Widget und nicht in seinem Funkverlauf.
 
 ### Konstanten (oben in `server.js`)
 `BDU_MAX_INPUT_CHARS = 200`, `BDU_GLOBAL_COOLDOWN_MS = 3 min`, `BDU_USER_WINDOW_MS = 30 min`, `BDU_USER_MAX = 3`, `BDU_WARNING_COOLDOWN_MS = 10 min`, `BDU_ANSWER_TIMEOUT_MS = 120 s`, `BDU_SILENCE_MS = 30 min`, `BDU_REPLY_PREFIX = 'FT vom BdU: '` (nur beim Versand als Broadcaster), Texte für Warnung und Funkstille.
@@ -72,4 +81,4 @@ Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Fu
 `server.js`: neue Konstanten, `handleBduCommand`, Helfer für Limits/Funkstille/Chat-Post, `GET /api/bdu/stream`, `POST /api/bdu/answer`, `express.json()`, Aufruf in `channel.chat.message`, `stream.online` (Funkstille Tageskontingent beenden), `/status`, Konsolenbefehle.
 
 ## Status
-umgesetzt, zusammen mit Enigma-Widget 1.2.0. Test mit Attrappen (EventSub per lokalem WebSocket, Helix-Aufrufe protokolliert, steuerbare Uhr, eigenes Arbeitsverzeichnis): 35/35 Akzeptanzprüfungen; Ende-zu-Ende mit dem Widget im Headless-Chromium: 18/18. Mit echtem Twitch und im Livestream erprobt (03.11.2026, siehe OFFEN.md); seit 07.11.2026 auch über DerBdu (ADR 0017). Limits, Warnung und Funkstille unter Last noch nicht erreicht. Offene Feldfrage: `source_broadcaster_user_id` für Shared Chat ist wie bei `handleChatNotification` nicht gegen reale Events belegt [UNGEKLÄRT].
+umgesetzt, zusammen mit Enigma-Widget 1.2.0; Schnittstelle seitdem unverändert, mit Widget 1.3.0 vom Nutzer erprobt und am Code abgeglichen (08.11.2026). Test mit Attrappen (EventSub per lokalem WebSocket, Helix-Aufrufe protokolliert, steuerbare Uhr, eigenes Arbeitsverzeichnis): 35/35 Akzeptanzprüfungen; Ende-zu-Ende mit dem Widget im Headless-Chromium: 18/18. Mit echtem Twitch und im Livestream erprobt (03.11.2026, siehe OFFEN.md); seit 07.11.2026 auch über DerBdu (ADR 0017). Limits, Warnung und Funkstille unter Last noch nicht erreicht. Offene Feldfrage: `source_broadcaster_user_id` für Shared Chat ist wie bei `handleChatNotification` nicht gegen reale Events belegt [UNGEKLÄRT].

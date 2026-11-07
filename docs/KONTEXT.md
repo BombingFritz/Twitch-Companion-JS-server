@@ -51,7 +51,7 @@ Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand 
 |---|---|---|
 | Polling-Widget | Abstimmungen mit Branding, Animation, Sound, Chat-Ausgabe; Referenz für neue Widgets | aktiv |
 | Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand | aktiv |
-| Enigma-Widget | immersive Kommunikation für U-Boot-Streams | aktiv |
+| Enigma-Widget | immersive Kommunikation für U-Boot-Streams; ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), aktuell 1.3.0 mit Benchmark zur Modellwahl im eigenen Repository | aktiv |
 | Companion-Widget | Anzeige und Steuerung von Sub-Goals, Effekten, Server-Daten | geplant / in Arbeit |
 | Spiel-Statistik-Widgets | spielbezogene Statistiken | angefangen |
 | Flavor-KI-Widgets | thematische KI-Interaktion | Idee / angefangen |
