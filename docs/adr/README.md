@@ -18,7 +18,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 |---|---|
 | [0003](0003-widgets-nur-ueber-server-endpoints.md) | Widgets holen Token und Daten beim Server, nie mit eigenen Secrets. |
 | [0013](0013-zugriffsschutz-token-und-herkunft.md) | `/token` und Login nur vom eigenen Rechner, Browser-Herkünfte per Liste. Präzisiert 0003; Nachträge: OBS-Test, Login nur lokal. |
-| [0018](0018-webkonsole-nur-lokal-mit-reitern.md) | Webkonsole unter `/admin`, nur am Streaming-PC, mit Reitern. Ergänzt 0013, Nachträge in 0006 und 0010. |
+| [0018](0018-webkonsole-nur-lokal-mit-reitern.md) | Webkonsole unter `/TwitchCompanionAdmin`, nur am Streaming-PC, mit Reitern. Ergänzt 0013, Nachträge in 0006 und 0010. |
 
 ### Effekte und Home Assistant
 | ADR | Worum es geht |

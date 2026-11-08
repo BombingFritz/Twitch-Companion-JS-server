@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 ## [Unreleased]
 
 ### Added
-- Webkonsole, Stufe 1: Statusseite unter `http://localhost:<PORT>/admin`, nur am Streaming-PC und nur zum Ansehen. Hauptseite mit Server, Twitch, Effekten, Modulen, Bot, BdU-Chat, UBOAT, Whitelist und Sub-Goal, Aktualisierung alle 5 s, Anzeige „Server nicht erreichbar“ und Hinweis auf einen neuen Serverprozess. Reiter für Live-Log, Einstellungen, Whitelist und Statistik sind angelegt und folgen nach und nach. Neu: `public/admin/`, `GET /api/admin/overview` (strenge Herkunftsprüfung, keine Tokens), Zeile in der Startanzeige (ADR 0018, Spec `webkonsole.md`).
+- Webkonsole, Stufe 1: Statusseite unter `http://localhost:<PORT>/TwitchCompanionAdmin`, nur am Streaming-PC und nur zum Ansehen. Hauptseite mit Server, Twitch, Effekten, Modulen, Bot, BdU-Chat, UBOAT, Whitelist und Sub-Goal, Aktualisierung alle 5 s, Anzeige „Server nicht erreichbar“ und Hinweis auf einen neuen Serverprozess. Reiter für Live-Log, Einstellungen, Whitelist und Statistik sind angelegt und folgen nach und nach. Neu: `public/admin/`, `GET /api/admin/overview` (strenge Herkunftsprüfung, keine Tokens), Zeile in der Startanzeige (ADR 0018, Spec `webkonsole.md`).
 
 ### Security
 - Login-CSRF geschlossen: `/login`, `/login-bot` und `/callback` nehmen nur noch Aufrufe vom eigenen Rechner an (wie `/token`). Der Broadcaster-Login trägt jetzt einen zufälligen, einmal gültigen `state`; `/callback` speichert nur mit gültigem `state`. Vorher konnte ein Gerät im Heimnetz einen Code für ein fremdes Konto an `/callback` schicken und `tokens.json` überschreiben (ADR 0013, Nachtrag 07.11.2026).

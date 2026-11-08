@@ -74,6 +74,7 @@ const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];      // erlaubte
 
 // Webkonsole (siehe ADR 0018 und docs/specs/webkonsole.md)
 const ADMIN_DIR = path.join(__dirname, 'public', 'admin');   // nur dieser Ordner wird ausgeliefert, nie der Server-Ordner
+const ADMIN_PAGE_PATH = '/TwitchCompanionAdmin';  // Adresse der Webkonsole im Browser (Groß-/Kleinschreibung egal)
 const ADMIN_OVERVIEW_PATH = '/api/admin/overview';
 const ADMIN_POLL_MS = 5000;                       // so oft holt die Hauptseite neue Werte
 const ADMIN_RECENT_EFFECTS = 5;                   // so viele letzte Effekte zeigt die Hauptseite
@@ -1277,14 +1278,14 @@ function requireAdminApi(req, res, next) {
 }
 
 function requireAdminPage(req, res, next) {
-  if (!requireLocalRequest(req, res, '/admin')) return;
+  if (!requireLocalRequest(req, res, ADMIN_PAGE_PATH)) return;
   res.set('Content-Security-Policy', ADMIN_CSP);
   res.set('X-Content-Type-Options', 'nosniff');
   next();
 }
 
 app.use('/api/admin', requireAdminApi);
-app.use('/admin', requireAdminPage, express.static(ADMIN_DIR, { dotfiles: 'ignore' }));
+app.use(ADMIN_PAGE_PATH, requireAdminPage, express.static(ADMIN_DIR, { dotfiles: 'ignore' }));
 
 app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
   const tokens = loadTokens();
@@ -2665,7 +2666,7 @@ app.listen(PORT_NUM, (err) => {
   console.log(`Prozess-ID: ${process.pid} (zum Beenden: taskkill /PID ${process.pid} /F)`);
   console.log(`Login: http://localhost:${PORT_NUM}/login`);
   console.log(`Status: http://localhost:${PORT_NUM}/status`);
-  console.log(`Webkonsole: http://localhost:${PORT_NUM}/admin`);
+  console.log(`Webkonsole: http://localhost:${PORT_NUM}${ADMIN_PAGE_PATH}`);
   console.log('═════════════════════════════════════════════');
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
