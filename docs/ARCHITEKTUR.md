@@ -13,7 +13,7 @@ Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST
 UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!soldbuch" --> server.js --> Soldbuch im Chat über Bot DerBdu (kein Treffer: nur Konsole) ; Widget --GET /api/uboat/crew
 Bot-Nachrichten: server.js --App-Access-Token, sender_id = Bot--> Helix /chat/messages (Rückfall: Broadcaster-Token; ADR 0017)
 Konsole (readline) --> server.js
-Browser am Streaming-PC --GET /admin, /api/admin/overview--> server.js (nur lokal, ADR 0018)
+Browser am Streaming-PC --GET /TwitchCompanionAdmin, /api/admin/overview--> server.js (nur lokal, ADR 0018)
 ```
 
 ## 2. Module und Funktionen
@@ -70,7 +70,7 @@ Zugriffsschutz (ADR 0013):
 - Anfragen ohne `Origin` (Stream Deck, Home Assistant, Adresszeile des Browsers) sind nicht betroffen.
 - OBS-Widgets werden per URL `file:///…` eingebunden (Herkunft `null`), nicht als „Lokale Datei“: Neuere OBS-Versionen sperren Anfragen von `http://absolute` an `localhost`, bevor sie den Server erreichen.
 - `/token` antwortet nur auf Aufrufe vom selben Rechner (Loopback-Adresse) mit Host `localhost`, `127.0.0.1` oder `[::1]`, sonst `403`. Der Host-Check verhindert DNS-Rebinding.
-- `/admin` und `/api/admin/…` sind ebenso nur lokal. Für `/api/admin/…` muss ein gesetzter `Origin` zusätzlich genau `http://localhost:<PORT>` oder `http://127.0.0.1:<PORT>` sein; `null`, `http://absolute` und `CORS_ORIGINS` (auch `*`) gelten dort nicht (ADR 0018).
+- `/TwitchCompanionAdmin` und `/api/admin/…` sind ebenso nur lokal. Für `/api/admin/…` muss ein gesetzter `Origin` zusätzlich genau `http://localhost:<PORT>` oder `http://127.0.0.1:<PORT>` sein; `null`, `http://absolute` und `CORS_ORIGINS` (auch `*`) gelten dort nicht (ADR 0018).
 
 | Pfad | Antwort | Fehler |
 |---|---|---|
@@ -79,7 +79,7 @@ Zugriffsschutz (ADR 0013):
 | `/callback?code=&state=` | `state` von `/login`: tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden. `state` von `/login-bot`: schreibt nur `bot.json`. Jeder `state` gilt einmal, 10 min | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 400 ohne gültigen `state` (nichts gespeichert), ohne `code`, bei Bot-Login mit Broadcaster-Konto oder fehlenden Scopes; 500 bei Fehler |
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bot_configured, bot_login, bot_features, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `bot_*`: Bot-Account laut `bot.json` und `BOT_FEATURES`; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
-| `/admin` | Webkonsole: statische Dateien aus `public/admin/` (`/admin` leitet auf `/admin/`), mit `Content-Security-Policy` ohne Einbettung. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 404 außerhalb von `public/admin` |
+| `/TwitchCompanionAdmin` | Webkonsole: statische Dateien aus `public/admin/` (leitet auf dieselbe Adresse mit `/` am Ende; Groß-/Kleinschreibung egal), mit `Content-Security-Policy` ohne Einbettung. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 404 außerhalb von `public/admin` |
 | `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, category, pending_confirmation: {type,count} oder null, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
@@ -183,6 +183,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `LOOPBACK_ADDRESSES` | `127.0.0.1`, `::1`, `::ffff:127.0.0.1` | Erlaubte Absender-Adressen für `/token` |
 | `LOOPBACK_HOSTNAMES` | `localhost`, `127.0.0.1`, `[::1]` | Erlaubte Host-Header für `/token` und die BdU-Endpoints |
 | `ADMIN_DIR` | `public/admin` neben `server.js` | Einziger Ordner, den die Webkonsole ausliefert |
+| `ADMIN_PAGE_PATH` | `/TwitchCompanionAdmin` | Adresse der Webkonsole im Browser |
 | `ADMIN_OVERVIEW_PATH` / `ADMIN_POLL_MS` / `ADMIN_RECENT_EFFECTS` | `/api/admin/overview` / 5000 / 5 | Datenquelle der Hauptseite, Abfrageabstand, Anzahl letzter Effekte |
 | `ADMIN_CSP` | `default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` | Header der Webkonsole |
 | `APP_VERSION` | aus `package.json` | Anzeige in der Webkonsole |

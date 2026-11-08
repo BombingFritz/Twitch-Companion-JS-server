@@ -36,6 +36,7 @@ const request = (p, headers = {}, method = 'GET') => new Promise((res, rej) => {
   }).on('error', rej).end();
 });
 const results = []; const check = (name, cond, info = '') => results.push({ name, ok: !!cond, info });
+const PAGE = '/TwitchCompanionAdmin';
 const OVERVIEW = '/api/admin/overview';
 const OWN = [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
 const STATUS_KEYS = ['authenticated', 'broadcaster_id', 'broadcaster_name', 'token_valid', 'expires_in_seconds', 'expires_in_minutes', 'auto_refresh', 'eventsub_connected', 'raid_queue_length',
@@ -43,17 +44,21 @@ const STATUS_KEYS = ['authenticated', 'broadcaster_id', 'broadcaster_name', 'tok
   'uboat_enabled', 'uboat_active', 'uboat_save', 'uboat_saved_at', 'pid', 'started_at'];
 
 async function ablauf() {
-  let r = await request('/admin/');
-  check('A1 /admin/ lokal: Seite mit Schutz-Headern', r.status === 200 && /text\/html/.test(r.headers['content-type']) && /Webkonsole/.test(r.body)
+  let r = await request(`${PAGE}/`);
+  check('A1 Seite lokal: mit Schutz-Headern', r.status === 200 && /text\/html/.test(r.headers['content-type']) && /Twitch Companion Admin/.test(r.body)
     && /frame-ancestors 'none'/.test(r.headers['content-security-policy'] || '') && r.headers['cache-control'] === 'no-store', JSON.stringify(r.headers));
-  r = await request('/admin');
-  check('A2 /admin führt zur Seite', r.status === 200 || (r.status >= 301 && r.status <= 308 && r.headers.location === '/admin/'), `${r.status} ${r.headers.location}`);
+  r = await request(PAGE);
+  check('A2 Adresse ohne Schrägstrich führt zur Seite (relative Dateipfade)', r.status >= 301 && r.status <= 308 && r.headers.location === `${PAGE}/`, `${r.status} ${r.headers.location}`);
+  r = await request(`${PAGE.toLowerCase()}/`);
+  check('A2b Adresse in Kleinbuchstaben funktioniert', r.status === 200, String(r.status));
+  r = await request('/admin/');
+  check('A2c Alte Adresse /admin antwortet nicht mehr', r.status === 404, String(r.status));
   for (const [file, type] of [['admin.js', /javascript/], ['admin.css', /css/], ['favicon.svg', /svg/]]) {
-    r = await request(`/admin/${file}`);
+    r = await request(`${PAGE}/${file}`);
     check(`A3 ${file} wird ausgeliefert`, r.status === 200 && type.test(r.headers['content-type']), `${r.status} ${r.headers['content-type']}`);
   }
 
-  r = await request('/admin/', { Host: 'example.com' });
+  r = await request(`${PAGE}/`, { Host: 'example.com' });
   check('A4 Seite mit fremdem Host: 403', r.status === 403);
   r = await request(OVERVIEW, { Host: 'example.com' });
   check('A5 Overview mit fremdem Host: 403', r.status === 403);
@@ -76,7 +81,7 @@ async function ablauf() {
     check(`A12 Herkunft ${origin}: 403`, r.status === 403, String(r.status));
   }
 
-  for (const p of ['/admin/../.env', '/admin/%2e%2e/.env', '/admin/..%2f.env', '/admin/%2e%2e%2ftokens.json', '/admin/.env', '/admin/../tokens.json', '/admin/../server.js']) {
+  for (const p of ['/../.env', '/%2e%2e/.env', '/..%2f.env', '/%2e%2e%2ftokens.json', '/.env', '/../tokens.json', '/../server.js'].map(x => PAGE + x)) {
     r = await request(p);
     check(`A13 ${p} liefert keine Datei außerhalb`, r.status !== 200 && !SECRETS.some(s => r.body.includes(s)), `${r.status}`);
   }
@@ -90,7 +95,7 @@ async function ablauf() {
 
   check('A16 Erfolgreiche Abfragen fluten die Konsole nicht', !logs.some(l => /\[HTTP\] GET \/api\/admin\/overview -> 200/.test(l)));
   check('A17 Abgelehnte Abfragen stehen in der Konsole', logs.some(l => /\[HTTP\] GET \/api\/admin\/overview -> 403/.test(l)));
-  check('A18 Startanzeige nennt die Webkonsole', logs.some(l => l.includes(`Webkonsole: http://localhost:${PORT}/admin`)));
+  check('A18 Startanzeige nennt die Webkonsole', logs.some(l => l.includes(`Webkonsole: http://localhost:${PORT}${PAGE}`)));
 }
 
 async function alleHerkuenfte() {

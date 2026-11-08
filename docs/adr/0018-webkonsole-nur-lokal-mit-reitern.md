@@ -32,3 +32,5 @@ Von Claude festgelegt, vom Nutzer als Gesamtkonzept gebilligt, aber nicht einzel
 - Der Server kennt bisher keinen Live-Status; die Hauptseite zeigt ihn erst, wenn der Stream-Bericht ihn erfasst.
 - Einfache Abfrage statt dauerhafter Verbindung auf der Hauptseite; der Live-Log nutzt später Server-Sent Events (Muster ADR 0014).
 - `AuthServer.cmd` bekommt eine Schleife für den Neustart-Code. Die Knöpfe beenden nur den Prozess, der auf dem Port antwortet; ein zweiter Server kann wegen des Abbruchs bei belegtem Port dort nicht parallel lauschen.
+
+**Nachtrag (08.11.2026, Nutzer):** Die Seite heißt statt `/admin` jetzt `/TwitchCompanionAdmin`, weil das sprechender ist; der Browser-Titel lautet „Twitch Companion Admin“. Von Claude festgelegt: `/api/admin/…` und der Ordner `public/admin/` bleiben, sie sind beim Bedienen nicht zu sehen; die alte Adresse wird nicht weitergeleitet.

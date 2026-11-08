@@ -1,4 +1,4 @@
-# Spec: Webkonsole (`/admin`)
+# Spec: Webkonsole (`/TwitchCompanionAdmin`)
 
 ## Ziel
 Eine Oberfläche im Browser des Streaming-PCs, mit der sich der Server ansehen und nach und nach bedienen lässt (OFFEN.md P1, ADR 0018). Die erste Stufe ist eine reine Statusseite, die schon als Hauptseite mit Reitern aufgebaut ist.
@@ -17,13 +17,13 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 
 ## Verhalten Stufe 1
 ### Aufruf
-- `http://localhost:<PORT>/admin` im Browser des Streaming-PCs. Beim Start nennt die Konsole die Adresse.
+- `http://localhost:<PORT>/TwitchCompanionAdmin` im Browser des Streaming-PCs (Groß-/Kleinschreibung egal). Beim Start nennt die Konsole die Adresse.
 - Aus dem Netzwerk oder mit fremdem Host: 403 (`requireLocalRequest`).
 
 ### Aufbau
 - Kopfzeile: Name des Servers, Version aus `package.json`, Verbindungsanzeige („verbunden“ / „Server nicht erreichbar“).
 - Reiterleiste: „Übersicht“ aktiv; „Live-Log“, „Einstellungen“, „Whitelist“ und „Statistik“ sichtbar, aber ausgegraut, solange sie noch nicht gebaut sind.
-- Der aktive Reiter steht in der Adresse (`/admin#uebersicht`), damit ein Neuladen ihn behält.
+- Der aktive Reiter steht in der Adresse (`/TwitchCompanionAdmin#uebersicht`), damit ein Neuladen ihn behält.
 - Jeder Reiter ist ein Eintrag `{id, title, ready, render}` in einer Liste; ein neuer Reiter braucht nur einen neuen Eintrag und seine Render-Funktion.
 
 ### Inhalt der Übersicht
@@ -60,16 +60,16 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Akzeptanzkriterien: POST ohne eigene Herkunft, GET und Aufruf aus dem Netzwerk beenden den Server nicht (403 bzw. 404); der Exit-Code stimmt; die Schleife in `AuthServer.cmd` startet nur bei Code 75 neu.
 
 ## Zugriffsschutz (ADR 0018)
-- `/admin` und `/api/admin/…`: nur lokal (`requireLocalRequest`).
+- `/TwitchCompanionAdmin` und `/api/admin/…`: nur lokal (`requireLocalRequest`).
 - `/api/admin/…`: Ist `Origin` gesetzt, muss er `http://localhost:<PORT>` oder `http://127.0.0.1:<PORT>` sein, sonst 403. Gilt auch bei `CORS_ORIGINS=*`.
 - Ab Stufe 2: ändernde Aktionen nur POST mit JSON und gesetzter eigener Herkunft.
 - Die Seite ist nicht einbettbar: `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`.
 - Texte nur per `textContent` einsetzen.
-- Dateien kommen aus `path.join(__dirname, 'public', 'admin')`, verwiesen wird mit absoluten Pfaden (`/admin/app.js`), versteckte Dateien werden nicht ausgeliefert. `__dirname` statt Arbeitsverzeichnis, weil die Tests in einem eigenen Ordner laufen.
+- Dateien kommen aus `path.join(__dirname, 'public', 'admin')`, verwiesen wird mit relativen Pfaden (`admin.js`; die Adresse ohne `/` am Ende leitet weiter, der Pfad steht so nur in `ADMIN_PAGE_PATH`), versteckte Dateien werden nicht ausgeliefert. `__dirname` statt Arbeitsverzeichnis, weil die Tests in einem eigenen Ordner laufen.
 - Keine Tokens, Secrets, Webhook-Adressen oder privaten Netzwerkadressen in Antworten oder auf der Seite.
 
 ## Konstanten (oben in `server.js`)
-`ADMIN_POLL_MS` wird der Seite über `/api/admin/overview` mitgegeben (`poll_ms`), damit der Wert nur an einer Stelle steht. `ADMIN_DIR`, `ADMIN_OVERVIEW_PATH`, `ADMIN_RECENT_EFFECTS = 5`, `ADMIN_CSP`.
+`ADMIN_POLL_MS` wird der Seite über `/api/admin/overview` mitgegeben (`poll_ms`), damit der Wert nur an einer Stelle steht. `ADMIN_DIR`, `ADMIN_PAGE_PATH`, `ADMIN_OVERVIEW_PATH`, `ADMIN_RECENT_EFFECTS = 5`, `ADMIN_CSP`.
 
 ## Nicht-Ziele Stufe 1
 - Keine ändernden Aktionen, keine neuen POST-Endpoints.
@@ -79,17 +79,17 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Kein Live-Log, kein Live-Status des Streams.
 
 ## Akzeptanzkriterien Stufe 1
-- `GET /admin` lokal liefert die Seite, die Übersicht zeigt die Werte des laufenden Servers.
+- `GET /TwitchCompanionAdmin` lokal liefert die Seite, die Übersicht zeigt die Werte des laufenden Servers.
 - Dieselben Aufrufe aus dem Netzwerk oder mit fremdem Host: 403.
 - `GET /api/admin/overview` mit `Origin: null`, `http://absolute` oder einer fremden Herkunft: 403, auch bei `CORS_ORIGINS=*`.
 - Die Antwort enthält keinen Token und kein Secret.
-- Dateien außerhalb von `public/admin` sind nicht abrufbar (z. B. `/admin/../.env`, `/admin/%2e%2e/tokens.json`).
+- Dateien außerhalb von `public/admin` sind nicht abrufbar (z. B. `/TwitchCompanionAdmin/../.env`, `/TwitchCompanionAdmin/%2e%2e/tokens.json`).
 - `/status` liefert weiterhin genau seine bisherigen Felder.
 - Server gestoppt: Die Seite meldet „Server nicht erreichbar“ und erholt sich nach dem Neustart ohne Neuladen.
 - Tests ohne echten Twitch-Chat und ohne Home Assistant (Attrappen, eigenes Arbeitsverzeichnis, AGENTS.md), neuer `test/admin-test.js` in `test/run-all.js`.
 
 ## Berührte Funktionen/Dateien
-`server.js` (Middleware für Konsole, `GET /admin`, `GET /api/admin/overview`, Hilfsfunktion für die Statuswerte, Zeile in der Startanzeige), neu `public/admin/` (`index.html`, `admin.css`, `admin.js`), neu `test/admin-test.js`, `test/run-all.js`, Doku (ARCHITEKTUR, README, CHANGELOG, OFFEN).
+`server.js` (Middleware für Konsole, `GET /TwitchCompanionAdmin`, `GET /api/admin/overview`, Hilfsfunktion für die Statuswerte, Zeile in der Startanzeige), neu `public/admin/` (`index.html`, `admin.css`, `admin.js`), neu `test/admin-test.js`, `test/run-all.js`, Doku (ARCHITEKTUR, README, CHANGELOG, OFFEN).
 
 ## Status
-Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Noch nicht am echten Server mit echtem Twitch-Login gesehen. Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufen 2 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.
+Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufen 2 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.
