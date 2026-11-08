@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -20,6 +20,8 @@ if (scenario !== 'ohne-tokens') {
 const effects = ['eins', 'zwei', 'drei', 'vier', 'fuenf', 'sechs'].map((userName, i) => ({ type: 'follow', userName, userId: String(i), count: 1, timestamp: new Date(1000 + i).toISOString() }));
 fs.writeFileSync(path.join(workDir, 'events.json'), JSON.stringify(effects));
 fs.writeFileSync(path.join(workDir, 'subgoal_cache.json'), JSON.stringify({ current: 7, target: 10, title: 'Ziel', goalId: 'g', status: 'active', lastUpdated: 'x' }));
+if (scenario === 'fehler-protokoll') fs.writeFileSync(path.join(workDir, 'error_log.json'), JSON.stringify([{ at: '2026-11-01T10:00:00.000Z', pid: 1, text: '[Test] Fehler aus einem früheren Lauf' }]));
+if (scenario === 'fehler-defekt') fs.writeFileSync(path.join(workDir, 'error_log.json'), '{ keine gültige Liste');
 process.chdir(workDir);
 
 class FakeWS extends EventEmitter { constructor() { super(); this.readyState = 1; } close() {} terminate() {} }
@@ -47,6 +49,7 @@ const OVERVIEW = '/api/admin/overview';
 const SHUTDOWN = '/api/admin/server/shutdown';
 const RESTART = '/api/admin/server/restart';
 const LOG_STREAM = '/api/admin/log/stream';
+const ERROR_LOG = '/api/admin/log/errors';
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 const EXIT_WAIT_MS = 500;
 const OWN =[`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
@@ -212,6 +215,48 @@ async function liveLog() {
   third.close();
 }
 
+const readErrorFile = () => JSON.parse(fs.readFileSync(path.join(workDir, 'error_log.json'), 'utf8'));
+
+async function fehlerProtokoll() {
+  let r = await request(ERROR_LOG, { Host: 'example.com' });
+  check('H1 Fehlerprotokoll mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await request(ERROR_LOG, { Origin: 'https://fremd.example' });
+  check('H2 Fehlerprotokoll von fremder Herkunft: 403', r.status === 403, String(r.status));
+  r = await request(ERROR_LOG, { Origin: OWN[0], ...JSON_TYPE }, 'POST', '{}');
+  check('H3 POST ändert nichts: 404', r.status === 404, String(r.status));
+  r = await request(ERROR_LOG);
+  let d = JSON.parse(r.body);
+  check('H4 Fehler aus einem früheren Lauf bleiben erhalten', r.status === 200 && d.limit === 1000 && d.entries.length === 1 && d.entries[0].text.includes('früheren Lauf'), r.body);
+
+  console.log('[Test] nur Info');
+  console.warn('[Test] nur Warnung');
+  console.error('[Test] echter Fehler', { code: 42 });
+  console.error(`[Test] Secret ${SECRETS[0]} an 192.168.1.5`);
+  r = await request(ERROR_LOG);
+  d = JSON.parse(r.body);
+  check('H5 Neuester Fehler zuerst, mit Zeit und Prozess-ID', d.entries.length === 3 && d.entries[1].text.includes('echter Fehler') && d.entries[1].text.includes('code: 42') && !Number.isNaN(Date.parse(d.entries[1].at)) && d.entries[1].pid === process.pid, r.body);
+  check('H6 Info und Warnungen nicht im Fehlerprotokoll', !/nur Info|nur Warnung/.test(r.body), r.body);
+  const file = readErrorFile();
+  check('H7 Sofort in der Datei, älteste zuerst', file.length === 3 && file[0].text.includes('früheren Lauf') && file[2].text.includes('Secret'), JSON.stringify(file));
+  const raw = fs.readFileSync(path.join(workDir, 'error_log.json'), 'utf8');
+  check('H8 Keine Secrets und privaten Adressen in der Datei', !raw.includes(SECRETS[0]) && !raw.includes('192.168.1.5') && raw.includes('<entfernt>') && raw.includes('<privat>'), raw);
+  check('H9 Keine Hilfsdatei bleibt liegen', !fs.existsSync(path.join(workDir, 'error_log.json.tmp')));
+
+  for (let i = 0; i < 1010; i++) console.error(`[Test] Massenfehler ${i}`);
+  const full = readErrorFile();
+  check('H10 Datei behält nur die letzten 1000 Fehler', full.length === 1000 && full[0].text === '[Test] Massenfehler 10' && full[999].text === '[Test] Massenfehler 1009', `${full.length} ${full[0].text}`);
+  r = await request(ERROR_LOG);
+  d = JSON.parse(r.body);
+  check('H11 Abruf ebenso begrenzt', d.entries.length === 1000 && d.entries[0].text === '[Test] Massenfehler 1009', String(d.entries.length));
+}
+
+async function fehlerDefekt() {
+  let r = await request(ERROR_LOG);
+  check('I1 Defekte Datei: leere Liste, kein Absturz', r.status === 200 && JSON.parse(r.body).entries.length === 0, r.body);
+  console.error('[Test] nach defekter Datei');
+  check('I2 Der nächste Fehler schreibt eine gültige Datei', readErrorFile().length === 1);
+}
+
 async function serverBeenden() {
   let r = await request(OVERVIEW);
   check('D1 Ohne AuthServer.cmd: can_restart ist false', JSON.parse(r.body).can_restart === false, r.body);
@@ -276,6 +321,8 @@ async function ohneTokens() {
   else if (scenario === 'server-beenden') await serverBeenden();
   else if (scenario === 'server-neustart') await serverNeustart();
   else if (scenario === 'live-log') await liveLog();
+  else if (scenario === 'fehler-protokoll') await fehlerProtokoll();
+  else if (scenario === 'fehler-defekt') await fehlerDefekt();
   else await ablauf();
 
   console.log = realLog;

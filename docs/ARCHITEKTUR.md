@@ -15,6 +15,7 @@ Bot-Nachrichten: server.js --App-Access-Token, sender_id = Bot--> Helix /chat/me
 Konsole (readline) --> server.js
 Browser am Streaming-PC --GET /TwitchCompanionAdmin, /api/admin/overview--> server.js (nur lokal, ADR 0018)
 console.log/info/warn/error --> Puffer (RAM, bereinigt) --SSE /api/admin/log/stream--> Reiter Live-Log (nur lokal, ADR 0018)
+console.error --> error_log.json (bereinigt, letzte 1000) --GET /api/admin/log/errors--> Fehlerprotokoll im Reiter Live-Log
 Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js --Exit 0 oder 75--> AuthServer.cmd (bei 75 Neustart im selben Fenster)
 ```
 
@@ -35,7 +36,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `runManualConfirmation`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
-| Live-Log (ADR 0018) | `sanitizeLogText`, `recordLogLine`, `writeLogEntry`, `logRedactedValues`; `console.log/info/warn/error` werden umhüllt; RAM: `logBuffer`, `logClients`, `nextLogId`, `logRedactions` |
+| Live-Log (ADR 0018) | `sanitizeLogText`, `recordLogLine`, `writeLogEntry`, `logRedactedValues`, `loadErrorLog`, `saveErrorLog`, `appendErrorLog`; `console.log/info/warn/error` werden umhüllt; RAM: `logBuffer`, `logClients`, `nextLogId`, `logRedactions`, `errorLog` |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification`; in `connectEventSub` intern `armKeepalive` (Zeitgeber für die Keepalive-Überwachung) |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`; mit `feature` aus `BOT_FEATURES` über den Bot), `sendShoutout` |
 | Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
@@ -61,6 +62,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
 | `modules.json` | `{bdu, uboat}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an |
 | `bot.json` | `{bot_id, bot_login, bot_name, authorized_at}` (ADR 0017), keine Tokens; fehlt die Datei: kein Bot, alles als Broadcaster |
+| `error_log.json` | Array, max. 1000 Einträge, älteste zuerst: `{at, pid, text}`, Text bereinigt (ADR 0018); fehlt die Datei oder ist sie ungültig: leer. Geschrieben über `error_log.json.tmp` |
 
 Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data Sheets\UBOAT - Locales.dat` (deutsche Namen).
 
@@ -85,6 +87,7 @@ Zugriffsschutz (ADR 0013):
 | `/TwitchCompanionAdmin` | Webkonsole: statische Dateien aus `public/admin/` (leitet auf dieselbe Adresse mit `/` am Ende; Groß-/Kleinschreibung egal), mit `Content-Security-Policy` ohne Einbettung. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 404 außerhalb von `public/admin` |
 | `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), ha_webhook_configured (nur ja/nein, nie die Adresse), category, pending_confirmation: {type,count} oder null, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/stream` | Server-Sent Events für den Live-Log: `retry: 5000`, Ereignis `hello` `{pid, started_at}`, dann der Puffer und jede neue Zeile als `line` `{id, at, level: info/warn/error, text}`, Kommentar-Ping alle 30 s. Texte ohne Secrets, Tokens, Webhook-Adresse und private Adressen | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
+| `/api/admin/log/errors` | `{entries: [{at, pid, text}] (neuester zuerst, höchstens 1000), limit}` aus `error_log.json` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
 | `POST /api/admin/server/restart` | wie oben, Exit-Code 75; `AuthServer.cmd` startet neu | wie oben; zusätzlich 409 ohne `AuthServer.cmd` |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
@@ -199,6 +202,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `ADMIN_LOG_STREAM_PATH` / `ADMIN_LOG_PING_MS` | `/api/admin/log/stream` / 30000 | Live-Log-Verbindung und Lebenszeichen |
 | `ADMIN_LOG_BUFFER_LINES` / `ADMIN_LOG_MAX_CHARS` | 1000 / 4000 | Größe des Log-Puffers, Kürzung langer Einträge |
 | `LOG_REDACTED` / `LOG_PRIVATE_ADDRESS` | `<entfernt>` / `<privat>` | Platzhalter im Live-Log |
+| `ADMIN_ERROR_LOG_PATH` / `ERROR_LOG_MAX_ENTRIES` | `/api/admin/log/errors` / 1000 | Fehlerprotokoll |
 | `APP_VERSION` | aus `package.json` | Anzeige in der Webkonsole |
 | `BDU_COMMAND` | `!bdu` | Chat-Befehl (Groß-/Kleinschreibung egal) |
 | `BDU_MAX_INPUT_CHARS` | 200 | Kürzung des Textes nach dem Befehl |
