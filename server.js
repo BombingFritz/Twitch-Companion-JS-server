@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
@@ -10,6 +11,7 @@ require('dotenv').config();
 
 const app = express();
 const SERVER_STARTED_AT = new Date().toISOString();   // für /status und Startanzeige (welcher Prozess antwortet?)
+const APP_VERSION = require('./package.json').version;
 
 const {
   CLIENT_ID,
@@ -69,6 +71,13 @@ const EVENTSUB_KEEPALIVE_GRACE_MS = 5000;         // Zuschlag auf das Keepalive-
 const DEFAULT_CORS_ORIGINS = ['http://absolute', 'null'];
 const LOOPBACK_ADDRESSES = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];  // /token nur von diesem Rechner
 const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];      // erlaubte Host-Header für /token
+
+// Webkonsole (siehe ADR 0018 und docs/specs/webkonsole.md)
+const ADMIN_DIR = path.join(__dirname, 'public', 'admin');   // nur dieser Ordner wird ausgeliefert, nie der Server-Ordner
+const ADMIN_OVERVIEW_PATH = '/api/admin/overview';
+const ADMIN_POLL_MS = 5000;                       // so oft holt die Hauptseite neue Werte
+const ADMIN_RECENT_EFFECTS = 5;                   // so viele letzte Effekte zeigt die Hauptseite
+const ADMIN_CSP = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 // BdU-Chat (!BdU, siehe ADR 0014 und docs/specs/bdu-chat.md)
 const BDU_COMMAND = '!bdu';
@@ -131,6 +140,8 @@ let lastRequestLogLine = null;
 app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on('finish', () => {
+    // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
+    if (req.method === 'GET' && req.path === ADMIN_OVERVIEW_PATH && res.statusCode === 200) return;
     const durationMs = Date.now() - startedAt;
     // OAuth-Code und state aus /callback nicht ins Protokoll schreiben
     const url = req.originalUrl.replace(/([?&](?:code|state)=)[^&]*/g, '$1…');
@@ -1199,24 +1210,24 @@ app.get('/api/uboat/crew', (req, res) => {
   });
 });
 
-app.get('/status', (req, res) => {
-  const tokens = loadTokens();
-  if (!tokens) {
-    return res.json({ authenticated: false, message: 'Keine Tokens vorhanden. Bitte login durchführen.', pid: process.pid, started_at: SERVER_STARTED_AT });
-  }
-
-  const now = Date.now();
+// Anmeldestand für /status und die Webkonsole (setzt vorhandene Tokens voraus)
+function buildAuthStatus(tokens) {
   const expiresAt = tokens.expires_at || (tokens.obtained_at + tokens.expires_in * 1000);
-  const remainingSeconds = Math.floor((expiresAt - now) / 1000);
-
-  res.json({
+  const remainingSeconds = Math.floor((expiresAt - Date.now()) / 1000);
+  return {
     authenticated: true,
     broadcaster_id: tokens.broadcaster_id,
     broadcaster_name: tokens.broadcaster_name,
     token_valid: remainingSeconds > 0,
     expires_in_seconds: remainingSeconds,
     expires_in_minutes: Math.floor(remainingSeconds / 60),
-    auto_refresh: true,
+    auto_refresh: true
+  };
+}
+
+// Laufzeitwerte für /status und die Webkonsole
+function buildRuntimeStatus() {
+  return {
     eventsub_connected: eventSubWs !== null && eventSubWs.readyState === WebSocket.OPEN,
     raid_queue_length: raidQueue.length,
     whitelist_count: Object.keys(loadWhitelist()).length,
@@ -1236,6 +1247,69 @@ app.get('/status', (req, res) => {
     uboat_saved_at: uboatCrew && uboatCrew.getState().savedAt ? new Date(uboatCrew.getState().savedAt).toISOString() : null,
     pid: process.pid,
     started_at: SERVER_STARTED_AT
+  };
+}
+
+app.get('/status', (req, res) => {
+  const tokens = loadTokens();
+  if (!tokens) {
+    return res.json({ authenticated: false, message: 'Keine Tokens vorhanden. Bitte login durchführen.', pid: process.pid, started_at: SERVER_STARTED_AT });
+  }
+  res.json({ ...buildAuthStatus(tokens), ...buildRuntimeStatus() });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// WEBKONSOLE – nur am Streaming-PC (ADR 0018, docs/specs/webkonsole.md)
+// ═══════════════════════════════════════════════════════════════════
+
+// Strenger als die allgemeine Herkünfte-Liste (ADR 0013): "null" senden auch abgeschottete
+// iframes fremder Seiten, und CORS_ORIGINS=* darf die Konsole nicht öffnen.
+const adminOrigins = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
+
+function requireAdminApi(req, res, next) {
+  if (!requireLocalRequest(req, res, '/api/admin')) return;
+  const origin = req.headers.origin;
+  if (origin !== undefined && !adminOrigins.has(origin)) {
+    logIfChanged(`admin-origin-blocked:${origin}`, `[Zugriffsschutz] Webkonsole: Anfrage von Herkunft "${origin}" abgelehnt (${req.method} ${req.path}).`, 'warn');
+    return res.status(403).json({ error: 'Herkunft nicht erlaubt', origin });
+  }
+  next();
+}
+
+function requireAdminPage(req, res, next) {
+  if (!requireLocalRequest(req, res, '/admin')) return;
+  res.set('Content-Security-Policy', ADMIN_CSP);
+  res.set('X-Content-Type-Options', 'nosniff');
+  next();
+}
+
+app.use('/api/admin', requireAdminApi);
+app.use('/admin', requireAdminPage, express.static(ADMIN_DIR, { dotfiles: 'ignore' }));
+
+app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
+  const tokens = loadTokens();
+  const { broadcaster_id, ...auth } = tokens ? buildAuthStatus(tokens) : { authenticated: false };
+  const { allowed_origins, ...runtime } = buildRuntimeStatus();
+  const { current, target, title, status, lastUpdated } = loadSubGoalCache();
+  res.json({
+    ...auth,
+    ...runtime,
+    version: APP_VERSION,
+    port: Number(PORT),
+    poll_ms: ADMIN_POLL_MS,
+    category: currentCategory,
+    pending_confirmation: pendingManualConfirmation
+      ? { type: pendingManualConfirmation.job.type, count: pendingManualConfirmation.job.count }
+      : null,
+    recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
+      type: e.type,
+      count: e.count,
+      userName: e.userName || null,
+      giftCount: e.giftCount || null,
+      skipped: Boolean(e.skippedManualTimeout),
+      timestamp: e.timestamp
+    })),
+    subgoal: { current, target, title, status, lastUpdated }
   });
 });
 
@@ -2591,6 +2665,7 @@ app.listen(PORT_NUM, (err) => {
   console.log(`Prozess-ID: ${process.pid} (zum Beenden: taskkill /PID ${process.pid} /F)`);
   console.log(`Login: http://localhost:${PORT_NUM}/login`);
   console.log(`Status: http://localhost:${PORT_NUM}/status`);
+  console.log(`Webkonsole: http://localhost:${PORT_NUM}/admin`);
   console.log('═════════════════════════════════════════════');
   console.log(`Effekt-Modus beim Start: ${effectMode.toUpperCase()}`);
   console.log(`Erlaubte Widget-Herkünfte: ${corsAllowAll ? '* (ALLE – Notschalter aktiv, unsicher!)' : [...allowedOrigins].join(', ')}`);
