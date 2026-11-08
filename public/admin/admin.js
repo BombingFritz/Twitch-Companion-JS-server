@@ -11,6 +11,9 @@ const EXIT_POLL_MS = 1000;
 const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
+const LOG_STREAM_URL = '/api/admin/log/stream';
+const LOG_MAX_LINES = 2000;
+const LOG_BOTTOM_TOLERANCE_PX = 24;
 const LIGHT_LABELS = { ok: 'funktioniert', bad: 'Fehler', off: 'nicht aktiv' };
 const SERVER_ACTIONS = {
   restart: { url: '/api/admin/server/restart', label: 'Server neu starten', question: 'Server wirklich neu starten?', yes: 'Ja, neu starten', warnMs: 30000 },
@@ -20,7 +23,7 @@ const EFFECT_LABELS = { follow: 'Follow', sub: 'Sub', gift: 'Gift' };
 
 const TABS = [
   { id: 'uebersicht', title: 'Übersicht', ready: true, render: renderOverview },
-  { id: 'log', title: 'Live-Log', ready: false },
+  { id: 'log', title: 'Live-Log', ready: true, render: renderLog },
   { id: 'einstellungen', title: 'Einstellungen', ready: false },
   { id: 'whitelist', title: 'Whitelist', ready: false },
   { id: 'statistik', title: 'Statistik', ready: false },
@@ -30,6 +33,7 @@ const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
+  log: { view: null, list: null, status: null, toEnd: null, source: null, pid: null, lastId: 0, filter: '', onlyProblems: false, follow: true },
 };
 
 // ── DOM-Helfer ──────────────────────────────────────────────────────
@@ -72,6 +76,10 @@ function dateTime(iso) {
 }
 
 // Einträge von heute nur mit Uhrzeit, ältere zusätzlich mit Datum.
+function logTime(iso) {
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 function effectTime(iso, now = new Date()) {
   return new Date(iso).toDateString() === now.toDateString() ? clock(iso) : dateTime(iso);
 }
@@ -150,6 +158,99 @@ function renderContent() {
     return;
   }
   activeTab().render(content, state.data);
+}
+
+// ── Live-Log ────────────────────────────────────────────────────────
+function logLineMatches(line) {
+  if (state.log.onlyProblems && line.dataset.level === 'info') return false;
+  return !state.log.filter || line.dataset.search.includes(state.log.filter);
+}
+
+function applyLogFilter() {
+  for (const line of state.log.list.children) line.hidden = !logLineMatches(line);
+  scrollLogIfFollowing();
+}
+
+function setLogFollow(follow) {
+  state.log.follow = follow;
+  state.log.toEnd.hidden = follow;
+}
+
+function scrollLogIfFollowing() {
+  if (state.log.follow) state.log.list.scrollTop = state.log.list.scrollHeight;
+}
+
+function appendLogNode(line) {
+  line.hidden = !logLineMatches(line);
+  state.log.list.append(line);
+  while (state.log.list.children.length > LOG_MAX_LINES) state.log.list.firstChild.remove();
+  scrollLogIfFollowing();
+}
+
+function appendLogSeparator(text) {
+  const line = el('div', { class: 'log-separator', text });
+  line.dataset.level = 'info';
+  line.dataset.search = text.toLowerCase();
+  appendLogNode(line);
+}
+
+function appendLogEntry(entry) {
+  if (entry.id <= state.log.lastId) return;
+  state.log.lastId = entry.id;
+  const line = el('div', { class: `log-line ${entry.level}` }, el('time', { text: logTime(entry.at) }), el('span', { text: entry.text }));
+  line.dataset.level = entry.level;
+  line.dataset.search = entry.text.toLowerCase();
+  appendLogNode(line);
+}
+
+function connectLog() {
+  if (state.log.source) return;
+  state.log.status.textContent = 'verbinde …';
+  const source = new EventSource(LOG_STREAM_URL);
+  state.log.source = source;
+  source.addEventListener('hello', event => {
+    const { pid } = JSON.parse(event.data);
+    if (state.log.pid !== null && state.log.pid !== pid) {
+      appendLogSeparator(`Neuer Serverprozess: PID ${pid} (vorher ${state.log.pid})`);
+      state.log.lastId = 0;
+    }
+    state.log.pid = pid;
+    state.log.status.textContent = 'live';
+  });
+  source.addEventListener('line', event => appendLogEntry(JSON.parse(event.data)));
+  source.onerror = () => { state.log.status.textContent = 'getrennt, verbinde neu …'; };
+}
+
+function logView() {
+  const log = state.log;
+  if (log.view) return log.view;
+  log.list = el('div', { class: 'log-list', role: 'log', 'aria-live': 'off', tabindex: '0' });
+  log.list.addEventListener('scroll', () => {
+    const distance = log.list.scrollHeight - log.list.scrollTop - log.list.clientHeight;
+    setLogFollow(distance <= LOG_BOTTOM_TOLERANCE_PX);
+  });
+  // Eine andere Breite bricht die Zeilen neu um; das darf das Mitlaufen nicht beenden.
+  new ResizeObserver(scrollLogIfFollowing).observe(log.list);
+  log.status = el('span', { class: 'log-status' });
+  log.toEnd = actionButton('Zum neuesten Eintrag', '', () => { setLogFollow(true); scrollLogIfFollowing(); }, false);
+  log.toEnd.hidden = true;
+  const search = el('input', { type: 'search', placeholder: 'Filtern …', 'aria-label': 'Log filtern', class: 'log-search' });
+  search.addEventListener('input', () => { log.filter = search.value.trim().toLowerCase(); applyLogFilter(); });
+  const problems = el('input', { type: 'checkbox' });
+  problems.addEventListener('change', () => { log.onlyProblems = problems.checked; applyLogFilter(); });
+  log.view = el('section', { class: 'log' },
+    el('div', { class: 'log-toolbar' }, search, el('label', { class: 'log-check' }, problems, 'Nur Warnungen und Fehler'), log.toEnd, log.status),
+    log.list);
+  return log.view;
+}
+
+function renderLog(content) {
+  const view = logView();
+  if (content.firstChild !== view) {
+    content.replaceChildren(view);
+    scrollLogIfFollowing();
+  }
+  connectLog();
 }
 
 // ── Server beenden und neu starten ──────────────────────────────────

@@ -39,6 +39,7 @@ const runs = [
   ['admin-test.js', ['ohne-tokens']],
   ['admin-test.js', ['server-beenden']],
   ['admin-test.js', ['server-neustart']],
+  ['admin-test.js', ['live-log']],
   ['admin-format-test.js', []],
   ['authserver-test.js', []],
 ];

@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -11,7 +11,8 @@ const PORT = 40300 + Math.floor(Math.random() * 250);
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-'));
 const SECRETS = ['CLIENT-SECRET-ATTRAPPE', 'ACCESS-TOKEN-ATTRAPPE', 'REFRESH-TOKEN-ATTRAPPE'];
 fs.writeFileSync(path.join(workDir, '.env'), `CLIENT_ID=<CLIENT_ID>\nCLIENT_SECRET=${SECRETS[0]}\nREDIRECT_URI=http://localhost:${PORT}/callback\nPORT=${PORT}\nSCOPES=chat:read\n`
-  + (scenario === 'alle-herkuenfte' ? 'CORS_ORIGINS=*\nHA_WEBHOOK_URL=http://ha-attrappe.invalid/hook\n' : ''));
+  + (scenario === 'alle-herkuenfte' ? 'CORS_ORIGINS=*\nHA_WEBHOOK_URL=http://ha-attrappe.invalid/hook\n' : '')
+  + (scenario === 'live-log' ? 'HA_WEBHOOK_URL=http://ha-attrappe.invalid:8123/api/webhook/geheime-webhook-id\n' : ''));
 if (scenario !== 'ohne-tokens') {
   fs.writeFileSync(path.join(workDir, 'tokens.json'), JSON.stringify({ access_token: SECRETS[1], refresh_token: SECRETS[2], broadcaster_id: '4711', broadcaster_name: 'testkanal',
     obtained_at: Date.now(), expires_in: 99999, expires_at: Date.now() + 99999000 }));
@@ -45,6 +46,7 @@ const PAGE = '/TwitchCompanionAdmin';
 const OVERVIEW = '/api/admin/overview';
 const SHUTDOWN = '/api/admin/server/shutdown';
 const RESTART = '/api/admin/server/restart';
+const LOG_STREAM = '/api/admin/log/stream';
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 const EXIT_WAIT_MS = 500;
 const OWN =[`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
@@ -121,6 +123,95 @@ async function alleHerkuenfte() {
   check('B5 Mit Webhook: nur die Angabe, nicht die Adresse', JSON.parse(r.body).ha_webhook_configured === true && !r.body.includes('ha-attrappe'), r.body);
 }
 
+// Offene Live-Log-Verbindung: sammelt alle Ereignisse in events.
+function openLogStream() {
+  const stream = { events: [], status: null, close: () => {} };
+  const req = http.get({ host: '127.0.0.1', port: PORT, path: LOG_STREAM }, res => {
+    stream.status = res.statusCode;
+    stream.type = res.headers['content-type'];
+    let rest = '';
+    res.setEncoding('utf8');
+    res.on('data', chunk => {
+      rest += chunk;
+      const blocks = rest.split('\n\n');
+      rest = blocks.pop();
+      for (const block of blocks) {
+        const event = (block.match(/^event: (.*)$/m) || [])[1];
+        const data = (block.match(/^data: (.*)$/m) || [])[1];
+        if (event) stream.events.push({ event, data: JSON.parse(data) });
+      }
+    });
+  });
+  req.on('error', () => {});
+  stream.close = () => req.destroy();
+  return stream;
+}
+
+async function liveLog() {
+  const lines = s => s.events.filter(e => e.event === 'line').map(e => e.data);
+  const findLine = (s, text) => lines(s).find(l => l.text.includes(text));
+  let r = await request(LOG_STREAM, { Host: 'example.com' });
+  check('G1 Live-Log mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await request(LOG_STREAM, { Origin: 'https://fremd.example' });
+  check('G2 Live-Log von fremder Herkunft: 403', r.status === 403, String(r.status));
+
+  console.log('[Test] Zeile vor der Verbindung');
+  const stream = openLogStream();
+  await sleep(200);
+  check('G3 Ereignis-Strom', stream.status === 200 && /text\/event-stream/.test(stream.type), `${stream.status} ${stream.type}`);
+  check('G4 Beginnt mit Prozess-ID', stream.events[0] && stream.events[0].event === 'hello' && stream.events[0].data.pid === process.pid, JSON.stringify(stream.events[0]));
+  check('G5 Liefert Zeilen von vor der Verbindung', !!findLine(stream, 'Zeile vor der Verbindung') && !!findLine(stream, 'Webkonsole: http://localhost'));
+
+  console.log('[Test] neue Zeile');
+  console.warn('[Test] Warnzeile');
+  console.error('[Test] Fehlerzeile', { code: 7 });
+  await sleep(100);
+  const fresh = findLine(stream, 'neue Zeile');
+  check('G6 Neue Zeile kommt live an', fresh && fresh.level === 'info' && !Number.isNaN(Date.parse(fresh.at)), JSON.stringify(fresh));
+  check('G7 Stufe warn', (findLine(stream, 'Warnzeile') || {}).level === 'warn');
+  check('G8 Stufe error und Objekte als Text', (findLine(stream, 'Fehlerzeile') || {}).level === 'error' && findLine(stream, 'Fehlerzeile').text.includes('code: 7'));
+  const ids = lines(stream).map(l => l.id);
+  check('G9 Zeilen haben aufsteigende ids', ids.every((id, i) => i === 0 || id > ids[i - 1]), ids.join(','));
+
+  console.log(`[Test] Secret ${SECRETS[0]}`);
+  console.error('[Test] Antwort', { access_token: 'token-abc', refresh_token: 'token-def' });
+  console.log('[Test] Kopf Authorization: Bearer token-ghi OAuth token-jkl');
+  console.log('[Test] Link ?client_secret=wert-mno&x=1');
+  console.error('[Test] Webhook http://ha-attrappe.invalid:8123/api/webhook/geheime-webhook-id');
+  console.error('[Test] getaddrinfo ENOTFOUND ha-attrappe.invalid');
+  console.error('[Test] Pfad /api/webhook/geheime-webhook-id');
+  console.error('[Test] connect 192.168.1.5:8123 und 10.0.0.2 und 172.20.1.1 und öffentlich 172.15.1.1 und 127.0.0.1');
+  await sleep(100);
+  const all = lines(stream).map(l => l.text).join('\n');
+  check('G10 Client-Secret nicht im Live-Log', !all.includes(SECRETS[0]) && all.includes('[Test] Secret <entfernt>'), all);
+  check('G11 Tokens nicht im Live-Log', !/token-abc|token-def|token-ghi|token-jkl|wert-mno/.test(all), all);
+  check('G12 Webhook-Adresse, Host und ID nicht im Live-Log', !/ha-attrappe|geheime-webhook-id/.test(all), all);
+  const addresses = findLine(stream, 'connect ');
+  check('G13 Private Adressen ersetzt, andere bleiben', addresses && !/192\.168|10\.0\.0\.2|172\.20/.test(addresses.text) && addresses.text.includes('172.15.1.1') && addresses.text.includes('127.0.0.1'), addresses && addresses.text);
+  check('G14 Das Konsolenfenster bleibt unverändert', logs.some(l => l.includes(`[Test] Secret ${SECRETS[0]}`)));
+
+  console.log(`[Test] lang ${'x'.repeat(5000)}`);
+  console.log('[Test] mehrzeilig\nzweite Zeile');
+  await sleep(100);
+  const long = findLine(stream, 'lang xxx');
+  check('G15 Sehr lange Zeilen werden gekürzt', long && long.text.length < 4100 && long.text.endsWith('(gekürzt)'), long && long.text.length);
+  check('G16 Zeilenumbrüche bleiben erhalten', (findLine(stream, 'mehrzeilig') || { text: '' }).text.includes('\nzweite Zeile'));
+
+  const second = openLogStream();
+  await sleep(150);
+  stream.close();
+  second.close();
+  await sleep(100);
+  for (let i = 0; i < 1010; i++) console.log(`[Test] Massenzeile ${i}`);
+  console.log('[Test] nach dem Trennen');
+  const third = openLogStream();
+  await sleep(300);
+  const buffered = lines(third);
+  check('G17 Puffer begrenzt auf 1000 Zeilen, älteste fallen weg', buffered.length === 1000 && !findLine(third, 'Massenzeile 0') && !!findLine(third, 'Massenzeile 1009'), String(buffered.length));
+  check('G18 Getrennte Verbindungen stören nicht', !!findLine(third, 'nach dem Trennen'));
+  third.close();
+}
+
 async function serverBeenden() {
   let r = await request(OVERVIEW);
   check('D1 Ohne AuthServer.cmd: can_restart ist false', JSON.parse(r.body).can_restart === false, r.body);
@@ -184,6 +275,7 @@ async function ohneTokens() {
   else if (scenario === 'ohne-tokens') await ohneTokens();
   else if (scenario === 'server-beenden') await serverBeenden();
   else if (scenario === 'server-neustart') await serverNeustart();
+  else if (scenario === 'live-log') await liveLog();
   else await ablauf();
 
   console.log = realLog;
