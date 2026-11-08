@@ -6,7 +6,7 @@ Eine Oberfläche im Browser des Streaming-PCs, mit der sich der Server ansehen u
 ## Stufen (je ein PR)
 | Stufe | Inhalt | Stand |
 |---|---|---|
-| 1 | Hauptseite „Übersicht“ und Reiter-Gerüst, nur ansehen | diese Spec |
+| 1 | Hauptseite „Übersicht“ und Reiter-Gerüst, nur ansehen | umgesetzt |
 | 2 | Knöpfe „Server beenden“ und „Server neu starten“ auf der Hauptseite (erste ändernde Aktion) | siehe unten |
 | 3 | Reiter „Live-Log“: Puffer im Server, Live-Anzeige per Server-Sent Events | später, eigene Ergänzung dieser Spec |
 | 4 | Reiter „Einstellungen“: Modul-Schalter, Effekt-Modus mit Bestätigung (GET-Endpoints entfallen), Bot-Zuordnung | später |
@@ -47,7 +47,8 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 
 ### `GET /api/admin/overview`
 - Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `category`, `pending_confirmation`, `recent_effects` (letzte 5), `subgoal`.
-- `/status` bleibt unverändert; beide nutzen dieselbe Hilfsfunktion, damit die Werte nicht auseinanderlaufen.
+- `/status` bleibt unverändert; beide nutzen dieselben Hilfsfunktionen (`buildAuthStatus`, `buildRuntimeStatus`), damit die Werte nicht auseinanderlaufen.
+- Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll der Konsole, sonst stünde dort alle 5 s eine Zeile. Abgelehnte Abrufe erscheinen weiterhin.
 
 ## Verhalten Stufe 2: Server beenden und neu starten
 - Zwei Knöpfe in der Karte „Server“, je mit Rückfrage, damit ein Fehlklick im Stream nichts auslöst.
@@ -68,7 +69,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Keine Tokens, Secrets, Webhook-Adressen oder privaten Netzwerkadressen in Antworten oder auf der Seite.
 
 ## Konstanten (oben in `server.js`)
-`ADMIN_POLL_MS` wird der Seite über `/api/admin/overview` mitgegeben (`poll_ms`), damit der Wert nur an einer Stelle steht. `ADMIN_DIR`, `ADMIN_RECENT_EFFECTS = 5`.
+`ADMIN_POLL_MS` wird der Seite über `/api/admin/overview` mitgegeben (`poll_ms`), damit der Wert nur an einer Stelle steht. `ADMIN_DIR`, `ADMIN_OVERVIEW_PATH`, `ADMIN_RECENT_EFFECTS = 5`, `ADMIN_CSP`.
 
 ## Nicht-Ziele Stufe 1
 - Keine ändernden Aktionen, keine neuen POST-Endpoints.
@@ -91,4 +92,4 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 `server.js` (Middleware für Konsole, `GET /admin`, `GET /api/admin/overview`, Hilfsfunktion für die Statuswerte, Zeile in der Startanzeige), neu `public/admin/` (`index.html`, `admin.css`, `admin.js`), neu `test/admin-test.js`, `test/run-all.js`, Doku (ARCHITEKTUR, README, CHANGELOG, OFFEN).
 
 ## Status
-Geplant, Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Noch kein Code. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.
+Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Noch nicht am echten Server mit echtem Twitch-Login gesehen. Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufen 2 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.

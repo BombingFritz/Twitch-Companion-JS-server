@@ -1,6 +1,6 @@
 # ADR 0018: Webkonsole unter `/admin`, nur am Streaming-PC, mit Reitern
 
-**Status:** Akzeptiert (08.11.2026), noch nicht umgesetzt.
+**Status:** Akzeptiert (08.11.2026). Stufe 1 (Statusseite) umgesetzt, weitere Stufen siehe Spec.
 Vom Nutzer entschieden (08.11.2026): Zugriff nur am Streaming-PC; die Whitelist darf über die Webkonsole verwaltet werden; die erste Version ist eine Statusseite zum Ansehen, aber ausbaufähig angelegt (Hauptseite mit den wichtigsten Infos, Reiter für Bereiche wie Live-Log, Einstellungsschalter, Whitelist, Statistik, nach und nach angelegt); die Stream-Deck-Tasten für den Effekt-Modus können durch die Seite ersetzt werden; auf die Hauptseite kommen ein Knopf „Streamlog beenden“ und ein Knopf zum Beenden und Neustarten des Servers, dessen Ende in der Oberfläche sichtbar ist.
 Von Claude festgelegt, vom Nutzer als Gesamtkonzept gebilligt, aber nicht einzeln zur Wahl gestellt: Adresse `/admin`, eigene Dateien ohne Build-Schritt und ohne Framework, eigener Pfad `/api/admin/…`, strenge Herkunftsprüfung, Abfrage alle 5 s, Wegfall der GET-Endpoints für den Effekt-Modus samt Bestätigung, Reihenfolge der Reiter, Neustart über einen Exit-Code in `AuthServer.cmd`.
 

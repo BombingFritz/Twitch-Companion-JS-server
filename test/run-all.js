@@ -34,6 +34,9 @@ const runs = [
   ['bot-test.js', ['eingerichtet']],
   ['bot-test.js', ['ohne-bot']],
   ['login-test.js', []],
+  ['admin-test.js', ['ablauf']],
+  ['admin-test.js', ['alle-herkuenfte']],
+  ['admin-test.js', ['ohne-tokens']],
 ];
 
 let ok = 0, fail = 0;
