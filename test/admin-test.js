@@ -11,7 +11,7 @@ const PORT = 40300 + Math.floor(Math.random() * 250);
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'admin-'));
 const SECRETS = ['CLIENT-SECRET-ATTRAPPE', 'ACCESS-TOKEN-ATTRAPPE', 'REFRESH-TOKEN-ATTRAPPE'];
 fs.writeFileSync(path.join(workDir, '.env'), `CLIENT_ID=<CLIENT_ID>\nCLIENT_SECRET=${SECRETS[0]}\nREDIRECT_URI=http://localhost:${PORT}/callback\nPORT=${PORT}\nSCOPES=chat:read\n`
-  + (scenario === 'alle-herkuenfte' ? 'CORS_ORIGINS=*\n' : ''));
+  + (scenario === 'alle-herkuenfte' ? 'CORS_ORIGINS=*\nHA_WEBHOOK_URL=http://ha-attrappe.invalid/hook\n' : ''));
 if (scenario !== 'ohne-tokens') {
   fs.writeFileSync(path.join(workDir, 'tokens.json'), JSON.stringify({ access_token: SECRETS[1], refresh_token: SECRETS[2], broadcaster_id: '4711', broadcaster_name: 'testkanal',
     obtained_at: Date.now(), expires_in: 99999, expires_at: Date.now() + 99999000 }));
@@ -76,6 +76,7 @@ async function ablauf() {
   const d = JSON.parse(r.body);
   check('A6 Overview lokal: Laufzeitwerte und Ergänzungen', r.status === 200 && d.authenticated === true && d.broadcaster_name === 'testkanal' && d.pid === process.pid
     && d.poll_ms === 5000 && d.port === PORT && /^\d+\.\d+\.\d+/.test(d.version) && 'category' in d && d.pending_confirmation === null && d.modules.bdu === true, r.body);
+  check('A6b Overview ohne Webhook: ha_webhook_configured ist false', d.ha_webhook_configured === false, r.body);
   check('A7 Overview ohne allowed_origins und broadcaster_id', !('allowed_origins' in d) && !('broadcaster_id' in d));
   check('A8 Overview enthält keinen Token und kein Secret', !SECRETS.some(s => r.body.includes(s)) && !/access_token|refresh_token/.test(r.body));
   check('A9 Letzte Effekte: höchstens 5, neuester zuerst', d.recent_effects.length === 5 && d.recent_effects[0].userName === 'sechs' && d.recent_effects[4].userName === 'zwei', JSON.stringify(d.recent_effects));
@@ -116,6 +117,8 @@ async function alleHerkuenfte() {
   check('B3 CORS_ORIGINS=*: Overview lehnt Herkunft null ab', r.status === 403, String(r.status));
   r = await request(SHUTDOWN, { Origin: 'https://fremd.example', ...JSON_TYPE }, 'POST', '{}');
   check('B4 CORS_ORIGINS=*: Beenden lehnt fremde Herkunft ab', r.status === 403, String(r.status));
+  r = await request(OVERVIEW);
+  check('B5 Mit Webhook: nur die Angabe, nicht die Adresse', JSON.parse(r.body).ha_webhook_configured === true && !r.body.includes('ha-attrappe'), r.body);
 }
 
 async function serverBeenden() {

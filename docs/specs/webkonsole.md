@@ -31,13 +31,27 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 |---|---|---|
 | Server | Prozess-ID, läuft seit, Port | `pid`, `started_at` |
 | Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, `currentCategory` |
-| Effekte | Modus (`auto`/`manual`/`off`), Warteschlange, wartende Bestätigung, letzte 5 Effekte | Status, `pendingManualConfirmation`, `events.json` |
-| Module | BdU-Chat und UBOAT-Soldbuch an oder aus | `modules` |
 | Bot | DerBdu eingerichtet, Funktionen über den Bot | `bot_*` |
-| BdU-Chat | Enigma-Widget verbunden, Funkstille bis | `bdu_*` |
-| UBOAT | Spielstand und sein Stand | `uboat_*` |
-| Whitelist | Anzahl der Einträge | `whitelist_count` |
+| *Gruppe „Optionale Module“:* | | |
+| HA-Effekte | Webhook eingetragen, Modus (`auto`/`manual`/`off`), Warteschlange, wartende Bestätigung, letzte 5 Effekte | `ha_webhook_configured`, Status, `pendingManualConfirmation`, `events.json` |
+| UBOAT-Soldbuch | Modul an oder aus, Kategorie aktiv, Spielstand und sein Stand | `modules`, `uboat_*` |
+| BdU-Chat | Modul an oder aus, Enigma-Widget verbunden, Funkstille bis | `modules`, `bdu_*` |
 | Sub-Goal | Stand, Ziel, Titel | `subgoal_cache.json` |
+
+Die Whitelist hat keine Karte auf der Übersicht, sie bekommt den eigenen Reiter (Stufe 5).
+
+### Gruppe „Optionale Module“
+Die Zusatzfunktionen stehen unter einer eigenen, einklappbaren Überschrift. Beim ersten Aufruf ist die Gruppe aufgeklappt; der Zustand wird im Browser gespeichert (`localStorage`) und überlebt Neuladen. Fehlt der Speicher, bleibt sie aufgeklappt.
+
+Eingeklappt steht dort je Modul nur der Name mit einem Licht (Grund als Tooltip); Sub-Goal zeigt nur den Namen:
+
+| Modul | Grün (funktioniert) | Grau (nur nicht aktiv) | Rot (Fehler) |
+|---|---|---|---|
+| HA-Effekte | Webhook eingetragen, Modus `auto` oder `manual` | Modus `off` | kein Webhook eingetragen |
+| UBOAT-Soldbuch | eingerichtet, eingeschaltet, Spielstand gelesen | nicht eingerichtet oder ausgeschaltet | eingerichtet und eingeschaltet, aber kein Spielstand gelesen |
+| BdU-Chat | eingeschaltet, Enigma-Widget verbunden, keine Funkstille | ausgeschaltet, Widget nicht verbunden oder Funkstille | – |
+
+Die Webhook-Adresse selbst erscheint nicht auf der Seite, `/api/admin/overview` meldet nur `ha_webhook_configured`.
 
 Die letzten Effekte zeigen bei Einträgen von heute nur die Uhrzeit, bei älteren zusätzlich das Datum (Tag und Monat), weil `events.json` Einträge mehrerer Tage enthält.
 
@@ -48,7 +62,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Ist der Server nicht erreichbar: Anzeige „Server nicht erreichbar“, letzte Werte bleiben ausgegraut stehen, die Abfrage läuft weiter. Kommt der Server zurück und hat sich `pid` geändert, zeigt die Kopfzeile das kurz an.
 
 ### `GET /api/admin/overview`
-- Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `category`, `pending_confirmation`, `recent_effects` (letzte 5), `subgoal`.
+- Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `ha_webhook_configured`, `category`, `pending_confirmation`, `recent_effects` (letzte 5), `subgoal`.
 - `/status` bleibt unverändert; beide nutzen dieselben Hilfsfunktionen (`buildAuthStatus`, `buildRuntimeStatus`), damit die Werte nicht auseinanderlaufen.
 - Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll der Konsole, sonst stünde dort alle 5 s eine Zeile. Abgelehnte Abrufe erscheinen weiterhin.
 
@@ -94,4 +108,4 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 `server.js` (Middleware für Konsole, `GET /TwitchCompanionAdmin`, `GET /api/admin/overview`, Hilfsfunktion für die Statuswerte, Zeile in der Startanzeige), neu `public/admin/` (`index.html`, `admin.css`, `admin.js`), neu `test/admin-test.js`, `test/run-all.js`, Doku (ARCHITEKTUR, README, CHANGELOG, OFFEN).
 
 ## Status
-Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufe 2 umgesetzt: Server-Endpoints mit Attrappen (`test/admin-test.js`, Szenarien `server-beenden` und `server-neustart`), die Schleife in `AuthServer.cmd` mit dem echten Skript und einem Ersatz für `server.js` (`test/authserver-test.js`), die Seite im Browser mit Attrappen (Rückfrage, echter Neustart des Prozesses über dieselbe Schleife, Beenden, Warnung „Server läuft noch“, „Neustart ausgeblieben“, schmale Breite). Am echten Server noch nicht geprüft. Stufen 3 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.
+Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufe 2 umgesetzt: Server-Endpoints mit Attrappen (`test/admin-test.js`, Szenarien `server-beenden` und `server-neustart`), die Schleife in `AuthServer.cmd` mit dem echten Skript und einem Ersatz für `server.js` (`test/authserver-test.js`), die Seite im Browser mit Attrappen (Rückfrage, echter Neustart des Prozesses über dieselbe Schleife, Beenden, Warnung „Server läuft noch“, „Neustart ausgeblieben“, schmale Breite). Vom Nutzer am echten Server getestet (08.11.2026). Gruppe „Optionale Module“ umgesetzt: Lichter im Test `test/admin-format-test.js`, Einklappen und Merken im Browser mit Attrappen. Stufen 3 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.
