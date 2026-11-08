@@ -325,12 +325,6 @@ function uboatCard(d) {
   ));
 }
 
-function whitelistCard(d) {
-  return card('Whitelist',
-    el('div', { class: 'big', text: String(d.whitelist_count) }),
-    el('div', { class: 'sub', text: d.whitelist_count === 1 ? 'Eintrag' : 'Einträge' }));
-}
-
 function subgoalCard(d) {
   const goal = d.subgoal;
   if (goal.current === null || goal.current === undefined) {
@@ -382,7 +376,7 @@ function optionalModules(d) {
 
 function renderOverview(content, d) {
   content.replaceChildren(
-    el('div', { class: 'grid' }, serverCard(d), twitchCard(d), botCard(d), whitelistCard(d)),
+    el('div', { class: 'grid' }, serverCard(d), twitchCard(d), botCard(d)),
     optionalModules(d));
 }
 

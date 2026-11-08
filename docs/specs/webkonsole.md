@@ -32,12 +32,13 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 | Server | Prozess-ID, läuft seit, Port | `pid`, `started_at` |
 | Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, `currentCategory` |
 | Bot | DerBdu eingerichtet, Funktionen über den Bot | `bot_*` |
-| Whitelist | Anzahl der Einträge | `whitelist_count` |
 | *Gruppe „Optionale Module“:* | | |
 | HA-Effekte | Webhook eingetragen, Modus (`auto`/`manual`/`off`), Warteschlange, wartende Bestätigung, letzte 5 Effekte | `ha_webhook_configured`, Status, `pendingManualConfirmation`, `events.json` |
 | UBOAT-Soldbuch | Modul an oder aus, Kategorie aktiv, Spielstand und sein Stand | `modules`, `uboat_*` |
 | BdU-Chat | Modul an oder aus, Enigma-Widget verbunden, Funkstille bis | `modules`, `bdu_*` |
 | Sub-Goal | Stand, Ziel, Titel | `subgoal_cache.json` |
+
+Die Whitelist hat keine Karte auf der Übersicht, sie bekommt den eigenen Reiter (Stufe 5).
 
 ### Gruppe „Optionale Module“
 Die Zusatzfunktionen stehen unter einer eigenen, einklappbaren Überschrift. Beim ersten Aufruf ist die Gruppe aufgeklappt; der Zustand wird im Browser gespeichert (`localStorage`) und überlebt Neuladen. Fehlt der Speicher, bleibt sie aufgeklappt.
