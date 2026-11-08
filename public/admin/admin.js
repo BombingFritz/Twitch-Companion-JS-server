@@ -12,7 +12,9 @@ const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
 const LOG_STREAM_URL = '/api/admin/log/stream';
+const ERROR_LOG_URL = '/api/admin/log/errors';
 const LOG_MAX_LINES = 2000;
+const LOG_MAX_ERRORS = 1000;
 const LOG_BOTTOM_TOLERANCE_PX = 24;
 const LIGHT_LABELS = { ok: 'funktioniert', bad: 'Fehler', off: 'nicht aktiv' };
 const SERVER_ACTIONS = {
@@ -33,7 +35,10 @@ const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
-  log: { view: null, list: null, status: null, toEnd: null, source: null, pid: null, lastId: 0, filter: '', onlyProblems: false, follow: true },
+  log: {
+    view: null, list: null, errorList: null, status: null, toEnd: null, problems: null, modeButtons: null,
+    source: null, pid: null, lastId: 0, filter: '', onlyProblems: false, follow: true, mode: 'live',
+  },
 };
 
 // ── DOM-Helfer ──────────────────────────────────────────────────────
@@ -78,6 +83,10 @@ function dateTime(iso) {
 // Einträge von heute nur mit Uhrzeit, ältere zusätzlich mit Datum.
 function logTime(iso) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function errorTime(iso) {
+  return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function effectTime(iso, now = new Date()) {
@@ -167,8 +176,64 @@ function logLineMatches(line) {
 }
 
 function applyLogFilter() {
-  for (const line of state.log.list.children) line.hidden = !logLineMatches(line);
+  for (const list of [state.log.list, state.log.errorList]) {
+    for (const line of list.children) line.hidden = !logLineMatches(line);
+  }
   scrollLogIfFollowing();
+}
+
+function logLineNode(entry, timeText) {
+  const line = el('div', { class: `log-line ${entry.level}` }, el('time', { text: timeText }), el('span', { text: entry.text }));
+  line.dataset.level = entry.level;
+  line.dataset.search = entry.text.toLowerCase();
+  line.hidden = !logLineMatches(line);
+  return line;
+}
+
+function errorLineNode(entry) {
+  return logLineNode({ level: 'error', text: entry.text }, errorTime(entry.at));
+}
+
+function logNote(text) {
+  const note = el('div', { class: 'log-note', text });
+  note.dataset.level = 'error';
+  note.dataset.search = '';
+  return note;
+}
+
+function prependErrorEntry(entry) {
+  const list = state.log.errorList;
+  const note = list.querySelector('.log-note');
+  if (note) note.remove();
+  list.prepend(errorLineNode(entry));
+  while (list.children.length > LOG_MAX_ERRORS) list.lastChild.remove();
+}
+
+async function showErrorLog() {
+  const list = state.log.errorList;
+  try {
+    const response = await fetch(ERROR_LOG_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { entries } = await response.json();
+    list.replaceChildren(...(entries.length ? entries.map(errorLineNode) : [logNote('Keine Fehler gespeichert.')]));
+    list.scrollTop = 0;
+  } catch {
+    list.replaceChildren(logNote('Das Fehlerprotokoll konnte nicht geladen werden.'));
+  }
+}
+
+function setLogMode(mode) {
+  const log = state.log;
+  log.mode = mode;
+  const errors = mode === 'errors';
+  log.list.hidden = errors;
+  log.errorList.hidden = !errors;
+  log.problems.hidden = errors;
+  log.toEnd.hidden = errors || log.follow;
+  log.modeButtons.live.setAttribute('aria-pressed', String(!errors));
+  log.modeButtons.errors.setAttribute('aria-pressed', String(errors));
+  if (errors) showErrorLog();
+  else scrollLogIfFollowing();
 }
 
 function setLogFollow(follow) {
@@ -181,7 +246,6 @@ function scrollLogIfFollowing() {
 }
 
 function appendLogNode(line) {
-  line.hidden = !logLineMatches(line);
   state.log.list.append(line);
   while (state.log.list.children.length > LOG_MAX_LINES) state.log.list.firstChild.remove();
   scrollLogIfFollowing();
@@ -191,16 +255,15 @@ function appendLogSeparator(text) {
   const line = el('div', { class: 'log-separator', text });
   line.dataset.level = 'info';
   line.dataset.search = text.toLowerCase();
+  line.hidden = !logLineMatches(line);
   appendLogNode(line);
 }
 
 function appendLogEntry(entry) {
   if (entry.id <= state.log.lastId) return;
   state.log.lastId = entry.id;
-  const line = el('div', { class: `log-line ${entry.level}` }, el('time', { text: logTime(entry.at) }), el('span', { text: entry.text }));
-  line.dataset.level = entry.level;
-  line.dataset.search = entry.text.toLowerCase();
-  appendLogNode(line);
+  appendLogNode(logLineNode(entry, logTime(entry.at)));
+  if (entry.level === 'error' && state.log.mode === 'errors') prependErrorEntry(entry);
 }
 
 function connectLog() {
@@ -238,9 +301,20 @@ function logView() {
   search.addEventListener('input', () => { log.filter = search.value.trim().toLowerCase(); applyLogFilter(); });
   const problems = el('input', { type: 'checkbox' });
   problems.addEventListener('change', () => { log.onlyProblems = problems.checked; applyLogFilter(); });
+  log.problems = el('label', { class: 'log-check' }, problems, 'Nur Warnungen und Fehler');
+  log.errorList = el('div', { class: 'log-list', tabindex: '0' });
+  log.errorList.hidden = true;
+  log.modeButtons = {
+    live: actionButton('Live', 'mode', () => setLogMode('live'), false),
+    errors: actionButton('Fehlerprotokoll', 'mode', () => setLogMode('errors'), false),
+  };
+  log.modeButtons.live.setAttribute('aria-pressed', 'true');
+  log.modeButtons.errors.setAttribute('aria-pressed', 'false');
   log.view = el('section', { class: 'log' },
-    el('div', { class: 'log-toolbar' }, search, el('label', { class: 'log-check' }, problems, 'Nur Warnungen und Fehler'), log.toEnd, log.status),
-    log.list);
+    el('div', { class: 'log-toolbar' },
+      el('div', { class: 'log-modes', role: 'group', 'aria-label': 'Ansicht' }, log.modeButtons.live, log.modeButtons.errors),
+      search, log.problems, log.toEnd, log.status),
+    log.list, log.errorList);
   return log.view;
 }
 

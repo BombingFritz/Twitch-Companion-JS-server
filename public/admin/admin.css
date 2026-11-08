@@ -158,6 +158,11 @@ body.stale .grid { opacity: .45; }
 .log-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .log-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 .log-check input { accent-color: var(--accent); margin: 0; }
+.log-check[hidden] { display: none; }
+.log-modes { display: flex; gap: 4px; }
+.btn.mode[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.log-note { color: var(--muted); }
+.log-note[hidden] { display: none; }
 .log-status { margin-left: auto; color: var(--muted); font-size: 13px; }
 .log-list {
   height: calc(100vh - 220px);

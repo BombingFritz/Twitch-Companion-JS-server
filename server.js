@@ -34,6 +34,7 @@ const EFFECT_MODE_FILE = './effect_mode.json';
 const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
 const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
+const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
 const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Konsole schaltbare Chat-Module, Standard: an
 
 // Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
@@ -89,6 +90,8 @@ const ADMIN_LOG_STREAM_PATH = '/api/admin/log/stream';
 const ADMIN_LOG_BUFFER_LINES = 1000;              // so viele Log-Zeilen hält der Server im Arbeitsspeicher
 const ADMIN_LOG_MAX_CHARS = 4000;                 // längere Log-Einträge werden im Live-Log gekürzt
 const ADMIN_LOG_PING_MS = 30 * 1000;              // Lebenszeichen auf der Live-Log-Verbindung
+const ADMIN_ERROR_LOG_PATH = '/api/admin/log/errors';
+const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bleiben in error_log.json
 const LOG_REDACTED = '<entfernt>';
 const LOG_PRIVATE_ADDRESS = '<privat>';
 
@@ -149,6 +152,39 @@ function sanitizeLogText(text) {
     .replace(/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/g, LOG_PRIVATE_ADDRESS);
 }
 
+function loadErrorLog() {
+  if (!fs.existsSync(ERROR_LOG_FILE)) return [];
+  try {
+    const list = JSON.parse(fs.readFileSync(ERROR_LOG_FILE, 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+// Erst in eine Hilfsdatei, dann umbenennen: Ein Absturz mitten im Schreiben zerstört so nicht die ganze Liste.
+function saveErrorLog(list) {
+  const tempFile = `${ERROR_LOG_FILE}.tmp`;
+  const json = JSON.stringify(list, null, 2);
+  fs.writeFileSync(tempFile, json, 'utf8');
+  try {
+    fs.renameSync(tempFile, ERROR_LOG_FILE);
+  } catch {   // z. B. hält OneDrive die Datei gerade fest
+    fs.writeFileSync(ERROR_LOG_FILE, json, 'utf8');
+    fs.rmSync(tempFile, { force: true });
+  }
+}
+
+const errorLog = loadErrorLog();
+
+function appendErrorLog(entry) {
+  errorLog.push({ at: entry.at, pid: process.pid, text: entry.text });
+  if (errorLog.length > ERROR_LOG_MAX_ENTRIES) errorLog.splice(0, errorLog.length - ERROR_LOG_MAX_ENTRIES);
+  try {
+    saveErrorLog(errorLog);
+  } catch (err) {
+    logIfChanged('error-log-write', `[Fehlerprotokoll] ${ERROR_LOG_FILE} konnte nicht geschrieben werden: ${err.message}`, 'warn');
+  }
+}
+
 function writeLogEntry(res, entry) {
   res.write(`event: line\ndata: ${JSON.stringify(entry)}\n\n`);
 }
@@ -165,6 +201,7 @@ function recordLogLine(level, args) {
     logBuffer.push(entry);
     if (logBuffer.length > ADMIN_LOG_BUFFER_LINES) logBuffer.shift();
     for (const res of logClients) writeLogEntry(res, entry);
+    if (level === 'error') appendErrorLog(entry);
   } catch { /* Das Protokollieren darf den Server nie stören */ }
 }
 
@@ -1401,6 +1438,10 @@ app.get(ADMIN_LOG_STREAM_PATH, (req, res) => {
     clearInterval(ping);
     logClients.delete(res);
   });
+});
+
+app.get(ADMIN_ERROR_LOG_PATH, (req, res) => {
+  res.json({ entries: [...errorLog].reverse(), limit: ERROR_LOG_MAX_ENTRIES });
 });
 
 // Ändernde Aktionen: Browser senden bei POST immer einen Origin-Header, er ist hier Pflicht.
