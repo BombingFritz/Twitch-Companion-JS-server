@@ -7,6 +7,13 @@ const OVERVIEW_URL = '/api/admin/overview';
 const DEFAULT_POLL_MS = 5000;
 const REQUEST_TIMEOUT_MS = 4000;
 const NOTICE_MS = 30000;
+const EXIT_POLL_MS = 1000;
+const CONFIRM_MS = 15000;
+const CONFIRM_LOCK_MS = 500;
+const SERVER_ACTIONS = {
+  restart: { url: '/api/admin/server/restart', label: 'Server neu starten', question: 'Server wirklich neu starten?', yes: 'Ja, neu starten', warnMs: 30000 },
+  shutdown: { url: '/api/admin/server/shutdown', label: 'Server beenden', question: 'Server wirklich beenden?', yes: 'Ja, beenden', warnMs: 5000 },
+};
 const EFFECT_LABELS = { follow: 'Follow', sub: 'Sub', gift: 'Gift' };
 
 const TABS = [
@@ -17,7 +24,10 @@ const TABS = [
   { id: 'statistik', title: 'Statistik', ready: false },
 ];
 
-const state = { data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null };
+const state = {
+  data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
+  confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
+};
 
 // ── DOM-Helfer ──────────────────────────────────────────────────────
 function el(tag, props, ...children) {
@@ -109,13 +119,93 @@ function renderContent() {
   activeTab().render(content, state.data);
 }
 
+// ── Server beenden und neu starten ──────────────────────────────────
+function askServerAction(kind) {
+  clearTimeout(state.confirmTimer);
+  state.confirming = kind;
+  state.confirmTimer = setTimeout(cancelServerAction, CONFIRM_MS);
+  updateServerActions();
+}
+
+function cancelServerAction() {
+  clearTimeout(state.confirmTimer);
+  state.confirming = null;
+  updateServerActions();
+}
+
+async function runServerAction(kind) {
+  const action = SERVER_ACTIONS[kind];
+  cancelServerAction();
+  try {
+    const response = await fetch(action.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', cache: 'no-store' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showNotice(`${action.label} abgelehnt: ${result.error || `HTTP ${response.status}`}`);
+      return;
+    }
+    state.exit = { kind, pid: result.pid, at: result.at, requestedAt: Date.now(), warned: false };
+    renderConnection();
+    updateServerActions();
+    clearTimeout(state.timer);
+    state.timer = setTimeout(poll, EXIT_POLL_MS);
+  } catch {
+    showNotice('Der Server hat nicht geantwortet. Bitte das Konsolenfenster prüfen.');
+  }
+}
+
+function actionButton(text, variant, onClick, disabled) {
+  const button = el('button', { class: `btn ${variant}`, type: 'button' }, text);
+  button.disabled = disabled;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function fillServerActions(box, canRestart) {
+  if (state.confirming) {
+    const kind = state.confirming;
+    const action = SERVER_ACTIONS[kind];
+    // Kurze Sperre, damit ein Doppelklick auf den ersten Knopf nicht gleich bestätigt.
+    const yes = actionButton(action.yes, 'danger', () => runServerAction(kind), true);
+    setTimeout(() => { yes.disabled = false; }, CONFIRM_LOCK_MS);
+    box.replaceChildren(
+      el('p', { class: 'question', text: action.question }),
+      el('p', { text: 'Wartende Effekte und Raid-Begrüßungen gehen dabei verloren.' }),
+      yes,
+      actionButton('Abbrechen', '', cancelServerAction, false));
+    return;
+  }
+  const blocked = !state.online || Boolean(state.exit);
+  box.replaceChildren(...[
+    actionButton(SERVER_ACTIONS.restart.label, '', () => askServerAction('restart'), blocked || !canRestart),
+    actionButton(SERVER_ACTIONS.shutdown.label, 'danger', () => askServerAction('shutdown'), blocked),
+    canRestart ? null : el('p', { text: 'Neu starten geht nur, wenn der Server über AuthServer.cmd läuft.' }),
+  ].filter(Boolean));
+}
+
+// Die Knöpfe bleiben dieselben Elemente und werden nur bei einer Änderung neu gefüllt,
+// sonst ginge ein Klick verloren, wenn gerade die Abfrage die Seite neu aufbaut.
+function updateServerActions() {
+  if (!state.data) return;
+  if (!state.actions) state.actions = el('div', { class: 'actions' });
+  const canRestart = Boolean(state.data.can_restart);
+  const key = [state.confirming, Boolean(state.exit), state.online, canRestart].join('|');
+  if (key === state.actionsKey) return;
+  state.actionsKey = key;
+  fillServerActions(state.actions, canRestart);
+}
+
+function serverActions() {
+  updateServerActions();
+  return state.actions;
+}
+
 // ── Übersicht ───────────────────────────────────────────────────────
 function serverCard(d) {
   return card('Server', rows(
     row('Läuft', el('span', { text: `${uptime(d.started_at)}, Start ${dateTime(d.started_at)}` })),
     row('Prozess-ID', el('span', { class: 'mono', text: String(d.pid) })),
     row('Port', el('span', { class: 'mono', text: String(d.port) })),
-  ));
+  ), serverActions());
 }
 
 function twitchCard(d) {
@@ -230,11 +320,57 @@ function renderOverview(content, d) {
 }
 
 // ── Verbindung und Abfrage ──────────────────────────────────────────
+function connectionView() {
+  const exit = state.exit;
+  if (exit && exit.kind === 'restart') return ['pending', exit.warned ? 'Neustart ausgeblieben' : 'Neustart läuft …'];
+  if (exit && state.online) return ['pending', 'Server wird beendet …'];
+  if (exit) return ['stopped', `Server beendet um ${clock(exit.at)} (PID ${exit.pid})`];
+  return state.online ? ['online', 'verbunden'] : ['offline', 'Server nicht erreichbar'];
+}
+
+function renderConnection() {
+  const [variant, text] = connectionView();
+  document.getElementById('connection').className = `connection ${variant}`;
+  document.getElementById('connection-text').textContent = text;
+}
+
 function setConnection(online) {
   state.online = online;
-  document.getElementById('connection').className = `connection ${online ? 'online' : 'offline'}`;
-  document.getElementById('connection-text').textContent = online ? 'verbunden' : 'Server nicht erreichbar';
+  if (!online && state.confirming) {
+    clearTimeout(state.confirmTimer);
+    state.confirming = null;
+  }
+  renderConnection();
   document.body.classList.toggle('stale', !online);
+  updateServerActions();
+}
+
+// Antwortet der Server: Ist es ein neuer Prozess, oder läuft der alte trotz Auftrag weiter?
+function checkExitAfterAnswer(data) {
+  const exit = state.exit;
+  if (state.pid !== null && state.pid !== data.pid) {
+    showNotice(exit && exit.kind === 'restart'
+      ? `Neustart abgeschlossen: PID ${data.pid} (vorher ${state.pid}).`
+      : `Neuer Serverprozess: PID ${data.pid} (vorher ${state.pid}).`);
+    state.exit = null;
+  } else if (exit && Date.now() - exit.requestedAt > SERVER_ACTIONS[exit.kind].warnMs) {
+    showNotice(`Server läuft noch: PID ${data.pid} antwortet weiterhin. Bitte das Konsolenfenster prüfen.`);
+    state.exit = null;
+  }
+}
+
+function checkExitWithoutAnswer() {
+  const exit = state.exit;
+  if (!exit || exit.kind !== 'restart' || exit.warned) return;
+  if (Date.now() - exit.requestedAt <= SERVER_ACTIONS.restart.warnMs) return;
+  exit.warned = true;
+  showNotice('Der Neustart dauert ungewöhnlich lange. Bitte das Konsolenfenster prüfen.');
+  renderConnection();
+}
+
+function pollDelay() {
+  const exit = state.exit;
+  return exit && !exit.warned && (exit.kind === 'restart' || state.online) ? EXIT_POLL_MS : state.pollMs;
 }
 
 function showNotice(text) {
@@ -253,9 +389,7 @@ async function poll() {
     const response = await fetch(OVERVIEW_URL, { cache: 'no-store', signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    if (state.pid !== null && state.pid !== data.pid) {
-      showNotice(`Neuer Serverprozess: PID ${data.pid} (vorher ${state.pid}).`);
-    }
+    checkExitAfterAnswer(data);
     state.pid = data.pid;
     state.data = data;
     state.pollMs = data.poll_ms || DEFAULT_POLL_MS;
@@ -264,9 +398,11 @@ async function poll() {
     renderContent();
   } catch {
     setConnection(false);
+    checkExitWithoutAnswer();
   } finally {
     clearTimeout(abort);
-    if (!document.hidden) state.timer = setTimeout(poll, state.pollMs);
+    clearTimeout(state.timer);
+    if (!document.hidden) state.timer = setTimeout(poll, pollDelay());
   }
 }
 
