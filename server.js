@@ -3,6 +3,7 @@ const axios = require('axios');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const util = require('util');
 const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
@@ -84,6 +85,12 @@ const ADMIN_RESTART_PATH = '/api/admin/server/restart';
 const ADMIN_EXIT_DELAY_MS = 300;                  // Zeit für die Antwort an die Seite, bevor der Prozess endet
 const SERVER_RESTART_EXIT_CODE = 75;              // AuthServer.cmd startet den Server nur bei diesem Code neu
 const SERVER_SUPERVISED = process.env.TWITCH_COMPANION_SUPERVISED === '1';  // gesetzt von AuthServer.cmd
+const ADMIN_LOG_STREAM_PATH = '/api/admin/log/stream';
+const ADMIN_LOG_BUFFER_LINES = 1000;              // so viele Log-Zeilen hält der Server im Arbeitsspeicher
+const ADMIN_LOG_MAX_CHARS = 4000;                 // längere Log-Einträge werden im Live-Log gekürzt
+const ADMIN_LOG_PING_MS = 30 * 1000;              // Lebenszeichen auf der Live-Log-Verbindung
+const LOG_REDACTED = '<entfernt>';
+const LOG_PRIVATE_ADDRESS = '<privat>';
 
 // BdU-Chat (!BdU, siehe ADR 0014 und docs/specs/bdu-chat.md)
 const BDU_COMMAND = '!bdu';
@@ -111,6 +118,63 @@ const UBOAT_FRESH_MS = 60 * 60 * 1000;           // Spielstand höchstens so alt
 // Kein Soldbuch zum Namen: keine Antwort im Chat, nur Hinweis in der Konsole
 const UBOAT_TEXT_UNAVAILABLE = 'Die Soldbücher sind gerade nicht verfügbar.';
 const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachricht
+
+// ═══════════════════════════════════════════════════════════════════
+// LIVE-LOG – Puffer für die Webkonsole (ADR 0018, docs/specs/webkonsole.md)
+// ═══════════════════════════════════════════════════════════════════
+
+const logBuffer = [];
+const logClients = new Set();     // offene Live-Log-Verbindungen
+let nextLogId = 1;
+
+function logRedactedValues() {
+  const values = [CLIENT_SECRET, HA_WEBHOOK_URL];
+  try {
+    const url = new URL(HA_WEBHOOK_URL);
+    if (!LOOPBACK_HOSTNAMES.includes(url.hostname)) values.push(url.host, url.hostname);
+    values.push(url.pathname.split('/').pop());
+  } catch { /* keine oder ungültige Webhook-Adresse */ }
+  return values.filter(Boolean).sort((a, b) => b.length - a.length);
+}
+
+const logRedactions = logRedactedValues();
+
+// Nur für den Puffer: Das Konsolenfenster zeigt weiter die unveränderte Zeile.
+function sanitizeLogText(text) {
+  let clean = text;
+  for (const value of logRedactions) clean = clean.split(value).join(LOG_REDACTED);
+  return clean
+    .replace(/((?:access_token|refresh_token|client_secret)["']?\s*[:=]\s*["']?)[^"'&\s,}]+/gi, `$1${LOG_REDACTED}`)
+    .replace(/\b(Bearer|OAuth)\s+[\w.~+/=-]+/g, `$1 ${LOG_REDACTED}`)
+    .replace(/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/g, LOG_PRIVATE_ADDRESS);
+}
+
+function writeLogEntry(res, entry) {
+  res.write(`event: line\ndata: ${JSON.stringify(entry)}\n\n`);
+}
+
+function recordLogLine(level, args) {
+  try {
+    const text = sanitizeLogText(util.format(...args));
+    const entry = {
+      id: nextLogId++,
+      at: new Date().toISOString(),
+      level,
+      text: text.length > ADMIN_LOG_MAX_CHARS ? `${text.slice(0, ADMIN_LOG_MAX_CHARS)} … (gekürzt)` : text,
+    };
+    logBuffer.push(entry);
+    if (logBuffer.length > ADMIN_LOG_BUFFER_LINES) logBuffer.shift();
+    for (const res of logClients) writeLogEntry(res, entry);
+  } catch { /* Das Protokollieren darf den Server nie stören */ }
+}
+
+for (const [method, level] of [['log', 'info'], ['info', 'info'], ['warn', 'warn'], ['error', 'error']]) {
+  const original = console[method];
+  console[method] = (...args) => {
+    original.apply(console, args);
+    recordLogLine(level, args);
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // LOGGING-HILFSFUNKTIONEN (reduziert Log-Spam bei wiederholten/Polling-Ereignissen)
@@ -1318,6 +1382,24 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
       timestamp: e.timestamp
     })),
     subgoal: { current, target, title, status, lastUpdated }
+  });
+});
+
+// Liefert zuerst den Puffer, danach jede neue Zeile. Die Seite erkennt Doppelte an der id.
+app.get(ADMIN_LOG_STREAM_PATH, (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Connection': 'keep-alive'
+  });
+  res.write('retry: 5000\n\n');
+  res.write(`event: hello\ndata: ${JSON.stringify({ pid: process.pid, started_at: SERVER_STARTED_AT })}\n\n`);
+  logBuffer.forEach(entry => writeLogEntry(res, entry));
+  const ping = setInterval(() => res.write(': ping\n\n'), ADMIN_LOG_PING_MS);
+  logClients.add(res);
+  req.on('close', () => {
+    clearInterval(ping);
+    logClients.delete(res);
   });
 });
 

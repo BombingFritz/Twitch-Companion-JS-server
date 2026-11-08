@@ -8,7 +8,7 @@ Eine Oberfläche im Browser des Streaming-PCs, mit der sich der Server ansehen u
 |---|---|---|
 | 1 | Hauptseite „Übersicht“ und Reiter-Gerüst, nur ansehen | umgesetzt |
 | 2 | Knöpfe „Server beenden“ und „Server neu starten“ auf der Hauptseite (erste ändernde Aktion) | umgesetzt |
-| 3 | Reiter „Live-Log“: Puffer im Server, Live-Anzeige per Server-Sent Events | später, eigene Ergänzung dieser Spec |
+| 3 | Reiter „Live-Log“: Puffer im Server, Live-Anzeige per Server-Sent Events | umgesetzt, siehe unten |
 | 4 | Reiter „Einstellungen“: Modul-Schalter, Effekt-Modus mit Bestätigung (GET-Endpoints entfallen), Bot-Zuordnung | später |
 | 5 | Reiter „Whitelist“: anzeigen, hinzufügen, entfernen | später |
 | 6 | Reiter „Statistik“ | später, Inhalt [UNGEKLÄRT] |
@@ -75,6 +75,16 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Anzeige nach dem Neustart: „Neustart läuft“, bis eine neue Prozess-ID antwortet; kommt binnen 30 s keine, Warnung mit Hinweis auf das Konsolenfenster.
 - Akzeptanzkriterien: POST ohne eigene Herkunft, GET und Aufruf aus dem Netzwerk beenden den Server nicht (403 bzw. 404); der Exit-Code stimmt; die Schleife in `AuthServer.cmd` startet nur bei Code 75 neu.
 
+## Verhalten Stufe 3: Live-Log
+- **Erfassung:** Alles, was über `console.log`, `info`, `warn` und `error` läuft, landet zusätzlich in einem Puffer im Arbeitsspeicher (`ADMIN_LOG_BUFFER_LINES`, 1000 Zeilen, älteste fallen weg). Das Konsolenfenster zeigt weiter genau dasselbe wie vorher. Der Puffer endet mit dem Prozess, eine Datei entsteht nicht.
+- **Bereinigung:** Bevor eine Zeile in den Puffer kommt, ersetzt `sanitizeLogText` das Client-Secret, die Webhook-Adresse samt Host und ID sowie Werte von `access_token`, `refresh_token`, `client_secret`, `Bearer` und `OAuth` durch `<entfernt>`, private IPv4-Adressen durch `<privat>`. Einträge über `ADMIN_LOG_MAX_CHARS` (4000 Zeichen) werden gekürzt.
+- **`GET /api/admin/log/stream`:** Server-Sent Events mit `retry: 5000`, Ereignis `hello` `{pid, started_at}`, dann der ganze Puffer und danach jede neue Zeile als Ereignis `line` `{id, at, level: info|warn|error, text}`, Kommentar-Ping alle 30 s. Zugriff wie alle `/api/admin/…`.
+- **Reiter:** Die Verbindung beginnt beim ersten Öffnen des Reiters und bleibt bestehen. Die Seite zeigt Uhrzeit mit Sekunden und Text, Warnungen und Fehler farbig, höchstens 2000 Zeilen (`LOG_MAX_LINES`). Texte nur per `textContent`.
+- **Mitlaufen:** Die Anzeige läuft am Ende mit. Scrollt man hoch, bleibt sie stehen und ein Knopf „Zum neuesten Eintrag“ erscheint.
+- **Filter:** Suchfeld und „Nur Warnungen und Fehler“, beides nur in der Seite.
+- **Neustart:** Nach einem Verbindungsabbruch verbindet sich die Seite selbst neu und übernimmt nur Zeilen, die sie noch nicht hat. Bei einer neuen Prozess-ID erscheint eine Trennzeile, ältere Zeilen bleiben stehen, solange die Seite offen ist.
+- **Akzeptanzkriterien:** Aufruf aus dem Netzwerk oder von fremder Herkunft: 403; neue Zeilen erscheinen ohne Neuladen; Secrets, Tokens und Webhook-Adresse stehen nie in der Antwort; das Konsolenfenster bleibt unverändert; der Puffer bleibt begrenzt.
+
 ## Zugriffsschutz (ADR 0018)
 - `/TwitchCompanionAdmin` und `/api/admin/…`: nur lokal (`requireLocalRequest`).
 - `/api/admin/…`: Ist `Origin` gesetzt, muss er `http://localhost:<PORT>` oder `http://127.0.0.1:<PORT>` sein, sonst 403. Gilt auch bei `CORS_ORIGINS=*`.
@@ -85,7 +95,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Keine Tokens, Secrets, Webhook-Adressen oder privaten Netzwerkadressen in Antworten oder auf der Seite.
 
 ## Konstanten (oben in `server.js`)
-`ADMIN_POLL_MS` wird der Seite über `/api/admin/overview` mitgegeben (`poll_ms`), damit der Wert nur an einer Stelle steht. `ADMIN_DIR`, `ADMIN_PAGE_PATH`, `ADMIN_OVERVIEW_PATH`, `ADMIN_RECENT_EFFECTS = 5`, `ADMIN_CSP`, `ADMIN_SHUTDOWN_PATH`, `ADMIN_RESTART_PATH`, `ADMIN_EXIT_DELAY_MS = 300`, `SERVER_RESTART_EXIT_CODE = 75`, `SERVER_SUPERVISED`.
+`ADMIN_POLL_MS` wird der Seite über `/api/admin/overview` mitgegeben (`poll_ms`), damit der Wert nur an einer Stelle steht. `ADMIN_DIR`, `ADMIN_PAGE_PATH`, `ADMIN_OVERVIEW_PATH`, `ADMIN_RECENT_EFFECTS = 5`, `ADMIN_CSP`, `ADMIN_SHUTDOWN_PATH`, `ADMIN_RESTART_PATH`, `ADMIN_EXIT_DELAY_MS = 300`, `SERVER_RESTART_EXIT_CODE = 75`, `SERVER_SUPERVISED`, `ADMIN_LOG_STREAM_PATH`, `ADMIN_LOG_BUFFER_LINES = 1000`, `ADMIN_LOG_MAX_CHARS = 4000`, `ADMIN_LOG_PING_MS`, `LOG_REDACTED`, `LOG_PRIVATE_ADDRESS`.
 
 ## Nicht-Ziele Stufe 1
 - Keine ändernden Aktionen, keine neuen POST-Endpoints.
@@ -108,4 +118,4 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 `server.js` (Middleware für Konsole, `GET /TwitchCompanionAdmin`, `GET /api/admin/overview`, Hilfsfunktion für die Statuswerte, Zeile in der Startanzeige), neu `public/admin/` (`index.html`, `admin.css`, `admin.js`), neu `test/admin-test.js`, `test/run-all.js`, Doku (ARCHITEKTUR, README, CHANGELOG, OFFEN).
 
 ## Status
-Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufe 2 umgesetzt: Server-Endpoints mit Attrappen (`test/admin-test.js`, Szenarien `server-beenden` und `server-neustart`), die Schleife in `AuthServer.cmd` mit dem echten Skript und einem Ersatz für `server.js` (`test/authserver-test.js`), die Seite im Browser mit Attrappen (Rückfrage, echter Neustart des Prozesses über dieselbe Schleife, Beenden, Warnung „Server läuft noch“, „Neustart ausgeblieben“, schmale Breite). Vom Nutzer am echten Server getestet (08.11.2026). Gruppe „Optionale Module“ umgesetzt: Lichter im Test `test/admin-format-test.js`, Einklappen und Merken im Browser mit Attrappen. Stufen 3 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.
+Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufe 2 umgesetzt: Server-Endpoints mit Attrappen (`test/admin-test.js`, Szenarien `server-beenden` und `server-neustart`), die Schleife in `AuthServer.cmd` mit dem echten Skript und einem Ersatz für `server.js` (`test/authserver-test.js`), die Seite im Browser mit Attrappen (Rückfrage, echter Neustart des Prozesses über dieselbe Schleife, Beenden, Warnung „Server läuft noch“, „Neustart ausgeblieben“, schmale Breite). Vom Nutzer am echten Server getestet (08.11.2026). Gruppe „Optionale Module“ umgesetzt: Lichter im Test `test/admin-format-test.js`, Einklappen und Merken im Browser mit Attrappen. Stufe 3 umgesetzt: Server-Teil mit Attrappen (`test/admin-test.js`, Szenario `live-log`), Reiter im Browser mit Attrappen (Mitlaufen, Hochscrollen, Filter, echter Neustart des Prozesses, schmale Breite); am echten Server noch nicht geprüft. Stufen 4 bis 6 offen. [UNGEKLÄRT]: Inhalt des Reiters „Statistik“.

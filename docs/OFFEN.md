@@ -83,7 +83,7 @@ Noch nicht entschieden, nicht spezifiziert.
 Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UNGEKLÄRT]. Je Punkt vor der Umsetzung eigenes ADR und eigene Spec.
 
 ### P1 Server-Konsole im Browser
-- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`, Stufe 1 (Statusseite unter `/TwitchCompanionAdmin`) und Stufe 2 (Server beenden und neu starten) umgesetzt und vom Nutzer am echten Server geprüft. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
+- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`, Stufe 1 (Statusseite unter `/TwitchCompanionAdmin`) und Stufe 2 (Server beenden und neu starten) umgesetzt und vom Nutzer am echten Server geprüft, Stufe 3 (Live-Log) umgesetzt. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
 - Ziel: Weboberfläche des Servers (z. B. `http://localhost:3000/admin`) mit ausführlicherem Log, Whitelist-Verwaltung und Einstellungen, etwa Effekt-Modus und manuelles Auslösen von Effekten.
 - Berührt **ADR 0006** (Whitelist nur per Konsole): Das ADR müsste abgelöst werden; bei der Umsetzung nachfragen.
 - Voraussetzung: Zugriffsschutz für alle zustandsändernden Aktionen (nur lokal wie `/token`, ADR 0013; POST statt GET, siehe Priorität 2). Sonst könnte jede Webseite im Browser des Streaming-PCs die Whitelist ändern oder Effekte auslösen.

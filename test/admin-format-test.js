@@ -25,6 +25,10 @@ if (section) {
   r = show(at(2025, 10, 8, 20, 0), evening);
   check('F5 Gleicher Tag im Vorjahr zählt nicht als heute', r.includes('08.11') && r.includes('20:00'), r);
 
+  context.iso = at(2026, 10, 8, 9, 5, 7);
+  r = vm.runInContext('logTime(iso)', context);
+  check('F7 Live-Log zeigt die Uhrzeit mit Sekunden', r === '09:05:07', r);
+
   const healthy = { ha_webhook_configured: true, effect_mode: 'auto', uboat_enabled: true, modules: { bdu: true, uboat: true }, uboat_save: 'a.save', bdu_widget_connected: true, bdu_silence_until: null };
   const lights = changes => { context.d = { ...healthy, ...changes }; return JSON.parse(vm.runInContext('JSON.stringify(moduleLights(d))', context)); };
   const level = (name, changes) => lights(changes).find(m => m.name === name).level;
