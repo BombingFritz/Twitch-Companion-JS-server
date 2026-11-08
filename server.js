@@ -79,6 +79,11 @@ const ADMIN_OVERVIEW_PATH = '/api/admin/overview';
 const ADMIN_POLL_MS = 5000;                       // so oft holt die Hauptseite neue Werte
 const ADMIN_RECENT_EFFECTS = 5;                   // so viele letzte Effekte zeigt die Hauptseite
 const ADMIN_CSP = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+const ADMIN_SHUTDOWN_PATH = '/api/admin/server/shutdown';
+const ADMIN_RESTART_PATH = '/api/admin/server/restart';
+const ADMIN_EXIT_DELAY_MS = 300;                  // Zeit für die Antwort an die Seite, bevor der Prozess endet
+const SERVER_RESTART_EXIT_CODE = 75;              // AuthServer.cmd startet den Server nur bei diesem Code neu
+const SERVER_SUPERVISED = process.env.TWITCH_COMPANION_SUPERVISED === '1';  // gesetzt von AuthServer.cmd
 
 // BdU-Chat (!BdU, siehe ADR 0014 und docs/specs/bdu-chat.md)
 const BDU_COMMAND = '!bdu';
@@ -1298,6 +1303,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     version: APP_VERSION,
     port: Number(PORT),
     poll_ms: ADMIN_POLL_MS,
+    can_restart: SERVER_SUPERVISED,
     category: currentCategory,
     pending_confirmation: pendingManualConfirmation
       ? { type: pendingManualConfirmation.job.type, count: pendingManualConfirmation.job.count }
@@ -1312,6 +1318,35 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     })),
     subgoal: { current, target, title, status, lastUpdated }
   });
+});
+
+// Ändernde Aktionen: Browser senden bei POST immer einen Origin-Header, er ist hier Pflicht.
+function requireAdminWrite(req, res, next) {
+  if (!adminOrigins.has(req.headers.origin)) {
+    logIfChanged(`admin-write-blocked:${req.headers.origin}`, `[Zugriffsschutz] Webkonsole: ${req.method} ${req.path} ohne eigene Herkunft abgelehnt.`, 'warn');
+    return res.status(403).json({ error: 'Herkunft fehlt oder ist nicht erlaubt' });
+  }
+  if (!req.is('application/json')) return res.status(415).json({ error: 'JSON erwartet' });
+  next();
+}
+
+let adminExitRequested = false;
+
+function endServerFromAdmin(res, exitCode, message) {
+  if (adminExitRequested) return res.status(409).json({ error: 'Der Server wird bereits beendet' });
+  adminExitRequested = true;
+  console.log(`[Webkonsole] ${message} (PID ${process.pid}).`);
+  res.json({ ok: true, pid: process.pid, at: new Date().toISOString() });
+  setTimeout(() => process.exit(exitCode), ADMIN_EXIT_DELAY_MS);
+}
+
+app.post(ADMIN_SHUTDOWN_PATH, requireAdminWrite, (req, res) => {
+  endServerFromAdmin(res, 0, 'Server wird beendet');
+});
+
+app.post(ADMIN_RESTART_PATH, requireAdminWrite, (req, res) => {
+  if (!SERVER_SUPERVISED) return res.status(409).json({ error: 'Neustart geht nur beim Start über AuthServer.cmd' });
+  endServerFromAdmin(res, SERVER_RESTART_EXIT_CODE, 'Server wird neu gestartet');
 });
 
 // ═══════════════════════════════════════════════════════════════════

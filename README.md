@@ -10,7 +10,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 2. Abhängigkeiten installieren: `npm install` (liest `package.json` und `package-lock.json`).
 3. `.env` anlegen: `cp .env.example .env`, Werte eintragen. `REDIRECT_URI` muss exakt der Twitch-Developer-Console entsprechen.
 4. Syntax prüfen: `npm run check` (entspricht `node --check server.js`). Optional alle Tests: `npm test` (Attrappen statt Twitch und Home Assistant, eigenes temporäres Verzeichnis, rührt die Laufzeitdateien nicht an; etwa 3 Minuten)
-5. Starten: `npm start` (entspricht `node server.js`), unter Windows alternativ per Doppelklick auf `AuthServer.cmd` (eigenes Konsolenfenster, bleibt nach einem Absturz offen; so startet auch das Stream-Deck-Skript den Server)
+5. Starten: `npm start` (entspricht `node server.js`), unter Windows alternativ per Doppelklick auf `AuthServer.cmd` (eigenes Konsolenfenster, bleibt nach einem Absturz offen, nur so geht der Neustart aus der Webkonsole; so startet auch das Stream-Deck-Skript den Server)
 6. Einmalig anmelden: `http://localhost:3000/login` im Browser öffnen.
 7. Prüfen: `http://localhost:3000/TwitchCompanionAdmin` (Webkonsole) oder `http://localhost:3000/status`
 
@@ -26,7 +26,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
 - Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu (ADR 0017)
 - Modul-Schalter: BdU-Chat und Soldbuch per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten
-- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC, weitere Bereiche folgen (ADR 0018)
+- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC mit Knöpfen zum Beenden und Neustarten des Servers, weitere Bereiche folgen (ADR 0018)
 
 ## Dokumentation
 

@@ -1,6 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens]
+// Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -27,18 +28,26 @@ const orig = Module._load;
 Module._load = function (r, ...a) { if (r === 'ws') return FakeWS; if (r === 'axios') return fakeAxios; if (r === 'readline') return { createInterface: () => new EventEmitter() }; return orig.call(this, r, ...a); };
 const realLog = console.log, logs = [];
 console.log = console.warn = console.error = (...a) => logs.push(a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '));
+const realExit = process.exit.bind(process), exits = [];
+if (scenario.startsWith('server-')) process.exit = code => { exits.push(code); };
+if (scenario === 'server-neustart') process.env.TWITCH_COMPANION_SUPERVISED = '1';
+else delete process.env.TWITCH_COMPANION_SUPERVISED;
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const request = (p, headers = {}, method = 'GET') => new Promise((res, rej) => {
+const request = (p, headers = {}, method = 'GET', body) => new Promise((res, rej) => {
   http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, r => {
     let d = ''; r.on('data', c => d += c); r.on('end', () => res({ status: r.statusCode, headers: r.headers, body: d }));
-  }).on('error', rej).end();
+  }).on('error', rej).end(body);
 });
 const results = []; const check = (name, cond, info = '') => results.push({ name, ok: !!cond, info });
 const PAGE = '/TwitchCompanionAdmin';
 const OVERVIEW = '/api/admin/overview';
-const OWN = [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
+const SHUTDOWN = '/api/admin/server/shutdown';
+const RESTART = '/api/admin/server/restart';
+const JSON_TYPE = { 'Content-Type': 'application/json' };
+const EXIT_WAIT_MS = 500;
+const OWN =[`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
 const STATUS_KEYS = ['authenticated', 'broadcaster_id', 'broadcaster_name', 'token_valid', 'expires_in_seconds', 'expires_in_minutes', 'auto_refresh', 'eventsub_connected', 'raid_queue_length',
   'whitelist_count', 'effect_mode', 'effect_queue_length', 'allowed_origins', 'modules', 'bot_configured', 'bot_login', 'bot_features', 'bdu_widget_connected', 'bdu_silence_until',
   'uboat_enabled', 'uboat_active', 'uboat_save', 'uboat_saved_at', 'pid', 'started_at'];
@@ -105,6 +114,56 @@ async function alleHerkuenfte() {
   check('B2 CORS_ORIGINS=*: Overview lehnt fremde Herkunft ab', r.status === 403, String(r.status));
   r = await request(OVERVIEW, { Origin: 'null' });
   check('B3 CORS_ORIGINS=*: Overview lehnt Herkunft null ab', r.status === 403, String(r.status));
+  r = await request(SHUTDOWN, { Origin: 'https://fremd.example', ...JSON_TYPE }, 'POST', '{}');
+  check('B4 CORS_ORIGINS=*: Beenden lehnt fremde Herkunft ab', r.status === 403, String(r.status));
+}
+
+async function serverBeenden() {
+  let r = await request(OVERVIEW);
+  check('D1 Ohne AuthServer.cmd: can_restart ist false', JSON.parse(r.body).can_restart === false, r.body);
+  r = await request(SHUTDOWN);
+  check('D2 GET beendet nicht: 404', r.status === 404, String(r.status));
+  r = await request(SHUTDOWN, JSON_TYPE, 'POST', '{}');
+  check('D3 POST ohne Herkunft: 403', r.status === 403, String(r.status));
+  for (const origin of ['null', 'http://absolute', 'https://fremd.example']) {
+    r = await request(SHUTDOWN, { Origin: origin, ...JSON_TYPE }, 'POST', '{}');
+    check(`D4 POST von Herkunft ${origin}: 403`, r.status === 403, String(r.status));
+  }
+  r = await request(SHUTDOWN, { Origin: OWN[0], ...JSON_TYPE, Host: 'example.com' }, 'POST', '{}');
+  check('D5 POST mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await request(SHUTDOWN, { Origin: OWN[0], 'Content-Type': 'text/plain' }, 'POST', '{}');
+  check('D6 POST ohne JSON: 415', r.status === 415, String(r.status));
+  r = await request(SHUTDOWN, { Origin: OWN[0] }, 'POST');
+  check('D7 POST ohne Inhalt: 415', r.status === 415, String(r.status));
+  r = await request(RESTART, { Origin: OWN[0], ...JSON_TYPE }, 'POST', '{}');
+  check('D8 Neustart ohne AuthServer.cmd: 409', r.status === 409, String(r.status));
+  await sleep(EXIT_WAIT_MS);
+  check('D9 Keine dieser Anfragen beendet den Server', exits.length === 0, JSON.stringify(exits));
+
+  r = await request(SHUTDOWN, { Origin: OWN[0], ...JSON_TYPE }, 'POST', '{}');
+  const d = JSON.parse(r.body);
+  check('D10 Beenden: Antwort mit Prozess-ID und Uhrzeit', r.status === 200 && d.ok === true && d.pid === process.pid && !Number.isNaN(Date.parse(d.at)), r.body);
+  check('D11 Die Antwort kommt vor dem Ende', exits.length === 0, JSON.stringify(exits));
+  r = await request(SHUTDOWN, { Origin: OWN[0], ...JSON_TYPE }, 'POST', '{}');
+  check('D12 Zweiter Auftrag: 409', r.status === 409, String(r.status));
+  await sleep(EXIT_WAIT_MS);
+  check('D13 Der Server endet genau einmal mit Code 0', JSON.stringify(exits) === '[0]', JSON.stringify(exits));
+  check('D14 Das Ende steht in der Konsole', logs.some(l => l.includes(`[Webkonsole] Server wird beendet (PID ${process.pid})`)));
+}
+
+async function serverNeustart() {
+  let r = await request(OVERVIEW);
+  check('E1 Mit AuthServer.cmd: can_restart ist true', JSON.parse(r.body).can_restart === true, r.body);
+  r = await request(RESTART, JSON_TYPE, 'POST', '{}');
+  check('E2 POST ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await request(RESTART, { Origin: OWN[1], ...JSON_TYPE }, 'POST', '{}');
+  const d = JSON.parse(r.body);
+  check('E3 Neustart: Antwort mit Prozess-ID und Uhrzeit', r.status === 200 && d.ok === true && d.pid === process.pid && !Number.isNaN(Date.parse(d.at)), r.body);
+  r = await request(SHUTDOWN, { Origin: OWN[1], ...JSON_TYPE }, 'POST', '{}');
+  check('E4 Beenden während des Neustarts: 409', r.status === 409, String(r.status));
+  await sleep(EXIT_WAIT_MS);
+  check('E5 Der Server endet genau einmal mit Code 75', JSON.stringify(exits) === '[75]', JSON.stringify(exits));
+  check('E6 Der Neustart steht in der Konsole', logs.some(l => l.includes(`[Webkonsole] Server wird neu gestartet (PID ${process.pid})`)));
 }
 
 async function ohneTokens() {
@@ -120,11 +179,13 @@ async function ohneTokens() {
   await sleep(500);
   if (scenario === 'alle-herkuenfte') await alleHerkuenfte();
   else if (scenario === 'ohne-tokens') await ohneTokens();
+  else if (scenario === 'server-beenden') await serverBeenden();
+  else if (scenario === 'server-neustart') await serverNeustart();
   else await ablauf();
 
   console.log = realLog;
   for (const x of results) realLog(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : '  -> ' + x.info}`);
   process.chdir(os.tmpdir());
   fs.rmSync(workDir, { recursive: true, force: true });
-  process.exit(results.every(x => x.ok) ? 0 : 1);
+  realExit(results.every(x => x.ok) ? 0 : 1);
 })();

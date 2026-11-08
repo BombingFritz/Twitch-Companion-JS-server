@@ -14,6 +14,7 @@ UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!soldbuch" -->
 Bot-Nachrichten: server.js --App-Access-Token, sender_id = Bot--> Helix /chat/messages (Rückfall: Broadcaster-Token; ADR 0017)
 Konsole (readline) --> server.js
 Browser am Streaming-PC --GET /TwitchCompanionAdmin, /api/admin/overview--> server.js (nur lokal, ADR 0018)
+Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js --Exit 0 oder 75--> AuthServer.cmd (bei 75 Neustart im selben Fenster)
 ```
 
 ## 2. Module und Funktionen
@@ -42,7 +43,7 @@ Browser am Streaming-PC --GET /TwitchCompanionAdmin, /api/admin/overview--> serv
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
 | Konsole | `printConsoleHelp`, `rl.on('line', …)` |
 | Status | `buildAuthStatus`, `buildRuntimeStatus` (gemeinsam für `/status` und die Webkonsole) |
-| Webkonsole (ADR 0018) | `requireAdminPage`, `requireAdminApi`; RAM: `adminOrigins`. Seite: `public/admin/` (`index.html`, `admin.js` mit Reiterliste `TABS`, `admin.css`) |
+| Webkonsole (ADR 0018) | `requireAdminPage`, `requireAdminApi`, `requireAdminWrite` (ändernde Aktionen), `endServerFromAdmin`; RAM: `adminOrigins`, `adminExitRequested`. Seite: `public/admin/` (`index.html`, `admin.js` mit Reiterliste `TABS`, `admin.css`) |
 
 ## 3. Persistierte Dateien (Arbeitsverzeichnis)
 
@@ -63,7 +64,7 @@ Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data
 
 ## 4. HTTP-Endpoints
 
-Alle GET außer `POST /api/bdu/answer` (ADR 0014). Alle Antworten mit `Cache-Control: no-store`.
+Alle GET außer `POST /api/bdu/answer` (ADR 0014) und `POST /api/admin/server/…` (ADR 0018). Alle Antworten mit `Cache-Control: no-store`.
 
 Zugriffsschutz (ADR 0013):
 - Browser-Anfragen mit `Origin`-Header werden nur von erlaubten Herkünften angenommen, sonst `403 {error, origin}`, bevor ein Endpoint etwas ausführt. Standard: `http://absolute` (OBS-Browser-Source mit „Lokale Datei“) und `null` (Datei per `file://`), dazu immer `http://localhost:<PORT>` und `http://127.0.0.1:<PORT>`. Änderbar über `CORS_ORIGINS`; `*` stellt das alte Verhalten (jede Herkunft) wieder her.
@@ -80,7 +81,9 @@ Zugriffsschutz (ADR 0013):
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bot_configured, bot_login, bot_features, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `bot_*`: Bot-Account laut `bot.json` und `BOT_FEATURES`; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
 | `/TwitchCompanionAdmin` | Webkonsole: statische Dateien aus `public/admin/` (leitet auf dieselbe Adresse mit `/` am Ende; Groß-/Kleinschreibung egal), mit `Content-Security-Policy` ohne Einbettung. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 404 außerhalb von `public/admin` |
-| `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, category, pending_confirmation: {type,count} oder null, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
+| `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), category, pending_confirmation: {type,count} oder null, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
+| `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
+| `POST /api/admin/server/restart` | wie oben, Exit-Code 75; `AuthServer.cmd` startet neu | wie oben; zusätzlich 409 ohne `AuthServer.cmd` |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
@@ -186,6 +189,10 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `ADMIN_PAGE_PATH` | `/TwitchCompanionAdmin` | Adresse der Webkonsole im Browser |
 | `ADMIN_OVERVIEW_PATH` / `ADMIN_POLL_MS` / `ADMIN_RECENT_EFFECTS` | `/api/admin/overview` / 5000 / 5 | Datenquelle der Hauptseite, Abfrageabstand, Anzahl letzter Effekte |
 | `ADMIN_CSP` | `default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` | Header der Webkonsole |
+| `ADMIN_SHUTDOWN_PATH` / `ADMIN_RESTART_PATH` | `/api/admin/server/shutdown` / `/api/admin/server/restart` | Knöpfe der Webkonsole |
+| `ADMIN_EXIT_DELAY_MS` | 300 | Zeit für die Antwort an die Seite, bevor der Prozess endet |
+| `SERVER_RESTART_EXIT_CODE` | 75 | `AuthServer.cmd` startet nur bei diesem Code neu |
+| `SERVER_SUPERVISED` | `TWITCH_COMPANION_SUPERVISED=1`, gesetzt von `AuthServer.cmd` | Neustart aus der Webkonsole möglich |
 | `APP_VERSION` | aus `package.json` | Anzeige in der Webkonsole |
 | `BDU_COMMAND` | `!bdu` | Chat-Befehl (Groß-/Kleinschreibung egal) |
 | `BDU_MAX_INPUT_CHARS` | 200 | Kürzung des Textes nach dem Befehl |
