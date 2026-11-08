@@ -83,7 +83,7 @@ Noch nicht entschieden, nicht spezifiziert.
 Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UNGEKLÄRT]. Je Punkt vor der Umsetzung eigenes ADR und eigene Spec.
 
 ### P1 Server-Konsole im Browser
-- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`, Stufe 1 (Statusseite unter `/TwitchCompanionAdmin`) umgesetzt und vom Nutzer am echten Server gesehen. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
+- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`, Stufe 1 (Statusseite unter `/TwitchCompanionAdmin`) und Stufe 2 (Server beenden und neu starten) umgesetzt und vom Nutzer am echten Server geprüft. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
 - Ziel: Weboberfläche des Servers (z. B. `http://localhost:3000/admin`) mit ausführlicherem Log, Whitelist-Verwaltung und Einstellungen, etwa Effekt-Modus und manuelles Auslösen von Effekten.
 - Berührt **ADR 0006** (Whitelist nur per Konsole): Das ADR müsste abgelöst werden; bei der Umsetzung nachfragen.
 - Voraussetzung: Zugriffsschutz für alle zustandsändernden Aktionen (nur lokal wie `/token`, ADR 0013; POST statt GET, siehe Priorität 2). Sonst könnte jede Webseite im Browser des Streaming-PCs die Whitelist ändern oder Effekte auslösen.
@@ -99,6 +99,7 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 ### P3 Widgets vom Server ausliefern, als optionale Module
 - Ziel: Der Server liefert die Browser-Widgets aus (`http://localhost:3000/widgets/…`), alles liegt an einem Ort; jedes Widget ist ein optionales Modul, das sich ein- und ausschalten lässt.
 - Bisher bewusst zurückgestellt: Vor- und Nachteile, Auslöser und Sicherheitsregel (nur ein eigener Widget-Ordner, nie der Server-Ordner) stehen unter K1, „Option für später“. Berührt **ADR 0013** (Herkünfte `null` und `http://absolute` könnten entfallen) und die ADRs der Widget-Repositories (`BombingFritz/TwitchPoll`, `BombingFritz/Uboat-Widget`).
+- Fernziel (Nutzer, 08.11.2026): Zusatzfunktionen wie HA-Effekte, UBOAT-Soldbuch, BdU-Chat und Sub-Goal werden später zu Modulen, die man an- und ausschalten und gegebenenfalls deinstallieren kann. Auf der Hauptseite der Webkonsole stehen sie schon als Gruppe „Optionale Module“ (ADR 0018); im Code sind sie noch keine eigenständigen Module.
 - Zu klären: Modul-Schnittstelle (z. B. Name, Version, eigene Endpoints, eigene Einstellungen), ob Widgets im Server-Repository liegen oder als eigene Repositories eingebunden werden, Verhalten der OBS-Quellen, wenn der Server nicht läuft.
 
 ### P4 Öffentliche Veröffentlichung für andere Streamer

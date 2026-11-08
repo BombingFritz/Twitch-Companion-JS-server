@@ -1304,6 +1304,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     port: Number(PORT),
     poll_ms: ADMIN_POLL_MS,
     can_restart: SERVER_SUPERVISED,
+    ha_webhook_configured: Boolean(HA_WEBHOOK_URL),
     category: currentCategory,
     pending_confirmation: pendingManualConfirmation
       ? { type: pendingManualConfirmation.job.type, count: pendingManualConfirmation.job.count }

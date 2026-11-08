@@ -10,6 +10,8 @@ const NOTICE_MS = 30000;
 const EXIT_POLL_MS = 1000;
 const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
+const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
+const LIGHT_LABELS = { ok: 'funktioniert', bad: 'Fehler', off: 'nicht aktiv' };
 const SERVER_ACTIONS = {
   restart: { url: '/api/admin/server/restart', label: 'Server neu starten', question: 'Server wirklich neu starten?', yes: 'Ja, neu starten', warnMs: 30000 },
   shutdown: { url: '/api/admin/server/shutdown', label: 'Server beenden', question: 'Server wirklich beenden?', yes: 'Ja, beenden', warnMs: 5000 },
@@ -27,6 +29,7 @@ const TABS = [
 const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
+  optionalCollapsed: loadCollapsed(), optionalToggle: null,
 };
 
 // ── DOM-Helfer ──────────────────────────────────────────────────────
@@ -82,6 +85,36 @@ function uptime(iso) {
 
 function fileName(value) {
   return String(value).split(/[\\/]/).pop();
+}
+
+// Lichter der optionalen Module. level: ok = funktioniert, bad = Fehler, off = nur nicht aktiv, null = kein Licht.
+function effectsLight(d) {
+  if (!d.ha_webhook_configured) return { level: 'bad', hint: 'Webhook nicht eingetragen' };
+  if (d.effect_mode === 'off') return { level: 'off', hint: 'Effekte ausgeschaltet' };
+  return { level: 'ok', hint: 'bereit' };
+}
+
+function soldbuchLight(d) {
+  if (!d.uboat_enabled) return { level: 'off', hint: 'nicht eingerichtet' };
+  if (!d.modules.uboat) return { level: 'off', hint: 'ausgeschaltet' };
+  if (!d.uboat_save) return { level: 'bad', hint: 'kein Spielstand gelesen' };
+  return { level: 'ok', hint: 'bereit' };
+}
+
+function bduLight(d) {
+  if (!d.modules.bdu) return { level: 'off', hint: 'ausgeschaltet' };
+  if (!d.bdu_widget_connected) return { level: 'off', hint: 'Enigma-Widget nicht verbunden' };
+  if (d.bdu_silence_until) return { level: 'off', hint: 'Funkstille' };
+  return { level: 'ok', hint: 'bereit' };
+}
+
+function moduleLights(d) {
+  return [
+    { name: 'HA-Effekte', ...effectsLight(d) },
+    { name: 'UBOAT-Soldbuch', ...soldbuchLight(d) },
+    { name: 'BdU-Chat', ...bduLight(d) },
+    { name: 'Sub-Goal', level: null, hint: '' },
+  ];
 }
 
 // ── Reiter ──────────────────────────────────────────────────────────
@@ -240,7 +273,8 @@ function effectsCard(d) {
         el('time', { text: effectTime(e.timestamp) }));
     })
     : [el('li', { class: 'empty', text: 'Noch keine Effekte.' })];
-  return card('Effekte', rows(
+  return card('HA-Effekte', rows(
+    row('Webhook', d.ha_webhook_configured ? indicator('ok', 'eingetragen') : indicator('bad', 'nicht eingetragen')),
     row('Modus', indicator(level, label)),
     row('Warteschlange', el('span', { text: String(d.effect_queue_length) })),
     row('Wartet auf Bestätigung', d.pending_confirmation
@@ -249,12 +283,8 @@ function effectsCard(d) {
   ), el('ul', { class: 'events' }, ...list));
 }
 
-function modulesCard(d) {
-  const line = (label, on) => row(label, on ? indicator('ok', 'an') : indicator('off', 'aus'));
-  return card('Module', rows(
-    line('BdU-Chat', d.modules.bdu),
-    line('UBOAT-Soldbuch', d.modules.uboat),
-  ));
+function switchRow(on) {
+  return row('Modul', on ? indicator('ok', 'an') : indicator('off', 'aus'));
 }
 
 function botCard(d) {
@@ -277,6 +307,7 @@ function bduCard(d) {
   if (d.bdu_silence_until === 'bis Streamstart') silence = indicator('warn', 'bis Streamstart');
   else if (d.bdu_silence_until) silence = indicator('warn', `bis ${clock(d.bdu_silence_until)} Uhr`);
   return card('BdU-Chat', rows(
+    switchRow(d.modules.bdu),
     row('Enigma-Widget', d.bdu_widget_connected ? indicator('ok', 'verbunden') : indicator('off', 'nicht verbunden')),
     row('Funkstille', silence),
   ));
@@ -284,9 +315,10 @@ function bduCard(d) {
 
 function uboatCard(d) {
   if (!d.uboat_enabled) {
-    return card('UBOAT', rows(row('Spielstände', indicator('off', 'nicht eingerichtet'))));
+    return card('UBOAT-Soldbuch', rows(row('Spielstände', indicator('off', 'nicht eingerichtet'))));
   }
-  return card('UBOAT', rows(
+  return card('UBOAT-Soldbuch', rows(
+    switchRow(d.modules.uboat),
     row('Kategorie aktiv', d.uboat_active ? indicator('ok', 'ja') : indicator('off', 'nein')),
     row('Spielstand', el('span', { text: d.uboat_save ? fileName(d.uboat_save) : 'noch keiner' })),
     row('Stand', el('span', { text: d.uboat_saved_at ? dateTime(d.uboat_saved_at) : '–' })),
@@ -313,10 +345,45 @@ function subgoalCard(d) {
     goal.target ? el('div', { class: 'bar' }, bar) : null);
 }
 
+function loadCollapsed() {
+  try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
+}
+
+function saveCollapsed(collapsed) {
+  try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch { /* nur eine Bequemlichkeit */ }
+}
+
+// Dasselbe Element über alle Abfragen, sonst ginge ein Klick verloren, wenn gerade neu aufgebaut wird.
+function optionalToggle() {
+  if (!state.optionalToggle) {
+    state.optionalToggle = el('button', { class: 'group-head', type: 'button' }, el('span', { class: 'chevron', 'aria-hidden': 'true' }), 'Optionale Module');
+    state.optionalToggle.addEventListener('click', () => {
+      state.optionalCollapsed = !state.optionalCollapsed;
+      saveCollapsed(state.optionalCollapsed);
+      renderContent();
+    });
+  }
+  state.optionalToggle.setAttribute('aria-expanded', String(!state.optionalCollapsed));
+  state.optionalToggle.firstChild.textContent = state.optionalCollapsed ? '▸' : '▾';
+  return state.optionalToggle;
+}
+
+function moduleLightList(d) {
+  return el('ul', { class: 'module-lights' }, ...moduleLights(d).map(m => el('li', { title: m.hint },
+    m.level ? el('span', { class: `dot ${m.level}`, role: 'img', 'aria-label': LIGHT_LABELS[m.level] }) : null,
+    m.name)));
+}
+
+function optionalModules(d) {
+  return el('section', { class: 'group' }, optionalToggle(), state.optionalCollapsed
+    ? moduleLightList(d)
+    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), subgoalCard(d)));
+}
+
 function renderOverview(content, d) {
-  content.replaceChildren(el('div', { class: 'grid' },
-    serverCard(d), twitchCard(d), effectsCard(d), modulesCard(d),
-    botCard(d), bduCard(d), uboatCard(d), whitelistCard(d), subgoalCard(d)));
+  content.replaceChildren(
+    el('div', { class: 'grid' }, serverCard(d), twitchCard(d), botCard(d), whitelistCard(d)),
+    optionalModules(d));
 }
 
 // ── Verbindung und Abfrage ──────────────────────────────────────────
