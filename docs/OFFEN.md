@@ -83,6 +83,7 @@ Noch nicht entschieden, nicht spezifiziert.
 Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UNGEKLÄRT]. Je Punkt vor der Umsetzung eigenes ADR und eigene Spec.
 
 ### P1 Server-Konsole im Browser
+- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
 - Ziel: Weboberfläche des Servers (z. B. `http://localhost:3000/admin`) mit ausführlicherem Log, Whitelist-Verwaltung und Einstellungen, etwa Effekt-Modus und manuelles Auslösen von Effekten.
 - Berührt **ADR 0006** (Whitelist nur per Konsole): Das ADR müsste abgelöst werden; bei der Umsetzung nachfragen.
 - Voraussetzung: Zugriffsschutz für alle zustandsändernden Aktionen (nur lokal wie `/token`, ADR 0013; POST statt GET, siehe Priorität 2). Sonst könnte jede Webseite im Browser des Streaming-PCs die Whitelist ändern oder Effekte auslösen.
@@ -115,10 +116,11 @@ Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-ber
 - Offene Punkte stehen in der Spec unter „Abgleich“: eigener Kandidaten-Sammler statt `scheduleEffect()`, neue EventSub-Typen (`stream.offline`, `channel.update`, Hype Train), neue Scopes und deren Wirkung auf `/token` (P2), Absicherung des Alarm-Endpoints (K1), Persistenz während des Streams, Testdaten (K8).
 - Vorgeschlagene Reihenfolge: 1a Spielbewertung, 1b Kandidaten-Sammler, 1c Bericht, 1d Marker und Hype Train, 1e Alarm-Endpoint.
 - Vorgaben Nutzer 07.11.2026: Bericht als `.txt`-Datei mit dem Datum des Streams, erstellt am Streamende. Auslöser noch offen: EventSub `stream.offline` (meldet Twitch beim Offline-Gehen), Beginn des Abschluss-Raids (Nutzer beendet jeden Stream mit einem Raid; EventSub `channel.raid` mit dem Broadcaster als Absender) oder ein manueller Befehl, damit der Bericht am Ende vorgelesen bzw. später in der Stream-Ende-Szene gezeigt werden kann. Erst nach DerBdu angehen.
+- Vorgaben Nutzer 08.11.2026: Start über das Twitch-Ereignis beim Live-Gehen. Knopf „Streamlog beenden“ auf der Hauptseite der Webkonsole, damit der Bericht schon vorliegt, wenn der Nutzer in den Stream-Ende-Bildschirm geht und die Ergebnisse vorlesen will. Wird der Knopf vergessen, beendet spätestens der eigene Abschluss-Raid den Log und speichert ihn. Abbrüche sind zu berücksichtigen: Verbindungsabbruch (eventuell neues Live-Ereignis) und Rechnerabsturz (Log bricht einfach ab). Nutzer: Kommt nach `stream.offline` binnen 2 Stunden kein neues Live-Ereignis, ist der Log abgeschlossen; ein regulärer neuer Stream binnen 2 Stunden kommt nicht vor, ein Reconnect kann bis etwa 15 Minuten dauern. Weitere Einzelheiten (Knopf vor dem Stream-Ende, Absturz) folgen im eigenen ADR. Hinweis zum Abschluss-Raid: `channel.raid` erlaubt je Abo nur `from_` oder `to_broadcaster_user_id`, für ausgehende Raids braucht es ein zweites Abo (Twitch-Doku, geprüft 08.11.2026).
 
 ## Priorität 2
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
-- Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung. Fremde Webseiten werden per Herkunftsprüfung abgelehnt, Einbindungen ohne `Origin` nicht (siehe K1). Bewertung: [UNGEKLÄRT].
+- Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung. Fremde Webseiten werden per Herkunftsprüfung abgelehnt, Einbindungen ohne `Origin` nicht (siehe K1). Lösung geplant: Sie entfallen mit dem Reiter „Einstellungen“ der Webkonsole (ADR 0018).
 - Funktionsdetails der Widgets (Polling-Widget: dokumentiert im Repository BombingFritz/TwitchPoll als `SpargelPoll.html`; `bFCoinFlipV9_final.html`) sind nicht dokumentiert. Die Anhänge `pollingWidget.html` und `Creator-Overlay.html` sind nicht ausgewertet.
 - Wirkung des Home-Assistant-Scripts und der WLED-Effektauswahl: separate Doku, nicht Teil dieses Repos [UNGEKLÄRT].
 - Ob Twitch `channel.chat.notification` zeitgleich mit der Chat-Anzeige und den Overlay-Alerts liefert, ist nicht belegt [UNGEKLÄRT].

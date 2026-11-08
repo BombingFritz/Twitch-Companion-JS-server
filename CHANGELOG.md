@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation
+- Konzept der Webkonsole: ADR 0018, Spec `webkonsole.md`, Nachträge in ADR 0006 und 0010, Vorgaben zum Streamlog in OFFEN. Noch kein Code.
 - ADR 0013 (Nachtrag), ARCHITEKTUR, Spec `bot-account.md`, OFFEN (K1). Neuer Test `test/login-test.js`.
 - Doku-Lücken aus der Code-Prüfung: KONTEXT mit eigenen Abschnitten zu DerBdu und UBOAT-Soldbuch; ARCHITEKTUR mit Zugriffsschutz-Funktionen, `armKeepalive`, `MODULE_NAMES`, `WHITELIST_CHECK_LABELS`; Status der Specs `bdu-chat`, `bot-account`, `uboat-personalakte` aktualisiert; README nennt Modul-Schalter und Login nur am Streaming-PC.
 - Neue Übersicht `docs/adr/README.md`: ADRs nach Themen gruppiert, je ein Satz, Verweise und Herkunft, Anleitung für neue ADRs; Verweis in README und AGENTS.md.
