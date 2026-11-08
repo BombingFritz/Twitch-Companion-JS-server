@@ -37,6 +37,7 @@ const runs = [
   ['admin-test.js', ['ablauf']],
   ['admin-test.js', ['alle-herkuenfte']],
   ['admin-test.js', ['ohne-tokens']],
+  ['admin-format-test.js', []],
 ];
 
 let ok = 0, fail = 0;
