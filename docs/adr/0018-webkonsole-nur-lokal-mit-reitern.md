@@ -1,0 +1,34 @@
+# ADR 0018: Webkonsole unter `/admin`, nur am Streaming-PC, mit Reitern
+
+**Status:** Akzeptiert (08.11.2026), noch nicht umgesetzt.
+Vom Nutzer entschieden (08.11.2026): Zugriff nur am Streaming-PC; die Whitelist darf über die Webkonsole verwaltet werden; die erste Version ist eine Statusseite zum Ansehen, aber ausbaufähig angelegt (Hauptseite mit den wichtigsten Infos, Reiter für Bereiche wie Live-Log, Einstellungsschalter, Whitelist, Statistik, nach und nach angelegt); die Stream-Deck-Tasten für den Effekt-Modus können durch die Seite ersetzt werden; auf die Hauptseite kommen ein Knopf „Streamlog beenden“ und ein Knopf zum Beenden und Neustarten des Servers, dessen Ende in der Oberfläche sichtbar ist.
+Von Claude festgelegt, vom Nutzer als Gesamtkonzept gebilligt, aber nicht einzeln zur Wahl gestellt: Adresse `/admin`, eigene Dateien ohne Build-Schritt und ohne Framework, eigener Pfad `/api/admin/…`, strenge Herkunftsprüfung, Abfrage alle 5 s, Wegfall der GET-Endpoints für den Effekt-Modus samt Bestätigung, Reihenfolge der Reiter, Neustart über einen Exit-Code in `AuthServer.cmd`.
+
+**Kontext:** Der Server wird bisher über das Konsolenfenster bedient. Log-Zeilen gehen nur nach `stdout`, Einstellungen und Whitelist nur über Befehle, und ohne sichtbares Fenster ist nichts erreichbar (OFFEN.md, K7). Der Nutzer will eine Oberfläche im Browser (P1, 03.11.2026). Eine solche Seite kann Einstellungen ändern und ist deshalb ein Angriffsziel: Jede andere im Browser des Streaming-PCs geöffnete Webseite könnte sonst Anfragen an `localhost` schicken. Die globale Herkünfte-Liste (ADR 0013) erlaubt `null`, das auch abgeschottete iframes fremder Seiten senden. Für die Konsole reicht sie daher nicht.
+
+**Entscheidung:**
+- **Zugriff:** `/admin` und alles unter `/api/admin/…` nur vom eigenen Rechner (`requireLocalRequest`: Loopback-Adresse und Host, ADR 0013). Keine Anmeldung, weil niemand von außen herankommt. Der Server bleibt an allen Schnittstellen erreichbar (ADR 0013), die Sperre liegt am Pfad.
+- **Herkunft:** Für `/api/admin/…` gilt zusätzlich: Sendet der Browser einen `Origin`-Header, muss er genau `http://localhost:<PORT>` oder `http://127.0.0.1:<PORT>` sein. `null`, `http://absolute` und `CORS_ORIGINS` gelten hier nicht, auch nicht `*`.
+- **Ändernde Aktionen:** nur per POST mit JSON und **pflichtweise** mit eigener Herkunft wie oben. Browser senden bei POST immer einen `Origin`-Header; Einbindungen wie `<img>` können nur GET auslösen und erreichen damit nichts.
+- **Effekt-Modus:** Sobald der Reiter „Einstellungen“ ihn schalten kann, entfallen `GET /api/effects/mode/:mode` und `GET /api/effects/confirm` im selben Schritt; das schließt die Lücke aus OFFEN.md (Priorität 2). Ersatz: `POST /api/admin/effects/mode` und `POST /api/admin/effects/confirm` über denselben Code (`setEffectMode`). `GET /api/effects/mode` (nur lesen) bleibt. Die Konsolenbefehle bleiben.
+- **Server beenden und neu starten:** Zwei Knöpfe auf der Hauptseite, je mit Rückfrage, per POST wie oben. Anlass sind Server, die unbemerkt im Hintergrund weiterliefen (Nutzer, 05.11.2026). Die Seite zeigt danach, dass der Server beendet wurde, mit Uhrzeit und Prozess-ID, und warnt, wenn dieselbe Prozess-ID weiter antwortet. Ein Prozess kann sich nicht selbst neu starten: Für den Neustart endet er mit einem eigenen Exit-Code, und `AuthServer.cmd` startet ihn dann im selben Fenster erneut. Ohne dieses Skript (z. B. `npm start`) ist der Neustart-Knopf ausgegraut. Beim Beenden bleibt das Fenster wie bisher mit `pause` offen, die letzten Log-Zeilen bleiben lesbar.
+- **Aufbau:** Eigene statische Dateien in `public/admin/` (HTML, CSS, JavaScript), ohne Build-Schritt und ohne Framework. Ausgeliefert wird nur dieser Ordner, nie der Server-Ordner (`.env`, `tokens.json`). Ein Reiter ist ein Eintrag in einer Liste im JavaScript; neue Reiter kommen je als eigener PR dazu.
+- **Daten:** Die Seite holt ihre Daten aus `GET /api/admin/overview`. `/status` bleibt, wie es ist, und bekommt keine neuen Felder, weil es aus dem LAN erreichbar ist.
+- **Darstellung:** Fremde Texte (Chatnamen, Log-Zeilen) werden nur als Text eingesetzt, nie als HTML. Die Seite setzt `Content-Security-Policy` ohne Inline-Skripte und verbietet das Einbetten in fremde Seiten. Tokens und Secrets erscheinen nie auf der Seite.
+- **Bereiche, die Daten ändern, folgen eigenen Regeln:** manuelles Auslösen von Effekten nur über `scheduleEffect()` (ADR 0004), Bot-Zuordnung wie ADR 0017. Der Knopf „Streamlog beenden“ gehört zum Stream-Bericht und bekommt dort ein eigenes ADR.
+
+**Verworfene Alternativen:**
+- **Zugriff aus dem Heimnetz (Handy):** bräuchte Anmeldung und Schutz gegen Mitlesen; vom Nutzer nicht gewünscht.
+- **Server nur an `127.0.0.1` binden:** nicht ohne Rückfrage, Home Assistant fragt eventuell aus dem LAN ab (ADR 0013, [UNGEKLÄRT]).
+- **Felder von `/status` erweitern und die Seite darauf aufbauen:** Alles Neue wäre im LAN lesbar.
+- **GET-Endpoints für das Stream Deck behalten:** Die Aktion „Website öffnen“ kann nur GET; der Nutzer braucht die Tasten nicht mehr, und die Lücke bliebe offen.
+- **Framework mit Build-Schritt:** mehr Abhängigkeiten und ein zusätzlicher Arbeitsschritt für eine lokale Seite.
+- **HTML im `server.js`:** wächst mit jedem Reiter und ist ohne Server nicht als Datei prüfbar.
+
+**Konsequenzen:**
+- `server.js` bekommt eine zweite Art von Zugriffsschutz nur für die Konsole. Beide Prüfungen laufen zusätzlich zur globalen Herkunftsprüfung.
+- Sobald die GET-Endpoints entfallen, funktionieren vorhandene Stream-Deck-Tasten dafür nicht mehr und werden vom Nutzer entfernt.
+- ADR 0006 und ADR 0010 bekommen je einen Nachtrag.
+- Der Server kennt bisher keinen Live-Status; die Hauptseite zeigt ihn erst, wenn der Stream-Bericht ihn erfasst.
+- Einfache Abfrage statt dauerhafter Verbindung auf der Hauptseite; der Live-Log nutzt später Server-Sent Events (Muster ADR 0014).
+- `AuthServer.cmd` bekommt eine Schleife für den Neustart-Code. Die Knöpfe beenden nur den Prozess, der auf dem Port antwortet; ein zweiter Server kann wegen des Abbruchs bei belegtem Port dort nicht parallel lauschen.

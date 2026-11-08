@@ -9,3 +9,5 @@
 **Verworfene Alternativen:** [UNGEKLÄRT]
 
 **Konsequenzen:** Zustandsändernde Aktionen laufen über GET ohne Authentifizierung. Bestätigen geht nur per HTTP, nicht per Konsole. `off` ist als Notschalter gedacht (z. B. bei Spam- oder Bot-Attacken): Der Wechsel auf `off` verwirft auch eine gerade wartende Bestätigung, ohne Eintrag im Event-Log, damit das Log bei einer Attacke nicht überläuft (Nachtrag Nov. 2026, OFFEN.md K3).
+
+**Nachtrag (08.11.2026):** Der Nutzer hat entschieden, dass die Webkonsole die Stream-Deck-Tasten für den Effekt-Modus ersetzen kann (ADR 0018). Mit dem Reiter „Einstellungen“ entfallen deshalb `GET /api/effects/mode/:mode` und `GET /api/effects/confirm` zugunsten geschützter POST-Endpoints; das Mitnehmen der Bestätigung hat Claude vorgeschlagen. Bis dahin gilt dieses ADR unverändert. Die drei Modi, ihre Speicherung und die Konsolenbefehle bleiben.
