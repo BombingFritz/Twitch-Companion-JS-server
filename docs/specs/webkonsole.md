@@ -39,6 +39,8 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 | Whitelist | Anzahl der Einträge | `whitelist_count` |
 | Sub-Goal | Stand, Ziel, Titel | `subgoal_cache.json` |
 
+Die letzten Effekte zeigen bei Einträgen von heute nur die Uhrzeit, bei älteren zusätzlich das Datum (Tag und Monat), weil `events.json` Einträge mehrerer Tage enthält.
+
 Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übrigen Karten zeigen, was der Server ohne Login weiß.
 
 ### Aktualisierung

@@ -135,6 +135,7 @@ body.stale .grid { opacity: .45; }
 
 .events { list-style: none; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--border); display: grid; gap: 6px; font-size: 14px; }
 .events li { display: flex; justify-content: space-between; gap: 12px; }
+.events li span { min-width: 0; overflow-wrap: anywhere; }
 .events time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
 .events .empty { color: var(--muted); }
 

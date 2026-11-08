@@ -58,6 +58,11 @@ function dateTime(iso) {
   return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+// Einträge von heute nur mit Uhrzeit, ältere zusätzlich mit Datum.
+function effectTime(iso, now = new Date()) {
+  return new Date(iso).toDateString() === now.toDateString() ? clock(iso) : dateTime(iso);
+}
+
 function uptime(iso) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
   if (minutes < 1) return 'gerade gestartet';
@@ -142,7 +147,7 @@ function effectsCard(d) {
       const skipped = e.skipped ? ' (nicht bestätigt)' : '';
       return el('li', null,
         el('span', { text: `${name}${count}${who}${skipped}` }),
-        el('time', { text: clock(e.timestamp) }));
+        el('time', { text: effectTime(e.timestamp) }));
     })
     : [el('li', { class: 'empty', text: 'Noch keine Effekte.' })];
   return card('Effekte', rows(
