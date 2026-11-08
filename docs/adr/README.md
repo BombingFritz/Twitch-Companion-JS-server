@@ -32,7 +32,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | ADR | Worum es geht |
 |---|---|
 | [0005](0005-shoutout-ueber-helix-api.md) | Shoutouts über die Twitch-API statt Chat-Befehl. |
-| [0006](0006-whitelist-nur-per-konsole.md) | Die Shoutout-Whitelist wird nur per Konsole gepflegt. |
+| [0006](0006-whitelist-nur-per-konsole.md) | Die Shoutout-Whitelist wurde nur per Konsole gepflegt; seit dem Nachtrag auch über die Webkonsole (0018). |
 | [0011](0011-raid-begruessung-per-warteschlange.md) | Raid-Begrüßungen über eine Warteschlange mit Mindestabstand. |
 | [0012](0012-quartals-schluessel-raid-statistik.md) | Raid-Statistik je Quartal bis 2026, ab 2027 je Jahr. |
 | [0015](0015-aktivitaetspruefung-vor-whitelist-shoutout.md) | Whitelist-Shoutout nur für Kanäle, die in den letzten 40 Tagen aktiv waren; mit Prüfprotokoll. |

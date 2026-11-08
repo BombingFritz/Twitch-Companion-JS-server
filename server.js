@@ -92,6 +92,10 @@ const ADMIN_LOG_MAX_CHARS = 4000;                 // längere Log-Einträge werd
 const ADMIN_LOG_PING_MS = 30 * 1000;              // Lebenszeichen auf der Live-Log-Verbindung
 const ADMIN_ERROR_LOG_PATH = '/api/admin/log/errors';
 const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bleiben in error_log.json
+const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
+const ADMIN_JSON_LIMIT = '1kb';                   // Webkonsole-Aktionen senden nur kurze JSON-Objekte
+const TWITCH_LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
+const TWITCH_ID_PATTERN = /^\d{1,20}$/;
 const LOG_REDACTED = '<entfernt>';
 const LOG_PRIVATE_ADDRESS = '<privat>';
 
@@ -1453,6 +1457,46 @@ function requireAdminWrite(req, res, next) {
   if (!req.is('application/json')) return res.status(415).json({ error: 'JSON erwartet' });
   next();
 }
+
+// Wie an der Konsole: "@name" ist immer ein Name, reine Ziffern ohne @ sind eine ID.
+function parseWhitelistInput(value) {
+  if (typeof value !== 'string') return null;
+  const text = value.trim().toLowerCase();
+  const login = text.startsWith('@') ? text.slice(1) : text;
+  if (text === login && TWITCH_ID_PATTERN.test(text)) return { id: text };
+  return TWITCH_LOGIN_PATTERN.test(login) ? { login } : null;
+}
+
+app.get(ADMIN_WHITELIST_PATH, (req, res) => {
+  const entries = Object.entries(loadWhitelist())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
+  res.json({ entries, count: entries.length });
+});
+
+app.post(`${ADMIN_WHITELIST_PATH}/add`, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), async (req, res) => {
+  const target = parseWhitelistInput(req.body && req.body.user);
+  if (!target) return res.status(400).json({ error: 'Bitte einen Twitch-Namen oder eine ID eingeben' });
+  let user;
+  try {
+    user = target.login ? await resolveUserByLogin(target.login) : await resolveUserById(target.id);
+  } catch (err) {
+    console.error('[Webkonsole] Whitelist: Twitch-Abfrage fehlgeschlagen:', err.response?.data || err.message);
+    return res.status(502).json({ error: 'Twitch konnte nicht gefragt werden' });
+  }
+  if (!user) return res.status(404).json({ error: `Kein Twitch-Konto „${target.login || target.id}“ gefunden` });
+  if (Object.hasOwn(loadWhitelist(), user.id)) return res.status(409).json({ error: `@${user.login} steht schon auf der Whitelist` });
+  addToWhitelist(user.id, user.login);
+  res.json({ ok: true, entry: { id: user.id, name: user.login } });
+});
+
+app.post(`${ADMIN_WHITELIST_PATH}/remove`, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  const id = req.body && req.body.id;
+  if (typeof id !== 'string' || !TWITCH_ID_PATTERN.test(id)) return res.status(400).json({ error: 'Ungültige ID' });
+  if (!Object.hasOwn(loadWhitelist(), id)) return res.status(404).json({ error: 'Dieser Eintrag steht nicht auf der Whitelist' });
+  removeFromWhitelist(id);
+  res.json({ ok: true, id });
+});
 
 let adminExitRequested = false;
 
