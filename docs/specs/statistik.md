@@ -97,8 +97,12 @@ Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speiche
 - `lib/stream-session.js`: Zustände `none`, `live`, `offline`, `closed` wie oben, ohne Abhängigkeit von Twitch oder Dateien. `count` zählt nur bei `live` und `offline`.
 - `stream_stats.json`, Schema-Version 1, atomar geschrieben: sofort bei Beginn, Offline und Abschluss, sonst höchstens alle 30 s bei Änderung und alle 5 Minuten als Lebenszeichen, solange live. Beim Beenden über die Webkonsole wird vorher gespeichert.
 - Neue Ereignisse: `stream.offline`, `channel.raid` mit `from_broadcaster_user_id`. Ausgehende Raids werden nicht begrüßt und nicht als Raid gezählt.
-- Stream-Kennzahlen: Follows, Subs, verschenkte Subs, eingehende Raids, Chatnachrichten, Botnachrichten (nur über den Bot gesendete), eigene Shoutouts, Enigma-Antworten.
-- `GET /api/admin/stats` liefert zusätzlich `stream` mit `{status, started_at, ended_at, offline_at, closes_at, close_reason, aborted, late_start, duration_seconds, interruptions, interruption_seconds, categories, tags, metrics}`.
+- Stream-Kennzahlen: Follows, Subs, verschenkte Subs, eingehende Raids, Chatnachrichten, Botnachrichten (nur über den Bot gesendete), Shoutouts, Enigma-Antworten, Abstimmungen, abgegebene Stimmen, Wetten, Teilnahmen an Wetten, Kanalpunkte in Abstimmungen und Wetten, verschiedene Chatter und die aktivsten Chatter.
+- Abstimmungen: `channel.poll.end` mit Status `completed` oder `terminated` (`archived` meldet dieselbe noch einmal). Stimmen sind die Summe von `choices[].votes`, Kanalpunkte `channel_points_votes` mal `amount_per_vote`.
+- Wetten: `channel.prediction.end` mit Status `resolved`; bei `canceled` gibt Twitch die Punkte zurück. Teilnahmen sind die Summe von `outcomes[].users`, Kanalpunkte die von `outcomes[].channel_points`.
+- Shoutouts: `channel.shoutout.create`, zählt damit auch von Hand gesendete des Broadcasters. Von Moderatoren gesendete zählen nicht, weil das Abo an den Broadcaster gebunden ist.
+- Chatter: je Stream höchstens `STREAM_MAX_CHATTERS` (1000), danach kommen keine neuen dazu; Broadcaster und genutzte Chat-Bots zählen nicht.
+- `GET /api/admin/stats` liefert zusätzlich `stream` mit `{status, started_at, ended_at, offline_at, closes_at, close_reason, aborted, late_start, duration_seconds, interruptions, interruption_seconds, categories, tags, unique_chatters, top_chatters, metrics}`.
 - Reiter „Statistik“: Karte „Laufender oder letzter Stream“. Die Kopfzeile meldet „Twitch nicht erreichbar“, wenn EventSub länger als 20 s getrennt ist.
 - Geprüft mit `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen; am echten Stream noch nicht.
 
@@ -109,6 +113,6 @@ Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speiche
 | 2 | Stream-Ablauf und einfache Stream-Zahlen, `stream_stats.json` | umgesetzt, siehe oben |
 | 3 | Archiv je Stream, Knopf „Streamlog beenden“, Abschlussmeldung mit Link, Warnung bei auffälligen Berichten, globale Summe | offen |
 | 3b | Alarm „Stream läuft nach dem Raid weiter“ | offen |
-| 4 | Polls, Wetten, Stimmen, Shoutouts, Hype Trains, Bits, Kanalpunkte, Spielbewertung, Ranglisten, Feld „Genutzte Chat-Bots“ | offen |
+| 4 | Hype Trains, Bits, eingelöste Kanalpunkte, Spielbewertung (neue Scopes, neuer Login), Ranglisten für den Support, Feld „Genutzte Chat-Bots“ | offen; Abstimmungen, Wetten, Stimmen, Shoutouts und Chatter sind umgesetzt |
 | 5 | Endscreen | offen |
 | 6 | Clip-Kandidaten mit Alarm und Marker | offen |

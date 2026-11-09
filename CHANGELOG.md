@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 - Statistik, Stufe 1: Modul `lib/stats.js` mit zentraler Kennzahlenliste und Reiter „Statistik“ mit den Zahlen der laufenden Server-Instanz (Laufzeit, Fehler, Effekte, Follows, Subs, verschenkte Subs, Chatnachrichten). Neu: `GET /api/admin/stats` (ADR 0019, Spec `statistik.md`).
 - Statistik, Stufe 2: Stream-Ablauf in `lib/stream-session.js` mit Karte „Laufender oder letzter Stream“: Start, Dauer, Unterbrechungen, Zeit je Kategorie, Follows, Subs, verschenkte Subs, eingehende Raids, Chat, Botnachrichten, Shoutouts, Enigma-Antworten. Neu: EventSub `stream.offline` und ausgehende Raids, `stream_stats.json`. Die Kopfzeile meldet „Twitch nicht erreichbar“ (ADR 0019, Spec `statistik.md`).
+- Statistik je Stream: Abstimmungen, abgegebene Stimmen, Wetten, Teilnahmen, Kanalpunkte in Abstimmungen und Wetten, verschiedene und aktivste Chatter. Shoutouts zählen über `channel.shoutout.create`, also auch von Hand gesendete. Neue Abos, kein neuer Scope (ADR 0019).
 
 ### Security
 - Entfernt: `GET /api/effects/mode/:mode` und `GET /api/effects/confirm`. Sie änderten ohne Schutz den Zustand des Servers; Einbindungen ohne `Origin` konnten sie auslösen. Stream-Deck-Tasten auf diese Adressen funktionieren nicht mehr, Ersatz ist der Reiter „Einstellungen“. `GET /api/effects/mode` (nur lesen) und die Konsolenbefehle bleiben (ADR 0018).

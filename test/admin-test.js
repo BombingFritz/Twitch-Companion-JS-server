@@ -504,6 +504,22 @@ async function statistik() {
   check('S17 Stream zählt Follows, Chat und eingehende Raids', sv.follows === 1 && sv.chat_messages === 1 && sv.raids === 1, JSON.stringify(sv));
   const instanceFollows = (await values()).follows;
   check('S18 Server-Instanz zählt weiter getrennt', instanceFollows === 3, String(instanceFollows));
+  send('channel.poll.end', { id: 'p1', status: 'completed', choices: [{ votes: 3, channel_points_votes: 2 }, { votes: 4, channel_points_votes: 1 }], channel_points_voting: { is_enabled: true, amount_per_vote: 100 } });
+  send('channel.poll.end', { id: 'p1', status: 'archived', choices: [{ votes: 3, channel_points_votes: 2 }], channel_points_voting: { is_enabled: true, amount_per_vote: 100 } });
+  send('channel.poll.end', { id: 'p2', status: 'terminated', choices: [{ votes: 1, channel_points_votes: 0 }], channel_points_voting: { is_enabled: false, amount_per_vote: 0 } });
+  send('channel.prediction.end', { id: 'w1', status: 'resolved', outcomes: [{ users: 2, channel_points: 500 }, { users: 3, channel_points: 700 }] });
+  send('channel.prediction.end', { id: 'w2', status: 'canceled', outcomes: [{ users: 9, channel_points: 9000 }] });
+  send('channel.shoutout.create', { to_broadcaster_user_login: 'freund' });
+  await sleep(50);
+  sv = await streamValues();
+  check('S17a Abstimmungen: archived zählt nicht doppelt', sv.polls === 2 && sv.poll_votes === 8, JSON.stringify(sv));
+  check('S17b Wetten: abgebrochene zählen nicht', sv.predictions === 1 && sv.prediction_users === 5, JSON.stringify(sv));
+  check('S17c Kanalpunkte aus Abstimmungen und Wetten', sv.channel_points === 1500, JSON.stringify(sv));
+  check('S17d Shoutouts über das Twitch-Ereignis', sv.shoutouts === 1, JSON.stringify(sv));
+  st = await stream();
+  check('S17e Verschiedene und aktivste Chatter', st.unique_chatters === 1 && st.top_chatters[0].name === 'zuschauer' && st.top_chatters[0].count === 1, JSON.stringify(st.top_chatters));
+  check('S17f Abos für Abstimmungen, Wetten und Shoutouts', ['channel.poll.end', 'channel.prediction.end', 'channel.shoutout.create'].every(t => subscribed.includes(t)), subscribed.join(','));
+
   send('stream.offline', { id: 'st1' });
   await sleep(50);
   st = await stream();

@@ -353,7 +353,11 @@ function streamStatisticRows(s) {
   ];
   if (s.interruptions) items.push(row('Unterbrechungen', el('span', { text: `${s.interruptions}, zusammen ${duration(s.interruption_seconds)}` })));
   for (const c of s.categories) items.push(row(c.name, el('span', { text: duration(c.seconds) })));
-  return [...items, ...s.metrics.map(metricRow)];
+  items.push(...s.metrics.map(metricRow), row('Verschiedene Chatter', el('span', { class: 'mono', text: String(s.unique_chatters) })));
+  if (s.top_chatters.length) {
+    items.push(row('Aktivste Chatter', el('span', { text: s.top_chatters.map(c => `${c.name} (${c.count})`).join(', ') })));
+  }
+  return items;
 }
 
 async function loadStatistics() {
