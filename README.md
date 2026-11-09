@@ -20,13 +20,13 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - Predictions-API und Sub-Goal-Counter für Widgets
 - Raid-Begrüßung mit Warteschlange, Quartals-Leaderboard, `!raidstats`
 - Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist nur an Streamer, die in den letzten 40 Tagen aktiv waren)
-- Effekt-Queue, in der Webkonsole oder per Konsole ein- und ausschaltbar, mit Home-Assistant-Webhook
+- Effekt-Queue, in der Webkonsole oder per Konsole ein- und ausschaltbar, mit optionalem Home-Assistant-Webhook (Hooks lassen sich zusätzlich selbst auslösen, z. B. per Stream-Deck-Multi-Aktion, siehe `docs/specs/effekt-queue.md`)
 - Event-Log (Follow/Sub/Gift) und Konsolenbefehle
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet von DerBdu bzw. ohne Bot als „FT vom BdU: …“ (ADR 0014, 0017)
 - UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
 - Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu (ADR 0017)
 - Modul-Schalter: BdU-Chat und Soldbuch in der Webkonsole oder per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten
-- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC mit Knöpfen zum Beenden und Neustarten des Servers, Live-Log mit Fehlerprotokoll, Whitelist-Verwaltung, Effekt-Modus und Modul-Schaltern, weitere Bereiche folgen (ADR 0018)
+- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC mit Knöpfen zum Beenden und Neustarten des Servers, Live-Log mit Fehlerprotokoll, Whitelist-Verwaltung, Effekte an/aus, Modul-Schaltern und Statistik zur laufenden Server-Instanz, weitere Bereiche folgen (ADR 0018, 0019)
 
 ## Dokumentation
 

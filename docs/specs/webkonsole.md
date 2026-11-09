@@ -11,7 +11,7 @@ Eine Oberfläche im Browser des Streaming-PCs, mit der sich der Server ansehen u
 | 3 | Reiter „Live-Log“: Puffer im Server, Live-Anzeige per Server-Sent Events | umgesetzt, siehe unten |
 | 4 | Reiter „Einstellungen“: Modul-Schalter, Effekte an/aus (GET-Endpoints entfallen), Bot-Zuordnung | Modul-Schalter und Effekte an/aus umgesetzt, siehe unten; Bot-Zuordnung offen |
 | 5 | Reiter „Whitelist“: anzeigen, hinzufügen, entfernen | umgesetzt, siehe unten |
-| 6 | Reiter „Statistik“ | Ziele in `statistik.md`, Grundgerüst noch abzustimmen |
+| 6 | Reiter „Statistik“ | Bereich Server-Instanz umgesetzt, weitere Stufen in `statistik.md` |
 
 Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Streamlog gibt (Spec `stream-bericht.md`, eigenes ADR). Die Reihenfolge der Stufen 2 bis 6 ist ein Vorschlag von Claude.
 

@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
 const { createUboatCrew } = require('./lib/uboat-crew');
+const { createStats } = require('./lib/stats');
 require('dotenv').config();
 
 const app = express();
@@ -91,6 +92,9 @@ const ADMIN_LOG_MAX_CHARS = 4000;                 // längere Log-Einträge werd
 const ADMIN_LOG_PING_MS = 30 * 1000;              // Lebenszeichen auf der Live-Log-Verbindung
 const ADMIN_ERROR_LOG_PATH = '/api/admin/log/errors';
 const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bleiben in error_log.json
+const ADMIN_STATS_PATH = '/api/admin/stats';
+const STATS_ENABLED = true;                       // false schaltet die ganze Statistik ab (ADR 0019)
+const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
 const ADMIN_EFFECT_MODE_PATH = '/api/admin/effects/mode';
@@ -131,6 +135,8 @@ const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachri
 // ═══════════════════════════════════════════════════════════════════
 // LIVE-LOG – Puffer für die Webkonsole (ADR 0018, docs/specs/webkonsole.md)
 // ═══════════════════════════════════════════════════════════════════
+
+const stats = createStats({ enabled: STATS_ENABLED });   // vor dem Umhüllen von console, zählt die Fehler mit
 
 const logBuffer = [];
 const logClients = new Set();     // offene Live-Log-Verbindungen
@@ -207,7 +213,10 @@ function recordLogLine(level, args) {
     logBuffer.push(entry);
     if (logBuffer.length > ADMIN_LOG_BUFFER_LINES) logBuffer.shift();
     for (const res of logClients) writeLogEntry(res, entry);
-    if (level === 'error') appendErrorLog(entry);
+    if (level === 'error') {
+      appendErrorLog(entry);
+      stats.count('errors');
+    }
   } catch { /* Das Protokollieren darf den Server nie stören */ }
 }
 
@@ -254,7 +263,7 @@ app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on('finish', () => {
     // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
-    if (req.method === 'GET' && req.path === ADMIN_OVERVIEW_PATH && res.statusCode === 200) return;
+    if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH].includes(req.path) && res.statusCode === 200) return;
     const durationMs = Date.now() - startedAt;
     // OAuth-Code und state aus /callback nicht ins Protokoll schreiben
     const url = req.originalUrl.replace(/([?&](?:code|state)=)[^&]*/g, '$1…');
@@ -787,6 +796,7 @@ function describeEffect(type, meta, count) {
 async function triggerEffect(job) {
   const { type, count, meta } = job;
   console.log(`Effekt ausgelöst: ${type}${count > 1 ? ` (${count}x gebündelt)` : ''} – ${describeEffect(type, meta, count)}`);
+  stats.count('effects');
 
   appendEvent(type, { ...meta, count });
 
@@ -1397,6 +1407,8 @@ app.get(ADMIN_ERROR_LOG_PATH, (req, res) => {
   res.json({ entries: [...errorLog].reverse(), limit: ERROR_LOG_MAX_ENTRIES });
 });
 
+app.get(ADMIN_STATS_PATH, (req, res) => res.json(stats.snapshot()));
+
 // Ändernde Aktionen: Browser senden bei POST immer einen Origin-Header, er ist hier Pflicht.
 function requireAdminWrite(req, res, next) {
   if (!adminOrigins.has(req.headers.origin)) {
@@ -1615,6 +1627,7 @@ function connectEventSub(reconnectUrl = null) {
       }
 
       if (subType === 'channel.chat.message') {
+        if (isCountedChatter(msg.payload.event)) stats.count('chat_messages');
         await handleChatCommand(msg.payload.event);
         handleBduCommand(msg.payload.event);
         await handleUboatCommand(msg.payload.event);
@@ -1641,6 +1654,7 @@ function connectEventSub(reconnectUrl = null) {
         if (wasRecentlyTriggered(recentFollowByUser, evt.user_id, FOLLOW_DEDUPE_WINDOW_MS)) {
           console.log(`Follow-Effekt für @${evt.user_login} übersprungen – innerhalb von ${FOLLOW_DEDUPE_WINDOW_MS / 1000}s bereits ausgelöst`);
         } else {
+          stats.count('follows');
           scheduleEffect('follow', { userName: evt.user_login, userId: evt.user_id });
         }
       }
@@ -1814,6 +1828,13 @@ async function subscribeToChatNotifications(sessionId) {
 // Twitch die Meldung im Chat anzeigt. Effekt-Typen und Metadaten bleiben
 // identisch zu früher ('sub' mit userName, 'gift' mit userName/giftCount),
 // damit die Home-Assistant-Webhooks unverändert ankommen.
+// Broadcaster, genutzte Chat-Bots und Nachrichten aus fremden Kanälen (Shared Chat) zählen nicht (ADR 0019)
+function isCountedChatter(evt) {
+  if (evt.source_broadcaster_user_id && evt.source_broadcaster_user_id !== evt.broadcaster_user_id) return false;
+  if (evt.chatter_user_id === evt.broadcaster_user_id) return false;
+  return !STATS_EXCLUDED_CHATTERS.includes(String(evt.chatter_user_login).toLowerCase());
+}
+
 function handleChatNotification(evt) {
   const noticeType = evt.notice_type;
 
@@ -1833,6 +1854,7 @@ function handleChatNotification(evt) {
       return;
     }
     console.log(`Chat-Ankündigung (${noticeType}): @${userName}`);
+    stats.count('subs');
     scheduleEffect('sub', { userName });
     return;
   }
@@ -1841,6 +1863,7 @@ function handleChatNotification(evt) {
   if (noticeType === 'community_sub_gift') {
     const total = (evt.community_sub_gift && evt.community_sub_gift.total) || 1;
     console.log(`Chat-Ankündigung (Gift-Bomb): @${userName} verschenkt ${total} Sub(s)`);
+    stats.count('gifts', total);
     scheduleEffect('gift', { userName, giftCount: total });
     return;
   }
@@ -1850,6 +1873,7 @@ function handleChatNotification(evt) {
   if (noticeType === 'sub_gift') {
     if (evt.sub_gift && evt.sub_gift.community_gift_id) return;
     console.log(`Chat-Ankündigung (Einzel-Gift): @${userName}`);
+    stats.count('gifts');
     scheduleEffect('gift', { userName, giftCount: 1 });
     return;
   }

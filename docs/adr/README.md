@@ -44,10 +44,15 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0016](0016-uboat-crew-aus-spielstand.md) | `!soldbuch`: Crew-Daten aus dem UBOAT-Spielstand, Parser als eigenes Modul. |
 | [0017](0017-bot-account-derbdu.md) | Bot-Account „DerBdu“ sendet BdU- und Soldbuch-Antworten. Ändert den Absender aus 0014 und 0016. |
 
+### Statistik
+| ADR | Worum es geht |
+|---|---|
+| [0019](0019-statistik-grundgeruest.md) | Statistik in drei Bereichen, eigenes Modul, Zählen im Arbeitsspeicher, Stream-Ablauf nur einmal. |
+
 ## Herkunft
 
 - **Nachträglich festgehalten** aus vorhandenem Code und älterer Doku (Entscheidung lag schon vor, Begründung und Alternativen teils `[UNGEKLÄRT]`): 0001–0011; ausdrücklich „aus dem Code abgeleitet“ sind 0002 und 0007.
-- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0018. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
+- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0019. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
 
 ## Neues ADR anlegen
 
