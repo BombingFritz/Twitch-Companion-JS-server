@@ -8,7 +8,8 @@ const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
 const { createUboatCrew } = require('./lib/uboat-crew');
-const { createStats } = require('./lib/stats');
+const { createStats, streamMetricKeys } = require('./lib/stats');
+const { createStreamSession } = require('./lib/stream-session');
 require('dotenv').config();
 
 const app = express();
@@ -36,6 +37,7 @@ const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten d
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
 const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
 const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
+const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
 const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Konsole und Webkonsole schaltbare Chat-Module, Standard: an
 
 // Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
@@ -94,6 +96,11 @@ const ADMIN_ERROR_LOG_PATH = '/api/admin/log/errors';
 const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bleiben in error_log.json
 const ADMIN_STATS_PATH = '/api/admin/stats';
 const STATS_ENABLED = true;                       // false schaltet die ganze Statistik ab (ADR 0019)
+const STREAM_CLOSE_GRACE_MS = 2 * 60 * 60 * 1000; // so lange nach dem letzten Offline läuft die Erfassung weiter
+const STREAM_SAVE_INTERVAL_MS = 30 * 1000;        // stream_stats.json höchstens so oft schreiben
+const STREAM_HEARTBEAT_MS = 5 * 60 * 1000;        // auch ohne Änderung, solange live: Lebenszeichen für den Abgleich nach einem Absturz
+const STREAM_TICK_MS = 5 * 1000;                  // so oft Frist und Speichern prüfen
+const STREAM_RECONCILE_MIN_AGE_MS = 5 * 60 * 1000; // jünger: „nicht live“ von Twitch ist vermutlich noch die alte Antwort
 const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
@@ -136,7 +143,41 @@ const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachri
 // LIVE-LOG – Puffer für die Webkonsole (ADR 0018, docs/specs/webkonsole.md)
 // ═══════════════════════════════════════════════════════════════════
 
-const stats = createStats({ enabled: STATS_ENABLED });   // vor dem Umhüllen von console, zählt die Fehler mit
+// Erst in eine Hilfsdatei, dann umbenennen: Ein Absturz mitten im Schreiben zerstört so nicht die ganze Datei.
+function writeJsonAtomic(file, data) {
+  const tempFile = `${file}.tmp`;
+  const json = JSON.stringify(data, null, 2);
+  fs.writeFileSync(tempFile, json, 'utf8');
+  try {
+    fs.renameSync(tempFile, file);
+  } catch {   // z. B. hält OneDrive die Datei gerade fest
+    fs.writeFileSync(file, json, 'utf8');
+    fs.rmSync(tempFile, { force: true });
+  }
+}
+
+function loadStreamStats() {
+  if (!fs.existsSync(STREAM_STATS_FILE)) return null;
+  try { return JSON.parse(fs.readFileSync(STREAM_STATS_FILE, 'utf8')); } catch { return null; }
+}
+
+function saveStreamStats(data) {
+  writeJsonAtomic(STREAM_STATS_FILE, data);
+}
+
+const streamSession = createStreamSession({
+  keys: streamMetricKeys(),
+  enabled: STATS_ENABLED,
+  load: loadStreamStats,
+  save: saveStreamStats,
+  log: (message, level = 'log') => console[level](message),
+  graceMs: STREAM_CLOSE_GRACE_MS,
+  saveIntervalMs: STREAM_SAVE_INTERVAL_MS,
+  heartbeatMs: STREAM_HEARTBEAT_MS,
+  reconcileMinAgeMs: STREAM_RECONCILE_MIN_AGE_MS,
+});
+const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   // vor dem Umhüllen von console, zählt die Fehler mit
+setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
 
 const logBuffer = [];
 const logClients = new Set();     // offene Live-Log-Verbindungen
@@ -172,17 +213,8 @@ function loadErrorLog() {
   } catch { return []; }
 }
 
-// Erst in eine Hilfsdatei, dann umbenennen: Ein Absturz mitten im Schreiben zerstört so nicht die ganze Liste.
 function saveErrorLog(list) {
-  const tempFile = `${ERROR_LOG_FILE}.tmp`;
-  const json = JSON.stringify(list, null, 2);
-  fs.writeFileSync(tempFile, json, 'utf8');
-  try {
-    fs.renameSync(tempFile, ERROR_LOG_FILE);
-  } catch {   // z. B. hält OneDrive die Datei gerade fest
-    fs.writeFileSync(ERROR_LOG_FILE, json, 'utf8');
-    fs.rmSync(tempFile, { force: true });
-  }
+  writeJsonAtomic(ERROR_LOG_FILE, list);
 }
 
 const errorLog = loadErrorLog();
@@ -1165,6 +1197,7 @@ app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) =>
 
   if (status === 'ok' && typeof text === 'string' && text.trim()) {
     await sendBduChatMessage(text.trim(), pending.messageId, BDU_REPLY_PREFIX);
+    stats.count('enigma_answers');
     console.log(`[BdU] Antwort an @${pending.userLogin} gepostet (${Math.round((Date.now() - pending.acceptedAt) / 1000)} s nach Annahme)`);
     return res.json({ ok: true });
   }
@@ -1481,6 +1514,7 @@ function endServerFromAdmin(res, exitCode, message) {
   adminExitRequested = true;
   console.log(`[Webkonsole] ${message} (PID ${process.pid}).`);
   res.json({ ok: true, pid: process.pid, at: new Date().toISOString() });
+  streamSession.flush();
   setTimeout(() => process.exit(exitCode), ADMIN_EXIT_DELAY_MS);
 }
 
@@ -1605,13 +1639,16 @@ function connectEventSub(reconnectUrl = null) {
 
       console.log('EventSub WebSocket verbunden, Session:', sessionId);
       await subscribeToRaid(sessionId);
+      await subscribeToOutgoingRaid(sessionId);
       await subscribeToChat(sessionId);
       await subscribeToStreamOnline(sessionId);
+      await subscribeToStreamOffline(sessionId);
       await subscribeToSubscriptions(sessionId);
       await subscribeToChatNotifications(sessionId);
       await subscribeToFollows(sessionId);
       await subscribeToChannelUpdate(sessionId);
       await refreshChannelCategory();
+      await syncStreamWithTwitch();
     }
 
     if (msgType === 'notification') {
@@ -1623,7 +1660,14 @@ function connectEventSub(reconnectUrl = null) {
       }
 
       if (subType === 'channel.raid') {
-        enqueueRaidEvent(msg.payload.event);
+        const evt = msg.payload.event;
+        if (evt.from_broadcaster_user_id === loadTokens()?.broadcaster_id) {
+          console.log(`Ausgehender Raid zu @${evt.to_broadcaster_user_login}`);
+          streamSession.onRaidOut();
+        } else {
+          stats.count('raids');
+          enqueueRaidEvent(evt);
+        }
       }
 
       if (subType === 'channel.chat.message') {
@@ -1638,7 +1682,14 @@ function connectEventSub(reconnectUrl = null) {
         setCurrentCategory(msg.payload.event.category_name || null, 'channel.update');
       }
 
+      if (subType === 'stream.offline') {
+        console.log('Twitch meldet: Stream ist offline');
+        streamSession.onOffline();
+      }
+
       if (subType === 'stream.online') {
+        const onlineEvent = msg.payload.event;
+        if (!onlineEvent.type || onlineEvent.type === 'live') streamSession.onOnline({ id: onlineEvent.id, startedAt: onlineEvent.started_at });
         shoutedOutThisSession.clear();
         console.log('Stream gestartet – Whitelist-Shoutout-Tracking für diese Session zurückgesetzt');
         if (bduSilenceUntil === Infinity) {
@@ -1726,6 +1777,63 @@ async function subscribeToRaid(sessionId) {
     console.log('Raid-Subscription aktiv');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.raid:', err.response?.data || err.message);
+  }
+}
+
+// Twitch erlaubt je Abo nur from_ oder to_broadcaster_user_id, deshalb ein zweites Abo. Ein Raid beendet die Stream-Erfassung (ADR 0019).
+async function subscribeToOutgoingRaid(sessionId) {
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+
+    await axios.post(
+      'https://api.twitch.tv/helix/eventsub/subscriptions',
+      {
+        type: 'channel.raid',
+        version: '1',
+        condition: { from_broadcaster_user_id: tokens.broadcaster_id },
+        transport: { method: 'websocket', session_id: sessionId }
+      },
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
+    );
+    console.log('Subscription für ausgehende Raids aktiv');
+  } catch (err) {
+    console.error('Fehler beim Abonnieren der ausgehenden Raids:', err.response?.data || err.message);
+  }
+}
+
+async function subscribeToStreamOffline(sessionId) {
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+
+    await axios.post(
+      'https://api.twitch.tv/helix/eventsub/subscriptions',
+      {
+        type: 'stream.offline',
+        version: '1',
+        condition: { broadcaster_user_id: tokens.broadcaster_id },
+        transport: { method: 'websocket', session_id: sessionId }
+      },
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
+    );
+    console.log('Stream-Offline-Subscription aktiv (für die Statistik)');
+  } catch (err) {
+    console.error('Fehler beim Abonnieren von stream.offline:', err.response?.data || err.message);
+  }
+}
+
+// Beim Verbinden: Ereignisse während einer Lücke könnten fehlen (ADR 0019).
+async function syncStreamWithTwitch() {
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+    const res = await axios.get(`https://api.twitch.tv/helix/streams?user_id=${tokens.broadcaster_id}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } });
+    const live = res.data?.data?.[0];
+    streamSession.reconcile(live && live.type === 'live' ? { id: live.id, startedAt: live.started_at } : null);
+  } catch (err) {
+    console.warn('[Statistik] Abgleich des Stream-Status gescheitert:', err.response?.data || err.message);
   }
 }
 
@@ -1961,7 +2069,9 @@ async function sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix) {
       if (err.response?.status !== 401) throw err;
       response = await post(await getAppAccessToken(true));   // App-Token abgelaufen oder widerrufen: einmal neu
     }
-    return checkChatSendResult(response, message, logPrefix);
+    const sent = checkChatSendResult(response, message, logPrefix);
+    if (sent) stats.count('bot_messages');
+    return sent;
   } catch (err) {
     const status = err.response?.status;
     const detail = err.response?.data?.message || err.message;
@@ -1993,6 +2103,7 @@ async function sendShoutout(toBroadcasterId, toBroadcasterName) {
       }
     );
     console.log(`Shoutout erfolgreich gesendet für @${toBroadcasterName}`);
+    stats.count('shoutouts');
     return true;
   } catch (e) {
     // Erwartbare Ablehnungen durch Twitch als kurze Hinweise statt als Fehler ausgeben
@@ -2472,6 +2583,7 @@ function isUboatCategoryActive() {
 function setCurrentCategory(name, source) {
   if (name === currentCategory) return;
   currentCategory = name;
+  streamSession.setCategory(name);
   console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${!moduleSwitches.uboat ? 'deaktiviert' : isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
 }
 

@@ -21,7 +21,7 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 - Aus dem Netzwerk oder mit fremdem Host: 403 (`requireLocalRequest`).
 
 ### Aufbau
-- Kopfzeile: Name des Servers, Version aus `package.json`, Verbindungsanzeige („verbunden“ / „Server nicht erreichbar“).
+- Kopfzeile: Name des Servers, Version aus `package.json`, Verbindungsanzeige („verbunden“ / „Server nicht erreichbar“ / „Twitch nicht erreichbar“, wenn EventSub länger als 20 s getrennt ist).
 - Reiterleiste: „Übersicht“ aktiv; „Live-Log“, „Einstellungen“, „Whitelist“ und „Statistik“ sichtbar, aber ausgegraut, solange sie noch nicht gebaut sind.
 - Der aktive Reiter steht in der Adresse (`/TwitchCompanionAdmin#uebersicht`), damit ein Neuladen ihn behält.
 - Jeder Reiter ist ein Eintrag `{id, title, ready, render}` in einer Liste; ein neuer Reiter braucht nur einen neuen Eintrag und seine Render-Funktion.

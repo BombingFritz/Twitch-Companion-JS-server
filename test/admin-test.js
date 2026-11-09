@@ -30,8 +30,12 @@ const sockets = [];
 class FakeWS extends EventEmitter { constructor() { super(); this.readyState = 1; sockets.push(this); } close() {} terminate() {} }
 FakeWS.OPEN = 1;
 const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
+const subscribed = [];
 const fakeAxios = {
-  post: async () => ({ data: { data: [] } }),
+  post: async (url, body) => {
+    if (url.includes('eventsub/subscriptions')) subscribed.push(body.type === 'channel.raid' ? `channel.raid:${body.condition.from_broadcaster_user_id ? 'from' : 'to'}` : body.type);
+    return { data: { data: [] } };
+  },
   get: async url => {
     if (url.includes('login=twitchfehler')) throw new Error('Twitch nicht erreichbar');
     const key = Object.keys(WHITELIST_USERS).find(k => url.endsWith(`?${k}`));
@@ -424,6 +428,8 @@ async function effekte() {
 
 async function statistik() {
   let n = 0;
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
+  await sleep(100);
   const send = (subType, event, id = `s${++n}`) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
   const chat = (login, id, extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `c${n}`, message: { text: 'hallo' }, badges: [], ...extra });
   const notice = (notice_type, extra) => send('channel.chat.notification', { notice_type, broadcaster_user_id: '4711', chatter_user_id: `u${n}`, chatter_user_login: `gast${n}`, chatter_user_name: `gast${n}`, ...extra });
@@ -478,6 +484,37 @@ async function statistik() {
   check('S10 Ausgelöste Effekte zählen', v.effects >= 1, JSON.stringify(v));
   check('S11 Erfolgreiche Abrufe fluten die Konsole nicht', !logs.some(l => /\[HTTP\] GET \/api\/admin\/stats -> 200/.test(l)));
   check('S12 Abgelehnte Abrufe stehen in der Konsole', logs.some(l => /\[HTTP\] GET \/api\/admin\/stats -> 403/.test(l)));
+
+  const stream = async () => JSON.parse((await request(STATS)).body).stream;
+  const streamValues = async () => Object.fromEntries((await stream()).metrics.map(m => [m.key, m.value]));
+  check('S13 Ohne Live-Ereignis kein Stream', (await stream()).status === 'none');
+  check('S14 Abos für Offline und ausgehende Raids', subscribed.includes('stream.offline') && subscribed.some(s => s === 'channel.raid:from') && subscribed.some(s => s === 'channel.raid:to'), subscribed.join(','));
+  send('stream.online', { id: 'st1', type: 'playlist', started_at: new Date().toISOString() });
+  await sleep(30);
+  check('S15 Nur echte Live-Streams starten die Erfassung', (await stream()).status === 'none');
+  send('stream.online', { id: 'st1', type: 'live', started_at: new Date().toISOString() });
+  await sleep(50);
+  let st = await stream();
+  check('S16 stream.online startet und schreibt sofort', st.status === 'live' && JSON.parse(fs.readFileSync(path.join(workDir, 'stream_stats.json'), 'utf8')).status === 'live', JSON.stringify(st));
+  send('channel.follow', { user_login: 'folgt3', user_id: 'f3' });
+  chat('zuschauer', 'z1');
+  send('channel.raid', { from_broadcaster_user_id: '77', from_broadcaster_user_login: 'raider', from_broadcaster_user_name: 'raider', to_broadcaster_user_id: '4711', to_broadcaster_user_login: 'testkanal', viewers: 1 });
+  await sleep(100);
+  let sv = await streamValues();
+  check('S17 Stream zählt Follows, Chat und eingehende Raids', sv.follows === 1 && sv.chat_messages === 1 && sv.raids === 1, JSON.stringify(sv));
+  const instanceFollows = (await values()).follows;
+  check('S18 Server-Instanz zählt weiter getrennt', instanceFollows === 3, String(instanceFollows));
+  send('stream.offline', { id: 'st1' });
+  await sleep(50);
+  st = await stream();
+  check('S19 Offline: Frist läuft', st.status === 'offline' && !!st.closes_at, JSON.stringify(st));
+  const greetingsBefore = logs.filter(l => l.includes('in Warteschlange eingereiht')).length;
+  send('channel.raid', { from_broadcaster_user_id: '4711', from_broadcaster_user_login: 'testkanal', to_broadcaster_user_id: '88', to_broadcaster_user_login: 'freund', viewers: 5 });
+  await sleep(50);
+  st = await stream();
+  check('S20 Ausgehender Raid schließt ab und begrüßt niemanden', st.status === 'closed' && st.close_reason === 'raid' && logs.filter(l => l.includes('in Warteschlange eingereiht')).length === greetingsBefore, JSON.stringify(st));
+  sv = await streamValues();
+  check('S21 Ausgehender Raid zählt nicht als Raid', sv.raids === 1, JSON.stringify(sv));
 }
 
 async function effekteAlt() {

@@ -48,6 +48,7 @@ const runs = [
   ['admin-test.js', ['effekte-alt']],
   ['admin-test.js', ['statistik']],
   ['stats-test.js', []],
+  ['stream-session-test.js', []],
   ['admin-format-test.js', []],
   ['authserver-test.js', []],
 ];

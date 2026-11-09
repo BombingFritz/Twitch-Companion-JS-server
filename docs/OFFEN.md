@@ -123,7 +123,7 @@ Vorgemerkt für die Zeit nach dem laufenden Durchgang durch die Stufen der Webko
 7. **Modul Chat-Auswertung:** Zusammenfassung des Chats des gesamten Streams, Chat-Statistiken und Chat-Zusammenfassungen einzelner Streamer. Geht vermutlich nur mit API-Anbindung; weiter ausloten [UNGEKLÄRT, welcher Dienst, Kosten, Umgang mit Chat-Daten].
 
 ## Geplant: Statistik und Endscreen (Nutzer, 09.11.2026)
-Ziele und Stufen in [specs/statistik.md](specs/statistik.md), Grundgerüst in ADR 0019: drei Bereiche (Server-Instanz, laufender oder letzter Stream, global aus den Stream-Berichten) und ein Endscreen-Widget. Stufe 1 (Grundgerüst, Server-Instanz) ist umgesetzt, die übrigen folgen. Zurückgestellt: API-Anfragen, erste und wiederkehrende Chatter.
+Ziele und Stufen in [specs/statistik.md](specs/statistik.md), Grundgerüst in ADR 0019: drei Bereiche (Server-Instanz, laufender oder letzter Stream, global aus den Stream-Berichten) und ein Endscreen-Widget. Stufe 1 (Grundgerüst, Server-Instanz) und Stufe 2 (Stream-Ablauf) sind umgesetzt, die übrigen folgen. Vorgemerkt: Warnung bei auffälligen Berichten, Tags, Alarm „Stream läuft nach dem Raid weiter“. Zurückgestellt: API-Anfragen, erste und wiederkehrende Chatter.
 
 ## Geplant: Stream-Bericht mit Clip-Kandidaten und Spielbewertung (Nutzer, 04.11.2026)
 Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-bericht.md). Noch nicht entschieden, kein ADR.

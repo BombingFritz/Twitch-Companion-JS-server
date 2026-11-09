@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Webkonsole, Stufe 4 (Teil): Schalter An/Aus für die HA-Effekte im Reiter „Einstellungen“. Neu: `POST /api/admin/effects/mode` (ADR 0010, ADR 0018, Spec `webkonsole.md`).
 
 - Statistik, Stufe 1: Modul `lib/stats.js` mit zentraler Kennzahlenliste und Reiter „Statistik“ mit den Zahlen der laufenden Server-Instanz (Laufzeit, Fehler, Effekte, Follows, Subs, verschenkte Subs, Chatnachrichten). Neu: `GET /api/admin/stats` (ADR 0019, Spec `statistik.md`).
+- Statistik, Stufe 2: Stream-Ablauf in `lib/stream-session.js` mit Karte „Laufender oder letzter Stream“: Start, Dauer, Unterbrechungen, Zeit je Kategorie, Follows, Subs, verschenkte Subs, eingehende Raids, Chat, Botnachrichten, Shoutouts, Enigma-Antworten. Neu: EventSub `stream.offline` und ausgehende Raids, `stream_stats.json`. Die Kopfzeile meldet „Twitch nicht erreichbar“ (ADR 0019, Spec `statistik.md`).
 
 ### Security
 - Entfernt: `GET /api/effects/mode/:mode` und `GET /api/effects/confirm`. Sie änderten ohne Schutz den Zustand des Servers; Einbindungen ohne `Origin` konnten sie auslösen. Stream-Deck-Tasten auf diese Adressen funktionieren nicht mehr, Ersatz ist der Reiter „Einstellungen“. `GET /api/effects/mode` (nur lesen) und die Konsolenbefehle bleiben (ADR 0018).
@@ -36,7 +37,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Neuer Test `test/authserver-test.js` (die Schleife in `AuthServer.cmd` startet nur bei Code 75 neu).
 - `test/admin-test.js`: Szenario `live-log` (Zugriff, Live-Zeilen, Bereinigung, Begrenzung des Puffers), Szenarien `fehler-protokoll` und `fehler-defekt` (Erhalt über Läufe, nur Fehler, Bereinigung, Begrenzung, defekte Datei), Szenario `whitelist` (Zugriff, Eingaben, Twitch-Fehler, Hinzufügen, Entfernen), Szenario `module` (Zugriff, Eingaben, Schalten, Speichern), Szenario `effekte` (alte Adressen 404, Zugriff, Eingaben, Umschalten).
 - `test/k3-test.js` prüft jetzt `auto` und `off` über Webkonsole und Konsole und dass `manual` abgelehnt wird. Szenario `effekte-alt` in `test/admin-test.js`.
-- Neuer Test `test/stats-test.js`, Szenario `statistik` in `test/admin-test.js`.
+- Neue Tests `test/stats-test.js` und `test/stream-session-test.js`, Szenario `statistik` in `test/admin-test.js`.
 - Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation
