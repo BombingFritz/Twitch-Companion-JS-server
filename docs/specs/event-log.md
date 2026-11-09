@@ -5,7 +5,7 @@ Ausgelöste Effekte nachvollziehbar speichern und für Home Assistant abfragbar 
 
 ## Verhalten
 - `appendEvent(type, payload)` hängt `{type, ...payload, timestamp}` an `events.json` an und behält die letzten 200 Einträge.
-- Aufgerufen wird `appendEvent` von `triggerEffect` und, im Modus `manual` bei Timeout, mit `skippedManualTimeout: true`.
+- Aufgerufen wird `appendEvent` von `triggerEffect`. Ältere Einträge können noch `skippedManualTimeout: true` tragen (früherer Modus `manual`); die Webkonsole zeigt sie als „nicht bestätigt“.
 - `/api/homeassistant/events` liefert den letzten Eintrag, die letzten 20, Zähler je Typ und die Gesamtzahl.
 - `events show` gibt die letzten 10 Einträge aus.
 
@@ -21,4 +21,4 @@ Ausgelöste Effekte nachvollziehbar speichern und für Home Assistant abfragbar 
 - Auch ohne `HA_WEBHOOK_URL` werden Einträge geschrieben.
 
 ## Berührte Funktionen/Dateien
-`loadEventLog`, `saveEventLog`, `appendEvent`, `triggerEffect`, `runManualConfirmation`, `/api/homeassistant/events`, `rl.on('line')`; `events.json`
+`loadEventLog`, `saveEventLog`, `appendEvent`, `triggerEffect`, `/api/homeassistant/events`, `rl.on('line')`; `events.json`

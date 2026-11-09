@@ -185,8 +185,6 @@ body.stale .grid { opacity: .45; }
 body.stale .log-list { opacity: .75; }
 
 .settings { display: flex; flex-direction: column; gap: 12px; max-width: 900px; }
-.settings .log-modes + .sub { margin-top: 8px; }
-.effect-confirm { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .setting { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .setting + .setting { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .setting-text { min-width: 0; }

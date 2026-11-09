@@ -40,7 +40,6 @@ if (section) {
   check('L3 Sub-Goal hat kein Licht', level('Sub-Goal', {}) === null);
   check('L4 HA-Effekte: kein Webhook ist ein Fehler', level('HA-Effekte', { ha_webhook_configured: false }) === 'bad');
   check('L5 HA-Effekte: Modus off ist nur nicht aktiv', level('HA-Effekte', { effect_mode: 'off' }) === 'off');
-  check('L6 HA-Effekte: Modus manual ist grün', level('HA-Effekte', { effect_mode: 'manual' }) === 'ok');
   check('L7 Soldbuch: nicht eingerichtet ist nur nicht aktiv', level('UBOAT-Soldbuch', { uboat_enabled: false, uboat_save: null }) === 'off');
   check('L8 Soldbuch: ausgeschaltet ist nur nicht aktiv', level('UBOAT-Soldbuch', { modules: { bdu: true, uboat: false } }) === 'off');
   check('L9 Soldbuch: eingerichtet, aber kein Spielstand ist ein Fehler', level('UBOAT-Soldbuch', { uboat_save: null }) === 'bad');

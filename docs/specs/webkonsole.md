@@ -9,7 +9,7 @@ Eine Oberfläche im Browser des Streaming-PCs, mit der sich der Server ansehen u
 | 1 | Hauptseite „Übersicht“ und Reiter-Gerüst, nur ansehen | umgesetzt |
 | 2 | Knöpfe „Server beenden“ und „Server neu starten“ auf der Hauptseite (erste ändernde Aktion) | umgesetzt |
 | 3 | Reiter „Live-Log“: Puffer im Server, Live-Anzeige per Server-Sent Events | umgesetzt, siehe unten |
-| 4 | Reiter „Einstellungen“: Modul-Schalter, Effekt-Modus mit Bestätigung (GET-Endpoints entfallen), Bot-Zuordnung | Modul-Schalter und Effekt-Modus umgesetzt, siehe unten; Bot-Zuordnung offen |
+| 4 | Reiter „Einstellungen“: Modul-Schalter, Effekte an/aus (GET-Endpoints entfallen), Bot-Zuordnung | Modul-Schalter und Effekte an/aus umgesetzt, siehe unten; Bot-Zuordnung offen |
 | 5 | Reiter „Whitelist“: anzeigen, hinzufügen, entfernen | umgesetzt, siehe unten |
 | 6 | Reiter „Statistik“ | Ziele in `statistik.md`, Grundgerüst noch abzustimmen |
 
@@ -33,7 +33,7 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 | Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, `currentCategory` |
 | Bot | DerBdu eingerichtet, Funktionen über den Bot | `bot_*` |
 | *Gruppe „Optionale Module“:* | | |
-| HA-Effekte | Webhook eingetragen, Modus (`auto`/`manual`/`off`), Warteschlange, wartende Bestätigung, letzte 5 Effekte | `ha_webhook_configured`, Status, `pendingManualConfirmation`, `events.json` |
+| HA-Effekte | Webhook eingetragen, Effekte an/aus, Warteschlange, letzte 5 Effekte | `ha_webhook_configured`, Status, `events.json` |
 | UBOAT-Soldbuch | Modul an oder aus, Kategorie aktiv, Spielstand und sein Stand | `modules`, `uboat_*` |
 | BdU-Chat | Modul an oder aus, Enigma-Widget verbunden, Funkstille bis | `modules`, `bdu_*` |
 | Sub-Goal | Stand, Ziel, Titel | `subgoal_cache.json` |
@@ -47,7 +47,7 @@ Eingeklappt steht dort je Modul nur der Name mit einem Licht (Grund als Tooltip)
 
 | Modul | Grün (funktioniert) | Grau (nur nicht aktiv) | Rot (Fehler) |
 |---|---|---|---|
-| HA-Effekte | Webhook eingetragen, Modus `auto` oder `manual` | Modus `off` | kein Webhook eingetragen |
+| HA-Effekte | Webhook eingetragen, Effekte an | Effekte aus | kein Webhook eingetragen |
 | UBOAT-Soldbuch | eingerichtet, eingeschaltet, Spielstand gelesen | nicht eingerichtet oder ausgeschaltet | eingerichtet und eingeschaltet, aber kein Spielstand gelesen |
 | BdU-Chat | eingeschaltet, Enigma-Widget verbunden, keine Funkstille | ausgeschaltet, Widget nicht verbunden oder Funkstille | – |
 
@@ -62,7 +62,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Ist der Server nicht erreichbar: Anzeige „Server nicht erreichbar“, letzte Werte bleiben ausgegraut stehen, die Abfrage läuft weiter. Kommt der Server zurück und hat sich `pid` geändert, zeigt die Kopfzeile das kurz an.
 
 ### `GET /api/admin/overview`
-- Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `ha_webhook_configured`, `category`, `pending_confirmation`, `recent_effects` (letzte 5), `subgoal`.
+- Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `ha_webhook_configured`, `category`, `recent_effects` (letzte 5), `subgoal`.
 - `/status` bleibt unverändert; beide nutzen dieselben Hilfsfunktionen (`buildAuthStatus`, `buildRuntimeStatus`), damit die Werte nicht auseinanderlaufen.
 - Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll der Konsole, sonst stünde dort alle 5 s eine Zeile. Abgelehnte Abrufe erscheinen weiterhin.
 
@@ -92,10 +92,8 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Umschalter „Live“ / „Fehlerprotokoll“ über der Liste. Das Protokoll zeigt Datum mit Jahr und Uhrzeit mit Sekunden, neuester Eintrag oben; neue Fehler kommen oben dazu, solange die Ansicht offen ist. Das Suchfeld gilt auch hier.
 
 ## Verhalten Stufe 4: Einstellungen (Effekt-Modus und Modul-Schalter)
-- Karte „HA-Effekte“ mit den Knöpfen Automatisch, Manuell und Aus, einer Zeile zur Wirkung des Modus und einem Hinweis, wenn kein Webhook eingetragen ist. Umschalten über `setEffectMode`, keine Rückfrage. „Aus“ verwirft auch eine wartende Bestätigung.
-- Darunter die Bestätigung: Wartet im Modus `manual` ein Effekt, nennt die Zeile Art und Anzahl und der Knopf „Effekt bestätigen“ wird aktiv. Die Seite erfährt das mit der Abfrage alle 5 s, also bis zu 5 s nach Beginn der 30 s Wartezeit.
-- `POST /api/admin/effects/mode` mit `{mode: auto|manual|off}`: `{ok:true, mode}`. 400 bei ungültigem Modus.
-- `POST /api/admin/effects/confirm` mit `{}`: `{ok:true}`. 409 `{ok:false, error}`, wenn nichts wartet.
+- Karte „HA-Effekte“ mit einem Schalter An/Aus und einem Hinweis, wenn kein Webhook eingetragen ist. Umschalten über `setEffectMode`, keine Rückfrage. Der frühere Modus „Manuell“ ist entfallen (ADR 0010, Nachtrag 09.11.2026).
+- `POST /api/admin/effects/mode` mit `{mode: auto|off}`: `{ok:true, mode}`. 400 bei ungültigem Modus.
 - `GET /api/effects/mode/:mode` und `GET /api/effects/confirm` sind entfernt (404), `GET /api/effects/mode` (nur lesen) bleibt. Stream-Deck-Tasten auf die alten Adressen funktionieren nicht mehr.
 - Karte „Modul-Schalter“ mit je einem Schalter für BdU-Chat und UBOAT-Soldbuch, kurzer Beschreibung und Zustand. Die Wirkung ist dieselbe wie bei `bdu`/`uboat activate|deactivate` (`switchModule`); gespeichert in `modules.json`, gilt auch nach Neustart. Keine Rückfrage, weil jeder Schalter sofort rückgängig zu machen ist.
 - Schlägt das Schalten fehl, springt der Schalter zurück und die Meldung steht darunter. Änderungen an der Konsole zeigt die Seite bei der nächsten Abfrage.
@@ -144,4 +142,4 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 `server.js` (Middleware für Konsole, `GET /TwitchCompanionAdmin`, `GET /api/admin/overview`, Hilfsfunktion für die Statuswerte, Zeile in der Startanzeige), neu `public/admin/` (`index.html`, `admin.css`, `admin.js`), neu `test/admin-test.js`, `test/run-all.js`, Doku (ARCHITEKTUR, README, CHANGELOG, OFFEN).
 
 ## Status
-Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufe 2 umgesetzt: Server-Endpoints mit Attrappen (`test/admin-test.js`, Szenarien `server-beenden` und `server-neustart`), die Schleife in `AuthServer.cmd` mit dem echten Skript und einem Ersatz für `server.js` (`test/authserver-test.js`), die Seite im Browser mit Attrappen (Rückfrage, echter Neustart des Prozesses über dieselbe Schleife, Beenden, Warnung „Server läuft noch“, „Neustart ausgeblieben“, schmale Breite). Vom Nutzer am echten Server getestet (08.11.2026). Gruppe „Optionale Module“ umgesetzt: Lichter im Test `test/admin-format-test.js`, Einklappen und Merken im Browser mit Attrappen. Stufe 3 umgesetzt: Server-Teil mit Attrappen (`test/admin-test.js`, Szenario `live-log`), Reiter im Browser mit Attrappen (Mitlaufen, Hochscrollen, Filter, echter Neustart des Prozesses, schmale Breite); am echten Server noch nicht geprüft. Fehlerprotokoll: Datei und Endpoint mit Attrappen (Szenarien `fehler-protokoll`, `fehler-defekt`), Umschalter im Browser mit Attrappen; ein echter Rechnerabsturz ist nicht getestet. Stufe 5 umgesetzt: Endpoints mit Attrappen (Szenario `whitelist`), Reiter im Browser mit Attrappen; vom Nutzer am echten Server mit echter Twitch-Abfrage getestet (09.11.2026). Stufe 4, Modul-Schalter umgesetzt: Endpoint mit Attrappen (Szenario `module`), Reiter im Browser mit Attrappen; vom Nutzer am echten Server getestet (09.11.2026, BdU-Chat aus und an, `!BdU` ignoriert bzw. beantwortet). Stufe 4, Effekt-Modus umgesetzt: Endpoints mit Attrappen (Szenario `effekte`, `test/k3-test.js`), Reiter im Browser mit Attrappen samt wartendem Effekt; am echten Server und mit Home Assistant noch nicht geprüft. Offen: Bot-Zuordnung aus Stufe 4, Stufe 6. Ziele der Statistik: Spec `statistik.md`.
+Konzept vom Nutzer gebilligt (ADR 0018, 08.11.2026). Stufe 1 umgesetzt: Tests mit Attrappen (`test/admin-test.js`), Seite mit Attrappen im Browser geprüft (Anzeige, Server weg und zurück, schmale Breite). Vom Nutzer am echten Server mit echtem Twitch-Login gesehen (08.11.2026). Aufruf von einer fremden IP-Adresse ist nicht getestet (Test läuft über 127.0.0.1, geprüft wird der fremde Host-Header). Stufe 2 umgesetzt: Server-Endpoints mit Attrappen (`test/admin-test.js`, Szenarien `server-beenden` und `server-neustart`), die Schleife in `AuthServer.cmd` mit dem echten Skript und einem Ersatz für `server.js` (`test/authserver-test.js`), die Seite im Browser mit Attrappen (Rückfrage, echter Neustart des Prozesses über dieselbe Schleife, Beenden, Warnung „Server läuft noch“, „Neustart ausgeblieben“, schmale Breite). Vom Nutzer am echten Server getestet (08.11.2026). Gruppe „Optionale Module“ umgesetzt: Lichter im Test `test/admin-format-test.js`, Einklappen und Merken im Browser mit Attrappen. Stufe 3 umgesetzt: Server-Teil mit Attrappen (`test/admin-test.js`, Szenario `live-log`), Reiter im Browser mit Attrappen (Mitlaufen, Hochscrollen, Filter, echter Neustart des Prozesses, schmale Breite); am echten Server noch nicht geprüft. Fehlerprotokoll: Datei und Endpoint mit Attrappen (Szenarien `fehler-protokoll`, `fehler-defekt`), Umschalter im Browser mit Attrappen; ein echter Rechnerabsturz ist nicht getestet. Stufe 5 umgesetzt: Endpoints mit Attrappen (Szenario `whitelist`), Reiter im Browser mit Attrappen; vom Nutzer am echten Server mit echter Twitch-Abfrage getestet (09.11.2026). Stufe 4, Modul-Schalter umgesetzt: Endpoint mit Attrappen (Szenario `module`), Reiter im Browser mit Attrappen; vom Nutzer am echten Server getestet (09.11.2026, BdU-Chat aus und an, `!BdU` ignoriert bzw. beantwortet). Stufe 4, Effekt-Modus umgesetzt: Endpoints mit Attrappen (Szenario `effekte`, `test/k3-test.js`), Reiter im Browser mit Attrappen; am echten Server und mit Home Assistant noch nicht geprüft. Offen: Bot-Zuordnung aus Stufe 4, Stufe 6. Ziele der Statistik: Spec `statistik.md`.

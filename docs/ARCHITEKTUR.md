@@ -32,9 +32,9 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
-| Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode`, `pendingManualConfirmation` |
+| Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode` |
 | Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch`, `switchModule` (Konsole `bdu`/`uboat activate\|deactivate` und Webkonsole), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
-| Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `runManualConfirmation`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
+| Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
 | Live-Log (ADR 0018) | `sanitizeLogText`, `recordLogLine`, `writeLogEntry`, `logRedactedValues`, `loadErrorLog`, `saveErrorLog`, `appendErrorLog`; `console.log/info/warn/error` werden umhüllt; RAM: `logBuffer`, `logClients`, `nextLogId`, `logRedactions`, `errorLog` |
@@ -58,7 +58,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | `whitelist.json` | `{ "<userId>": "<userName>" }` |
 | `subgoal_cache.json` | `{current, target, title, goalId, status, lastUpdated}` |
 | `events.json` | Array, max. 200 Einträge: `{type, ...meta, count, timestamp[, skippedManualTimeout]}` |
-| `effect_mode.json` | `{mode}` mit `auto`, `manual` oder `off`; fehlt die Datei oder ist ungültig: `auto` |
+| `effect_mode.json` | `{mode}` mit `auto` oder `off`; fehlt die Datei oder ist ungültig (auch das frühere `manual`): `auto` |
 | `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
 | `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
 | `modules.json` | `{bdu, uboat}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an |
@@ -86,21 +86,20 @@ Zugriffsschutz (ADR 0013):
 | `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bot_configured, bot_login, bot_features, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `bot_*`: Bot-Account laut `bot.json` und `BOT_FEATURES`; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
 | `/TwitchCompanionAdmin` | Webkonsole: statische Dateien aus `public/admin/` (leitet auf dieselbe Adresse mit `/` am Ende; Groß-/Kleinschreibung egal), mit `Content-Security-Policy` ohne Einbettung. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 404 außerhalb von `public/admin` |
-| `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), ha_webhook_configured (nur ja/nein, nie die Adresse), category, pending_confirmation: {type,count} oder null, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
+| `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), ha_webhook_configured (nur ja/nein, nie die Adresse), category, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/stream` | Server-Sent Events für den Live-Log: `retry: 5000`, Ereignis `hello` `{pid, started_at}`, dann der Puffer und jede neue Zeile als `line` `{id, at, level: info/warn/error, text}`, Kommentar-Ping alle 30 s. Texte ohne Secrets, Tokens, Webhook-Adresse und private Adressen | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/errors` | `{entries: [{at, pid, text}] (neuester zuerst, höchstens 1000), limit}` aus `error_log.json` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/whitelist` | `{entries: [{id, name}] (nach Namen), count}` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `POST /api/admin/whitelist/add` | JSON `{user}` (Name, `@Name` oder ID); `{ok:true, entry:{id, name}}` | 403 wie `POST /api/admin/server/…`; 415 ohne JSON; 400 ungültig; 404 Konto unbekannt; 409 schon gelistet; 413 zu groß; 502 Twitch nicht erreichbar |
 | `POST /api/admin/whitelist/remove` | JSON `{id}`; `{ok:true, id}` | 403 und 415 wie oben; 400 ungültige ID; 404 nicht gelistet; 413 zu groß |
-| `POST /api/admin/effects/mode` | JSON `{mode: auto/manual/off}`; setzt den Modus, `{ok:true, mode}` | 403 und 415 wie die übrigen POST; 400 ungültiger Modus; 413 zu groß |
-| `POST /api/admin/effects/confirm` | JSON `{}`; bestätigt den wartenden Effekt im Modus `manual`, `{ok:true}` | 403 und 415 wie oben; 409 `{ok:false, error}` wenn nichts wartet |
+| `POST /api/admin/effects/mode` | JSON `{mode: auto/off}`; setzt den Modus, `{ok:true, mode}` | 403 und 415 wie die übrigen POST; 400 ungültiger Modus; 413 zu groß |
 | `POST /api/admin/modules` | JSON `{module: bdu/uboat, enabled: true/false}`; `{ok:true, changed, modules:{bdu, uboat}}` | 403 und 415 wie die übrigen POST; 400 unbekanntes Modul oder kein Wahrheitswert; 413 zu groß |
 | `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
 | `POST /api/admin/server/restart` | wie oben, Exit-Code 75; `AuthServer.cmd` startet neu | wie oben; zusätzlich 409 ohne `AuthServer.cmd` |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
-| `/api/effects/mode` | `{mode, queueLength, pendingConfirmation: {type,count} oder null}` | – |
+| `/api/effects/mode` | `{mode, queueLength}` | – |
 | `/api/uboat/crew` | `{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew[{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, born, decorations, died, traits, skills, status, statusLabel, wounded, woundLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“, „gefallen“ oder `null`; `woundLabel`: „verwundet“, „im Krankenhaus“ oder `null`); ohne `UBOAT_SAVES_DIR` `{enabled:false, active:false, category, crew:[]}` (ADR 0016) | – |
 | `/api/bdu/stream` | Server-Sent Events für das Enigma-Widget: `retry: 5000`, Ereignis `hello`, Ereignis `request` mit `{id, text}`, Kommentar-Ping alle 30 s. Nur lokal (wie `/token`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet die Antwort als Reply (über DerBdu ohne Präfix, als Broadcaster mit „FT vom BdU: “), `quota` startet Funkstille; Antwort `{ok:true}`, bei `quota` `{ok:true, silenceUntil}` (Millisekunden-Zeitstempel; beim Tageskontingent `null`, weil intern `Infinity`). `ok` ohne Text wird wie `error` behandelt. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
@@ -118,8 +117,8 @@ Zugriffsschutz (ADR 0013):
 | `subgoal refresh` | Sub-Goal von Twitch laden |
 | `subgoal show` | Gecachten Stand anzeigen |
 | `events show` | Letzte 10 Log-Einträge anzeigen |
-| `effects mode <auto\|manual\|off>` | Effekt-Modus setzen und speichern |
-| `effects show` | Modus, Queue-Länge, wartende Bestätigung anzeigen |
+| `effects mode <auto\|off>` | Effekte ein- bzw. ausschalten und speichern |
+| `effects show` | Modus und Queue-Länge anzeigen |
 | `bdu show` | BdU-Chat: Widget verbunden, Funkstille, offene Anfragen, Tageszähler, nächste mögliche Annahme |
 | `bdu silence off` | BdU-Chat: Funkstille sofort aufheben |
 | `bdu activate` / `bdu deactivate` | BdU-Chat ein- bzw. ausschalten, gespeichert in `modules.json`. Deaktiviert: `!BdU` wird still ignoriert (Konsolenzeile), offene Anfragen werden verworfen, späte Antworten des Widgets nicht gepostet; Widget-Verbindung bleibt |
@@ -185,7 +184,6 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `MODULE_NAMES` | `{bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch'}` | Per Konsole schaltbare Chat-Module und ihre Anzeigenamen; Dateinamen der Laufzeitdateien stehen in Abschnitt 3 |
 | `EFFECT_BURST_WINDOW_MS` | 2500 | Bündelungsfenster je Effekt-Typ, Timer startet bei jedem Ereignis neu |
 | `EFFECT_MIN_GAP_MS` | 4000 | Abstand zwischen zwei Effekten |
-| `EFFECT_MANUAL_CONFIRM_TIMEOUT_MS` | 30000 | Wartezeit auf Bestätigung im Modus `manual` |
 | `EVENT_MESSAGE_ID_TTL_MS` | 600000 | Merkdauer von `message_id` |
 | `SUB_DEDUPE_WINDOW_MS` | 60000 | Sub-Effekt pro Nutzer |
 | `FOLLOW_DEDUPE_WINDOW_MS` | 60000 | Follow-Effekt pro Nutzer |
@@ -209,8 +207,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `LOG_REDACTED` / `LOG_PRIVATE_ADDRESS` | `<entfernt>` / `<privat>` | Platzhalter im Live-Log |
 | `ADMIN_ERROR_LOG_PATH` / `ERROR_LOG_MAX_ENTRIES` | `/api/admin/log/errors` / 1000 | Fehlerprotokoll |
 | `ADMIN_WHITELIST_PATH` / `ADMIN_MODULES_PATH` / `ADMIN_JSON_LIMIT` | `/api/admin/whitelist` / `/api/admin/modules` / `1kb` | Pfade der Webkonsole, Größe ihrer JSON-Anfragen |
-| `ADMIN_EFFECT_MODE_PATH` / `ADMIN_EFFECT_CONFIRM_PATH` | `/api/admin/effects/mode` / `/api/admin/effects/confirm` | Effekt-Modus der Webkonsole |
-| `EFFECT_MODES` | `auto`, `manual`, `off` | Erlaubte Modi in der Webkonsole |
+| `ADMIN_EFFECT_MODE_PATH` | `/api/admin/effects/mode` | Effekte an/aus in der Webkonsole |
+| `EFFECT_MODES` | `auto`, `off` | Erlaubte Modi |
 | `TWITCH_LOGIN_PATTERN` / `TWITCH_ID_PATTERN` | `^[a-z0-9_]{1,25}$` / `^\d{1,20}$` | Prüfung von Eingaben der Webkonsole |
 | `APP_VERSION` | aus `package.json` | Anzeige in der Webkonsole |
 | `BDU_COMMAND` | `!bdu` | Chat-Befehl (Groß-/Kleinschreibung egal) |
@@ -267,8 +265,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 - `count`: Anzahl gebündelter Ereignisse des Typs im Bündelungsfenster.
 - `meta`: Daten des letzten Ereignisses im Bündel.
 - `userName` bei anonymem Gifter: `anonym`.
-- Modus `manual`: Aufruf nur nach Bestätigung, bei Timeout kein Aufruf.
-- Modus `off`: wartende Jobs werden verworfen, ein laufender Effekt wird nicht abgebrochen. Wartet beim Umschalten ein Effekt im Modus `manual` auf Bestätigung, wird er verworfen: kein Aufruf, kein Eintrag in `events.json`, `POST /api/admin/effects/confirm` liefert danach 409 `{ok:false, error}`.
+- Modus `off`: wartende Jobs werden verworfen, ein laufender Effekt wird nicht abgebrochen.
 
 ## 9. Umgebungsvariablen
 

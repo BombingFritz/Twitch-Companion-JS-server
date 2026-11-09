@@ -54,7 +54,6 @@ const WHITELIST_CHECKS_MAX = 500;                 // so viele Einträge behält 
 
 const EFFECT_BURST_WINDOW_MS = 2500;
 const EFFECT_MIN_GAP_MS = 4000;
-const EFFECT_MANUAL_CONFIRM_TIMEOUT_MS = 30 * 1000;
 
 // Entdoppelung von EventSub-Ereignissen (siehe Abschnitt "ENTDOPPELUNG" weiter unten)
 const EVENT_MESSAGE_ID_TTL_MS = 10 * 60 * 1000;   // Twitch-Wiederzustellungen derselben Nachricht
@@ -95,8 +94,7 @@ const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bl
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
 const ADMIN_EFFECT_MODE_PATH = '/api/admin/effects/mode';
-const ADMIN_EFFECT_CONFIRM_PATH = '/api/admin/effects/confirm';
-const EFFECT_MODES = ['auto', 'manual', 'off'];
+const EFFECT_MODES = ['auto', 'off'];
 const ADMIN_JSON_LIMIT = '1kb';                   // Webkonsole-Aktionen senden nur kurze JSON-Objekte
 const TWITCH_LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
 const TWITCH_ID_PATTERN = /^\d{1,20}$/;
@@ -670,14 +668,14 @@ function appendEvent(type, payload) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// HILFSFUNKTIONEN – EFFEKT-MODUS (Auto / Manuell / Off, per Stream Deck)
+// HILFSFUNKTIONEN – EFFEKT-MODUS (Auto / Off, über Webkonsole und Konsole)
 // ═══════════════════════════════════════════════════════════════════
 
 function loadEffectMode() {
   if (!fs.existsSync(EFFECT_MODE_FILE)) return 'auto';
   try {
     const data = JSON.parse(fs.readFileSync(EFFECT_MODE_FILE, 'utf8'));
-    return ['auto', 'manual', 'off'].includes(data.mode) ? data.mode : 'auto';
+    return EFFECT_MODES.includes(data.mode) ? data.mode : 'auto';   // auch das frühere "manual" wird zu auto
   } catch { return 'auto'; }
 }
 
@@ -686,7 +684,6 @@ function saveEffectMode(mode) {
 }
 
 let effectMode = loadEffectMode();       // Startet mit dem zuletzt gespeicherten Modus
-let pendingManualConfirmation = null;    // { job, resolve } während im Manuell-Modus gewartet wird
 
 // ═══════════════════════════════════════════════════════════════════
 // MODUL-SCHALTER (BdU-Chat, UBOAT-Soldbuch) – per Konsole, gespeichert in modules.json
@@ -740,17 +737,11 @@ function switchModule(key, on) {
   return changed;
 }
 
-// Setzt den Effekt-Modus (Webkonsole und Konsole). Beim Wechsel auf OFF wird eine
-// wartende Bestätigung verworfen, damit eine spätere Bestätigung den Effekt nicht trotzdem
-// auslöst (OFFEN.md, K3). Kein Eintrag im Event-Log, wie bei den übrigen verworfenen Jobs.
+// Setzt den Effekt-Modus (Webkonsole und Konsole).
 function setEffectMode(mode) {
   effectMode = mode;
   saveEffectMode(mode);
   console.log(`Effekt-Modus geändert auf: ${mode.toUpperCase()}`);
-  if (mode === 'off' && pendingManualConfirmation) {
-    console.log(`[Effekt-Modus: OFF] Wartende Bestätigung für ${pendingManualConfirmation.job.type} (${pendingManualConfirmation.job.count}x) verworfen.`);
-    pendingManualConfirmation.resolve('off');
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -808,36 +799,9 @@ async function triggerEffect(job) {
   }
 }
 
-// Führt einen Effekt im MANUELL-Modus aus: wartet bis zu 30s auf eine
-// Bestätigung in der Webkonsole, bevor der Effekt tatsächlich
-// läuft. Ohne Bestätigung wird der Job übersprungen (nicht nachgeholt),
-// damit sich bei verpasster Bestätigung nichts aufstaut.
-async function runManualConfirmation(job) {
-  console.log(`[Effekt-Modus: MANUELL] Warte auf Bestätigung für ${job.type} (${job.count}x) – 30 Sekunden Zeit...`);
-
-  // true = bestätigt, false = Timeout, 'off' = per setEffectMode('off') verworfen
-  const outcome = await new Promise((resolve) => {
-    pendingManualConfirmation = { job, resolve };
-    setTimeout(() => {
-      if (pendingManualConfirmation && pendingManualConfirmation.job === job) {
-        console.log(`[Effekt-Modus: MANUELL] Keine Bestätigung erhalten – Effekt ${job.type} wird übersprungen.`);
-        resolve(false);
-      }
-    }, EFFECT_MANUAL_CONFIRM_TIMEOUT_MS);
-  });
-
-  pendingManualConfirmation = null;
-
-  if (outcome === true) {
-    await triggerEffect(job);
-  } else if (outcome === false) {
-    appendEvent(job.type, { ...job.meta, count: job.count, skippedManualTimeout: true });
-  }
-}
-
 // Arbeitet die effectQueue strikt nacheinander ab, mit Mindestabstand
 // zwischen zwei Effekten — verhindert Überlappungen bei Lichteffekten
-// und respektiert den aktuell aktiven Modus (Auto/Manuell/Off).
+// und respektiert den aktuell aktiven Modus (Auto/Off).
 async function processEffectQueue() {
   if (isProcessingEffectQueue) return;
   isProcessingEffectQueue = true;
@@ -868,11 +832,7 @@ async function processEffectQueue() {
     lastEffectSentAt = Date.now();
 
     try {
-      if (effectMode === 'manual') {
-        await runManualConfirmation(job);
-      } else {
-        await triggerEffect(job);
-      }
+      await triggerEffect(job);
     } catch (err) {
       console.error('Fehler beim Auslösen des Effekts:', err.message);
     }
@@ -1293,10 +1253,7 @@ app.get('/api/homeassistant/events', (req, res) => {
 app.get('/api/effects/mode', (req, res) => {
   res.json({
     mode: effectMode,
-    queueLength: effectQueue.length,
-    pendingConfirmation: pendingManualConfirmation
-      ? { type: pendingManualConfirmation.job.type, count: pendingManualConfirmation.job.count }
-      : null
+    queueLength: effectQueue.length
   });
 });
 
@@ -1406,9 +1363,6 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     can_restart: SERVER_SUPERVISED,
     ha_webhook_configured: Boolean(HA_WEBHOOK_URL),
     category: currentCategory,
-    pending_confirmation: pendingManualConfirmation
-      ? { type: pendingManualConfirmation.job.type, count: pendingManualConfirmation.job.count }
-      : null,
     recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
       type: e.type,
       count: e.count,
@@ -1503,15 +1457,9 @@ app.post(ADMIN_MODULES_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON
 
 app.post(ADMIN_EFFECT_MODE_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
   const mode = req.body && req.body.mode;
-  if (!EFFECT_MODES.includes(mode)) return res.status(400).json({ error: 'Ungültiger Modus. Erlaubt: auto, manual, off' });
+  if (!EFFECT_MODES.includes(mode)) return res.status(400).json({ error: 'Ungültiger Modus. Erlaubt: auto, off' });
   setEffectMode(mode);
   res.json({ ok: true, mode });
-});
-
-app.post(ADMIN_EFFECT_CONFIRM_PATH, requireAdminWrite, (req, res) => {
-  if (!pendingManualConfirmation) return res.status(409).json({ ok: false, error: 'Kein Effekt wartet auf Bestätigung' });
-  pendingManualConfirmation.resolve(true);
-  res.json({ ok: true });
 });
 
 let adminExitRequested = false;
@@ -2616,7 +2564,7 @@ function printConsoleHelp() {
   console.log(' subgoal refresh            - Sub-Goal-Stand jetzt von Twitch laden');
   console.log(' subgoal show               - Aktuellen gecachten Sub-Goal-Stand anzeigen');
   console.log(' events show                - Letzte 10 Follow/Sub/Gift-Ereignisse anzeigen');
-  console.log(' effects mode <auto|manual|off> - Effekt-Modus setzen');
+  console.log(' effects mode <auto|off>   - Effekte ein- bzw. ausschalten');
   console.log(' effects show               - Aktuellen Effekt-Modus & Queue-Status anzeigen');
   console.log(' bdu show                   - BdU-Chat: Widget-Verbindung, Funkstille, Limits anzeigen');
   console.log(' bdu silence off            - BdU-Chat: Funkstille sofort aufheben');
@@ -2752,8 +2700,8 @@ rl.on('line', async (input) => {
 
     if (sub === 'mode') {
       const newMode = parts[2] ? parts[2].toLowerCase() : '';
-      if (!['auto', 'manual', 'off'].includes(newMode)) {
-        console.log('Nutzung: effects mode <auto|manual|off>');
+      if (!EFFECT_MODES.includes(newMode)) {
+        console.log('Nutzung: effects mode <auto|off>');
         return;
       }
       setEffectMode(newMode);
@@ -2761,11 +2709,11 @@ rl.on('line', async (input) => {
     }
 
     if (sub === 'show') {
-      console.log(`Effekt-Modus: ${effectMode.toUpperCase()} | Queue-Länge: ${effectQueue.length} | Wartet auf Bestätigung: ${pendingManualConfirmation ? pendingManualConfirmation.job.type : 'nein'}`);
+      console.log(`Effekt-Modus: ${effectMode.toUpperCase()} | Queue-Länge: ${effectQueue.length}`);
       return;
     }
 
-    console.log('Nutzung: effects mode <auto|manual|off> | effects show');
+    console.log('Nutzung: effects mode <auto|off> | effects show');
     return;
   }
 

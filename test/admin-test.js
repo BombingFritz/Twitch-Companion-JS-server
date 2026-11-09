@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module|effekte]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module|effekte|effekte-alt]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -22,6 +22,7 @@ fs.writeFileSync(path.join(workDir, 'events.json'), JSON.stringify(effects));
 fs.writeFileSync(path.join(workDir, 'subgoal_cache.json'), JSON.stringify({ current: 7, target: 10, title: 'Ziel', goalId: 'g', status: 'active', lastUpdated: 'x' }));
 if (scenario === 'fehler-protokoll') fs.writeFileSync(path.join(workDir, 'error_log.json'), JSON.stringify([{ at: '2026-11-01T10:00:00.000Z', pid: 1, text: '[Test] Fehler aus einem früheren Lauf' }]));
 if (scenario === 'whitelist') fs.writeFileSync(path.join(workDir, 'whitelist.json'), JSON.stringify({ 111: 'zeta', 222: 'Alpha' }));
+if (scenario === 'effekte-alt') fs.writeFileSync(path.join(workDir, 'effect_mode.json'), JSON.stringify({ mode: 'manual' }));
 if (scenario === 'fehler-defekt') fs.writeFileSync(path.join(workDir, 'error_log.json'), '{ keine gültige Liste');
 process.chdir(workDir);
 
@@ -93,7 +94,7 @@ async function ablauf() {
   r = await request(OVERVIEW);
   const d = JSON.parse(r.body);
   check('A6 Overview lokal: Laufzeitwerte und Ergänzungen', r.status === 200 && d.authenticated === true && d.broadcaster_name === 'testkanal' && d.pid === process.pid
-    && d.poll_ms === 5000 && d.port === PORT && /^\d+\.\d+\.\d+/.test(d.version) && 'category' in d && d.pending_confirmation === null && d.modules.bdu === true, r.body);
+    && d.poll_ms === 5000 && d.port === PORT && /^\d+\.\d+\.\d+/.test(d.version) && 'category' in d && !('pending_confirmation' in d) && d.modules.bdu === true, r.body);
   check('A6b Overview ohne Webhook: ha_webhook_configured ist false', d.ha_webhook_configured === false, r.body);
   check('A7 Overview ohne allowed_origins und broadcaster_id', !('allowed_origins' in d) && !('broadcaster_id' in d));
   check('A8 Overview enthält keinen Token und kein Secret', !SECRETS.some(s => r.body.includes(s)) && !/access_token|refresh_token/.test(r.body));
@@ -403,23 +404,25 @@ async function effekte() {
   check('N7 POST mit fremdem Host: 403', r.status === 403, String(r.status));
   r = await post(EFFECT_MODE, '{"mode":"off"}', { Origin: OWN[0], 'Content-Type': 'text/plain' });
   check('N8 POST ohne JSON: 415', r.status === 415, String(r.status));
-  for (const mode of ['AUTO', 'irgendwas', 5, null, ['off']]) {
+  for (const mode of ['manual', 'AUTO', 'irgendwas', 5, null, ['off']]) {
     r = await post(EFFECT_MODE, { mode });
     check(`N9 Ungültiger Modus ${JSON.stringify(mode)}: 400`, r.status === 400, String(r.status));
   }
-  r = await post(EFFECT_CONFIRM, {}, JSON_TYPE);
-  check('N10 Bestätigen ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await post(EFFECT_CONFIRM, {});
+  check('N10 Bestätigen gibt es nicht mehr: 404', r.status === 404, String(r.status));
   check('N11 Fehlversuche ändern den Modus nicht', !fs.existsSync(modeFile));
 
-  for (const mode of ['manual', 'off', 'auto']) {
+  for (const mode of ['off', 'auto']) {
     r = await post(EFFECT_MODE, { mode });
     const d = JSON.parse(r.body);
     check(`N12 Modus ${mode}`, r.status === 200 && d.ok === true && d.mode === mode && JSON.parse(fs.readFileSync(modeFile, 'utf8')).mode === mode, r.body);
   }
-  check('N13 Wechsel steht in der Konsole', logs.some(l => l.includes('Effekt-Modus geändert auf: MANUAL')));
-  r = await post(EFFECT_CONFIRM, {});
-  const d = JSON.parse(r.body);
-  check('N14 Nichts wartet: 409', r.status === 409 && d.ok === false && !!d.error, r.body);
+  check('N13 Wechsel steht in der Konsole', logs.some(l => l.includes('Effekt-Modus geändert auf: OFF')));
+}
+
+async function effekteAlt() {
+  const r = await request(OVERVIEW);
+  check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
 }
 
 async function serverBeenden() {
@@ -491,6 +494,7 @@ async function ohneTokens() {
   else if (scenario === 'whitelist') await whitelist();
   else if (scenario === 'module') await module_();
   else if (scenario === 'effekte') await effekte();
+  else if (scenario === 'effekte-alt') await effekteAlt();
   else await ablauf();
 
   console.log = realLog;

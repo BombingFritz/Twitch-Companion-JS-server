@@ -7,14 +7,13 @@ Follow-, Sub- und Gift-Ereignisse gebündelt und nacheinander als Home-Assistant
 - Auslöser: siehe „Effekt-Auslöser“ in docs/ARCHITEKTUR.md.
 - `scheduleEffect(type, meta)` bündelt Ereignisse desselben Typs. Der 2,5-s-Timer startet bei jedem Ereignis neu. Danach entsteht ein Job `{type, count, meta}`.
 - `processEffectQueue` arbeitet Jobs sequenziell ab, mindestens 4 s nach dem vorherigen.
-- `auto`: `triggerEffect` sofort. `manual`: 30 s Wartezeit auf die Bestätigung in der Webkonsole (`POST /api/admin/effects/confirm`), danach verworfen. `off`: wartende Jobs werden verworfen, ebenso eine gerade wartende Bestätigung (ohne Eintrag im Event-Log).
+- `auto`: `triggerEffect` sofort. `off`: wartende Jobs werden verworfen (ohne Eintrag im Event-Log). Den früheren Modus `manual` gibt es nicht mehr (ADR 0010, Nachtrag 09.11.2026).
 - Umgeschaltet wird nur über `setEffectMode(mode)`, sowohl von der Webkonsole (`POST /api/admin/effects/mode`, ADR 0018) als auch vom Konsolenbefehl `effects mode`.
 - `triggerEffect` schreibt in `events.json` und sendet an `HA_WEBHOOK_URL`, falls gesetzt.
 - Vor der Verarbeitung ignoriert der Server bereits gesehene `message_id`s.
 
 ## Nicht-Ziele
 - Keine Effekte für Raids.
-- Kein Nachholen unbestätigter Effekte im Modus `manual`.
 - Kein Retry bei Webhook-Fehlern.
 
 ## Akzeptanzkriterien
@@ -24,11 +23,8 @@ Follow-, Sub- und Gift-Ereignisse gebündelt und nacheinander als Home-Assistant
 - Die `frühen` Events `channel.subscribe`, `channel.subscription.gift` und `channel.subscription.message` erzeugen keinen Webhook.
 - Eine `sub`-Chat-Ankündigung mit `is_gift` erzeugt keinen Webhook.
 - Im Modus `off` wird kein Webhook gesendet und die Queue ist danach leer.
-- Im Modus `manual` ohne Bestätigung innerhalb von 30 s wird kein Webhook gesendet, `events.json` erhält einen Eintrag mit `skippedManualTimeout: true`.
-- Eine Bestätigung ohne wartenden Effekt liefert `{ok:false, message}`.
-- Wird während der Wartezeit im Modus `manual` auf `off` umgeschaltet (per Webkonsole oder Konsole), liefert `POST /api/admin/effects/confirm` danach 409 `{ok:false, error}`, es wird kein Webhook gesendet und `events.json` erhält keinen Eintrag.
 - Der Modus bleibt nach einem Neustart erhalten.
 - Das Webhook-Payload entspricht dem Schema in docs/ARCHITEKTUR.md.
 
 ## Berührte Funktionen/Dateien
-`scheduleEffect`, `enqueueEffect`, `processEffectQueue`, `runManualConfirmation`, `setEffectMode`, `triggerEffect`, `handleChatNotification`, `isDuplicateMessage`, `wasRecentlyTriggered`, `loadEffectMode`, `saveEffectMode`; `effect_mode.json`, `events.json`
+`scheduleEffect`, `enqueueEffect`, `processEffectQueue`, `setEffectMode`, `triggerEffect`, `handleChatNotification`, `isDuplicateMessage`, `wasRecentlyTriggered`, `loadEffectMode`, `saveEffectMode`; `effect_mode.json`, `events.json`
