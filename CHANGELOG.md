@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Webkonsole, Stufe 3: Reiter „Live-Log“ zeigt alle Konsolenzeilen fortlaufend, mit Filter und „Nur Warnungen und Fehler“. Neu: Puffer der letzten 1000 Zeilen im Arbeitsspeicher und `GET /api/admin/log/stream` (Server-Sent Events). Secrets, Tokens, Webhook-Adresse und private Netzwerkadressen werden dort entfernt, das Konsolenfenster bleibt unverändert (ADR 0018, Spec `webkonsole.md`).
 - Fehlerprotokoll: Die letzten 1000 Fehlermeldungen bleiben mit Uhrzeit in `error_log.json` erhalten, auch nach Beenden, Neustart oder Absturz. Anzeige über den Umschalter „Fehlerprotokoll“ im Reiter „Live-Log“. Neu: `GET /api/admin/log/errors` (ADR 0018, Spec `webkonsole.md`).
 - Webkonsole, Stufe 5: Reiter „Whitelist“ zeigt alle Einträge mit Filter, nimmt Streamer per Name, `@Name` oder ID auf und entfernt sie mit Rückfrage. Neu: `GET /api/admin/whitelist`, `POST /api/admin/whitelist/add` und `/remove` (nur POST mit JSON und eigener Herkunft). Die Konsolenbefehle bleiben (ADR 0006, ADR 0018, Spec `webkonsole.md`).
+- Webkonsole, Stufe 4 (Teil): Reiter „Einstellungen“ mit Schaltern für BdU-Chat und UBOAT-Soldbuch. Neu: `POST /api/admin/modules` (nur POST mit JSON und eigener Herkunft). Konsole und Webkonsole nutzen dafür `switchModule` (ADR 0018, Spec `webkonsole.md`).
 
 ### Security
 - Login-CSRF geschlossen: `/login`, `/login-bot` und `/callback` nehmen nur noch Aufrufe vom eigenen Rechner an (wie `/token`). Der Broadcaster-Login trägt jetzt einen zufälligen, einmal gültigen `state`; `/callback` speichert nur mit gültigem `state`. Vorher konnte ein Gerät im Heimnetz einen Code für ein fremdes Konto an `/callback` schicken und `tokens.json` überschreiben (ADR 0013, Nachtrag 07.11.2026).
@@ -26,7 +27,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Neuer Test `test/admin-format-test.js` (Zeitangabe in der Effektliste, auch über Mitternacht; Lichter der optionalen Module).
 - `test/admin-test.js`: Szenarien `server-beenden` und `server-neustart` (abgelehnte Aufrufe, Exit-Code, zweiter Auftrag).
 - Neuer Test `test/authserver-test.js` (die Schleife in `AuthServer.cmd` startet nur bei Code 75 neu).
-- `test/admin-test.js`: Szenario `live-log` (Zugriff, Live-Zeilen, Bereinigung, Begrenzung des Puffers), Szenarien `fehler-protokoll` und `fehler-defekt` (Erhalt über Läufe, nur Fehler, Bereinigung, Begrenzung, defekte Datei), Szenario `whitelist` (Zugriff, Eingaben, Twitch-Fehler, Hinzufügen, Entfernen).
+- `test/admin-test.js`: Szenario `live-log` (Zugriff, Live-Zeilen, Bereinigung, Begrenzung des Puffers), Szenarien `fehler-protokoll` und `fehler-defekt` (Erhalt über Läufe, nur Fehler, Bereinigung, Begrenzung, defekte Datei), Szenario `whitelist` (Zugriff, Eingaben, Twitch-Fehler, Hinzufügen, Entfernen), Szenario `module` (Zugriff, Eingaben, Schalten, Speichern).
 - Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation

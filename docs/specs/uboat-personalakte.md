@@ -28,7 +28,7 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!soldbuch` bekommt ein Zuscha
 - `channel.chat.message`, Text ist `!soldbuch` (Groß-/Kleinschreibung egal, also auch `!Soldbuch`; Text danach wird ignoriert, es gibt nur das eigene Soldbuch). `!personalakte` löst nicht mehr aus.
 - Nachrichten aus fremdem Shared-Chat-Kanal ignorieren (wie `handleBduCommand`).
 - Für alle Zuschauer, kein Mod-Check (wie `!BdU`).
-- Modul aus (`UBOAT_SAVES_DIR` leer), per Konsole deaktiviert (`uboat deactivate`, gespeichert in `modules.json`, Nutzer 07.11.2026) oder Kategorie nicht UBOAT: keine Ausgabe, nur Konsolenzeile. Deaktiviert liest der Server den Spielstand weiter ein, `/api/uboat/crew` bleibt aktuell.
+- Modul aus (`UBOAT_SAVES_DIR` leer), per Konsole (`uboat deactivate`) oder Webkonsole deaktiviert (gespeichert in `modules.json`, Nutzer 07.11.2026) oder Kategorie nicht UBOAT: keine Ausgabe, nur Konsolenzeile. Deaktiviert liest der Server den Spielstand weiter ein, `/api/uboat/crew` bleibt aktuell.
 - Je Nutzer höchstens eine Antwort je `UBOAT_USER_COOLDOWN_MS` (60 s); innerhalb des Cooldowns keine Ausgabe.
 - Zuordnung Zuschauer → Crewmitglied, erste Regel mit Treffer gilt:
   1. Eintrag für `chatter_user_login` in `uboat_crew_map.json` → Name im Spiel.

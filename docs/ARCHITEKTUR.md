@@ -33,7 +33,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
 | Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode`, `pendingManualConfirmation` |
-| Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch` (Konsole `bdu`/`uboat activate\|deactivate`), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
+| Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch`, `switchModule` (Konsole `bdu`/`uboat activate\|deactivate` und Webkonsole), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `runManualConfirmation`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
@@ -69,7 +69,7 @@ Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data
 
 ## 4. HTTP-Endpoints
 
-Alle GET außer `POST /api/bdu/answer` (ADR 0014), `POST /api/admin/server/…` und `POST /api/admin/whitelist/…` (ADR 0018). Alle Antworten mit `Cache-Control: no-store`.
+Alle GET außer `POST /api/bdu/answer` (ADR 0014), `POST /api/admin/server/…`, `POST /api/admin/whitelist/…` und `POST /api/admin/modules` (ADR 0018). Alle Antworten mit `Cache-Control: no-store`.
 
 Zugriffsschutz (ADR 0013):
 - Browser-Anfragen mit `Origin`-Header werden nur von erlaubten Herkünften angenommen, sonst `403 {error, origin}`, bevor ein Endpoint etwas ausführt. Standard: `http://absolute` (OBS-Browser-Source mit „Lokale Datei“) und `null` (Datei per `file://`), dazu immer `http://localhost:<PORT>` und `http://127.0.0.1:<PORT>`. Änderbar über `CORS_ORIGINS`; `*` stellt das alte Verhalten (jede Herkunft) wieder her.
@@ -92,6 +92,7 @@ Zugriffsschutz (ADR 0013):
 | `/api/admin/whitelist` | `{entries: [{id, name}] (nach Namen), count}` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `POST /api/admin/whitelist/add` | JSON `{user}` (Name, `@Name` oder ID); `{ok:true, entry:{id, name}}` | 403 wie `POST /api/admin/server/…`; 415 ohne JSON; 400 ungültig; 404 Konto unbekannt; 409 schon gelistet; 413 zu groß; 502 Twitch nicht erreichbar |
 | `POST /api/admin/whitelist/remove` | JSON `{id}`; `{ok:true, id}` | 403 und 415 wie oben; 400 ungültige ID; 404 nicht gelistet; 413 zu groß |
+| `POST /api/admin/modules` | JSON `{module: bdu/uboat, enabled: true/false}`; `{ok:true, changed, modules:{bdu, uboat}}` | 403 und 415 wie die übrigen POST; 400 unbekanntes Modul oder kein Wahrheitswert; 413 zu groß |
 | `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
 | `POST /api/admin/server/restart` | wie oben, Exit-Code 75; `AuthServer.cmd` startet neu | wie oben; zusätzlich 409 ohne `AuthServer.cmd` |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id,title,channelPoints,users}], createdAt, locksAt, endsAt}` für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
@@ -207,7 +208,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `ADMIN_LOG_BUFFER_LINES` / `ADMIN_LOG_MAX_CHARS` | 1000 / 4000 | Größe des Log-Puffers, Kürzung langer Einträge |
 | `LOG_REDACTED` / `LOG_PRIVATE_ADDRESS` | `<entfernt>` / `<privat>` | Platzhalter im Live-Log |
 | `ADMIN_ERROR_LOG_PATH` / `ERROR_LOG_MAX_ENTRIES` | `/api/admin/log/errors` / 1000 | Fehlerprotokoll |
-| `ADMIN_WHITELIST_PATH` / `ADMIN_JSON_LIMIT` | `/api/admin/whitelist` / `1kb` | Whitelist der Webkonsole, Größe ihrer JSON-Anfragen |
+| `ADMIN_WHITELIST_PATH` / `ADMIN_MODULES_PATH` / `ADMIN_JSON_LIMIT` | `/api/admin/whitelist` / `/api/admin/modules` / `1kb` | Pfade der Webkonsole, Größe ihrer JSON-Anfragen |
 | `TWITCH_LOGIN_PATTERN` / `TWITCH_ID_PATTERN` | `^[a-z0-9_]{1,25}$` / `^\d{1,20}$` | Prüfung von Eingaben der Webkonsole |
 | `APP_VERSION` | aus `package.json` | Anzeige in der Webkonsole |
 | `BDU_COMMAND` | `!bdu` | Chat-Befehl (Groß-/Kleinschreibung egal) |

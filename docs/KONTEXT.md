@@ -66,7 +66,7 @@ Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT]
 ### Bot-Account „DerBdu“
 - Eigenes Twitch-Konto mit „Chat Bot“-Abzeichen und Moderatorrolle im Kanal. Es antwortet als BdU auf `!BdU` (Antwort vom Enigma-Widget) und gibt das Soldbuch aus. Raid- und Whitelist-Shoutouts kommen weiter vom Broadcaster (ADR 0017).
 - Kein eigener Prozess: Der Server sendet im Namen des Bots. Lehnt Twitch den Bot ab, springt der Broadcaster ein.
-- Einmalige Einrichtung: `/mod DerBdu` im Chat und `/login-bot` am Streaming-PC. Ein- und Ausschalten der Chat-Module per Konsole (`bdu`/`uboat activate|deactivate`).
+- Einmalige Einrichtung: `/mod DerBdu` im Chat und `/login-bot` am Streaming-PC. Ein- und Ausschalten der Chat-Module im Reiter „Einstellungen“ der Webkonsole oder per Konsole (`bdu`/`uboat activate|deactivate`).
 - Später denkbar: weitere Nachrichten über den Bot, Umstellung per Konsole, Bewertungen per Flüstern an den Bot (siehe OFFEN.md).
 
 ### Spiel UBOAT (Soldbuch)

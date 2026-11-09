@@ -12,6 +12,11 @@ const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
 const WHITELIST_URL = '/api/admin/whitelist';
+const MODULES_URL = '/api/admin/modules';
+const MODULE_SETTINGS = [
+  { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
+  { key: 'uboat', name: 'UBOAT-Soldbuch', text: 'Beantwortet !soldbuch im Chat. Aus: Der Befehl wird still ignoriert, der Spielstand wird weiter eingelesen.' },
+];
 const LOG_STREAM_URL = '/api/admin/log/stream';
 const ERROR_LOG_URL = '/api/admin/log/errors';
 const LOG_MAX_LINES = 2000;
@@ -27,7 +32,7 @@ const EFFECT_LABELS = { follow: 'Follow', sub: 'Sub', gift: 'Gift' };
 const TABS = [
   { id: 'uebersicht', title: 'Übersicht', ready: true, render: renderOverview },
   { id: 'log', title: 'Live-Log', ready: true, render: renderLog },
-  { id: 'einstellungen', title: 'Einstellungen', ready: false },
+  { id: 'einstellungen', title: 'Einstellungen', ready: true, render: renderSettings },
   { id: 'whitelist', title: 'Whitelist', ready: true, render: renderWhitelist },
   { id: 'statistik', title: 'Statistik', ready: false },
 ];
@@ -36,6 +41,7 @@ const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
+  settings: { view: null, rows: {}, message: null, busy: new Set() },
   whitelist: {
     view: null, list: null, count: null, input: null, addButton: null, message: null,
     entries: [], filter: '', confirming: null, confirmTimer: null, loaded: false, loading: false, busy: false,
@@ -195,13 +201,17 @@ function askWhitelistRemove(id) {
   renderWhitelistRows();
 }
 
-async function postWhitelist(path, body) {
-  const response = await fetch(`${WHITELIST_URL}/${path}`, {
+async function postJson(url, body) {
+  const response = await fetch(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store',
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
   return result;
+}
+
+function postWhitelist(path, body) {
+  return postJson(`${WHITELIST_URL}/${path}`, body);
 }
 
 async function loadWhitelistEntries() {
@@ -305,6 +315,73 @@ function renderWhitelist(content, d) {
   } else if (wl.loaded && d.whitelist_count !== wl.entries.length) {
     loadWhitelistEntries();   // an der Konsole geändert
   }
+}
+
+// ── Einstellungen ───────────────────────────────────────────────────
+function showSettingsMessage(text, isError) {
+  const { message } = state.settings;
+  message.textContent = text;
+  message.className = `wl-message ${isError ? 'error' : 'ok'}`;
+}
+
+function updateSettings(d) {
+  const settings = state.settings;
+  for (const { key } of MODULE_SETTINGS) {
+    const row = settings.rows[key];
+    if (!settings.busy.has(key)) row.input.checked = Boolean(d.modules[key]);
+    row.state.textContent = row.input.checked ? 'an' : 'aus';
+  }
+  const uboatHint = settings.rows.uboat.hint;
+  uboatHint.hidden = d.uboat_enabled;
+  uboatHint.textContent = 'UBOAT_SAVES_DIR ist nicht gesetzt. Das Soldbuch antwortet erst, wenn der Ordner in der .env steht und der Server neu gestartet wurde.';
+}
+
+async function toggleModule(setting) {
+  const settings = state.settings;
+  const { input } = settings.rows[setting.key];
+  const enabled = input.checked;
+  settings.busy.add(setting.key);
+  input.disabled = true;
+  try {
+    const { modules } = await postJson(MODULES_URL, { module: setting.key, enabled });
+    state.data.modules = modules;
+    showSettingsMessage(`${setting.name} ${enabled ? 'eingeschaltet' : 'ausgeschaltet'}.`, false);
+  } catch (err) {
+    input.checked = !enabled;
+    showSettingsMessage(`${setting.name}: ${err.message}`, true);
+  } finally {
+    settings.busy.delete(setting.key);
+    input.disabled = false;
+    updateSettings(state.data);
+  }
+}
+
+function settingRow(setting) {
+  const input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': setting.name });
+  input.addEventListener('change', () => toggleModule(setting));
+  const stateText = el('span', { class: 'setting-state' });
+  const hint = el('div', { class: 'sub setting-hint' });
+  hint.hidden = true;
+  state.settings.rows[setting.key] = { input, state: stateText, hint };
+  return el('div', { class: 'setting' },
+    el('div', { class: 'setting-text' }, el('div', { class: 'setting-name', text: setting.name }), el('div', { class: 'sub', text: setting.text }), hint),
+    el('div', { class: 'setting-control' }, stateText, el('label', { class: 'switch' }, input, el('span', { class: 'track' }))));
+}
+
+function settingsView() {
+  const settings = state.settings;
+  if (settings.view) return settings.view;
+  settings.message = el('p', { class: 'wl-message', role: 'status' });
+  settings.view = el('section', { class: 'settings' },
+    card('Modul-Schalter', ...MODULE_SETTINGS.map(settingRow)),
+    settings.message);
+  return settings.view;
+}
+
+function renderSettings(content, d) {
+  const view = settingsView();
+  if (content.firstChild !== view) content.replaceChildren(view);
+  updateSettings(d);
 }
 
 // ── Live-Log ────────────────────────────────────────────────────────

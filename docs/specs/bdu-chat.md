@@ -10,7 +10,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten eine Antwort
 - Nachrichten aus fremdem Shared-Chat-Kanal ignorieren (`source_broadcaster_user_id`, wie in `handleChatNotification`).
 
 ### Prüfreihenfolge (erste zutreffende Regel gilt)
-0. **Modul deaktiviert** (Konsole `bdu deactivate`, gespeichert in `modules.json`, Nutzer 07.11.2026): ignorieren, nichts zählen, keine Ausgabe im Chat; Konsolenzeile „ignoriert – BdU-Chat deaktiviert“.
+0. **Modul deaktiviert** (Konsole `bdu deactivate` oder Webkonsole, gespeichert in `modules.json`, Nutzer 07.11.2026): ignorieren, nichts zählen, keine Ausgabe im Chat; Konsolenzeile „ignoriert – BdU-Chat deaktiviert“.
 1. **Kein Widget verbunden** (keine offene Events-Verbindung): ignorieren. Nichts zählen, keine Warnung.
 2. **Funkstille aktiv:** ignorieren, keine Ausgabe.
 3. **Tagesobergrenze erreicht** (`BDU_DAILY_LIMIT` = 60 je Kalendertag in Ortszeit des Servers, 0 = aus): ignorieren. Bei einem Stream über Mitternacht beginnt der Zähler um 0:00 neu; das ist so gewollt (Nutzer, 04.11.2026).

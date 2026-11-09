@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -60,6 +60,7 @@ const RESTART = '/api/admin/server/restart';
 const LOG_STREAM = '/api/admin/log/stream';
 const ERROR_LOG = '/api/admin/log/errors';
 const WHITELIST = '/api/admin/whitelist';
+const MODULES = '/api/admin/modules';
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 const EXIT_WAIT_MS = 500;
 const OWN =[`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
@@ -329,6 +330,54 @@ async function whitelist() {
   check('W24 Die Übersicht kennt die neue Anzahl', JSON.parse(r.body).whitelist_count === 4, r.body.slice(0, 80));
 }
 
+async function module_() {
+  const own = { Origin: OWN[0], ...JSON_TYPE };
+  const post = (body, headers = own) => request(MODULES, headers, 'POST', typeof body === 'string' ? body : JSON.stringify(body));
+  const modulesFile = path.join(workDir, 'modules.json');
+
+  let r = await request(MODULES);
+  check('M1 GET schaltet nicht: 404', r.status === 404, String(r.status));
+  r = await post({ module: 'bdu', enabled: false }, JSON_TYPE);
+  check('M2 POST ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await post({ module: 'bdu', enabled: false }, { Origin: 'null', ...JSON_TYPE });
+  check('M3 POST von Herkunft null: 403', r.status === 403, String(r.status));
+  r = await post({ module: 'bdu', enabled: false }, { Origin: OWN[0], ...JSON_TYPE, Host: 'example.com' });
+  check('M4 POST mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await post('{"module":"bdu","enabled":false}', { Origin: OWN[0], 'Content-Type': 'text/plain' });
+  check('M5 POST ohne JSON: 415', r.status === 415, String(r.status));
+  for (const body of [{ module: 'gibtsnicht', enabled: false }, { module: '__proto__', enabled: false }, { module: 5, enabled: false }, { enabled: false }]) {
+    r = await post(body);
+    check(`M6 Unbekanntes Modul ${JSON.stringify(body.module)}: 400`, r.status === 400, String(r.status));
+  }
+  for (const enabled of ['false', 0, null, undefined]) {
+    r = await post({ module: 'bdu', enabled });
+    check(`M7 enabled ${JSON.stringify(enabled)}: 400`, r.status === 400, String(r.status));
+  }
+  r = await post({ module: 'bdu', enabled: false, x: 'y'.repeat(2000) });
+  check('M8 Zu große Anfrage: 413', r.status === 413, String(r.status));
+  r = await post('{kaputt');
+  check('M9 Kaputtes JSON: 400', r.status === 400, String(r.status));
+  check('M10 Fehlversuche schreiben keine Datei', !fs.existsSync(modulesFile));
+
+  r = await post({ module: 'bdu', enabled: false });
+  let d = JSON.parse(r.body);
+  check('M11 Ausschalten', r.status === 200 && d.ok === true && d.changed === true && d.modules.bdu === false && d.modules.uboat === true, r.body);
+  check('M12 Gespeichert', JSON.parse(fs.readFileSync(modulesFile, 'utf8')).bdu === false);
+  check('M13 Steht in der Konsole', logs.some(l => l.includes('BdU-Chat deaktiviert')));
+  r = await request(OVERVIEW);
+  check('M14 Übersicht kennt den neuen Stand', JSON.parse(r.body).modules.bdu === false, r.body.slice(0, 120));
+  r = await post({ module: 'bdu', enabled: false });
+  d = JSON.parse(r.body);
+  check('M15 Nochmal ausschalten ändert nichts', r.status === 200 && d.changed === false, r.body);
+  r = await post({ module: 'bdu', enabled: true });
+  check('M16 Wieder einschalten', r.status === 200 && JSON.parse(r.body).modules.bdu === true, r.body);
+
+  r = await post({ module: 'uboat', enabled: false });
+  check('M17 UBOAT-Soldbuch ausschalten', r.status === 200 && JSON.parse(r.body).modules.uboat === false, r.body);
+  r = await post({ module: 'uboat', enabled: true });
+  check('M18 Einschalten ohne Ordner: Hinweis in der Konsole', r.status === 200 && logs.some(l => l.includes('UBOAT_SAVES_DIR ist nicht gesetzt')), r.body);
+}
+
 async function serverBeenden() {
   let r = await request(OVERVIEW);
   check('D1 Ohne AuthServer.cmd: can_restart ist false', JSON.parse(r.body).can_restart === false, r.body);
@@ -396,6 +445,7 @@ async function ohneTokens() {
   else if (scenario === 'fehler-protokoll') await fehlerProtokoll();
   else if (scenario === 'fehler-defekt') await fehlerDefekt();
   else if (scenario === 'whitelist') await whitelist();
+  else if (scenario === 'module') await module_();
   else await ablauf();
 
   console.log = realLog;
