@@ -1,6 +1,6 @@
 # Spec: Statistik
 
-**Status:** Ziele des Nutzers vom 09.11.2026, noch nicht vollständig, nicht umgesetzt. Grundgerüst und Reihenfolge werden vor der Umsetzung gemeinsam abgewogen; danach folgt ein eigenes ADR.
+**Status:** Ziele des Nutzers vom 09.11.2026, noch nicht vollständig. Grundgerüst und Reihenfolge sind abgestimmt (ADR 0019). Umsetzung in Stufen, siehe unten.
 
 ## Ziel
 Der Reiter „Statistik“ der Webkonsole (Stufe 6, ADR 0018) trennt drei Bereiche. Zugleich entsteht eine Infrastruktur, aus der sich später ein Endscreen bauen lässt.
@@ -18,6 +18,8 @@ Setzt sich aus den Berichten der einzelnen Streams zusammen und addiert sie auf.
 
 ### 2b. Endscreen (später)
 Ein Widget, das zum Ende des Streams eingeblendet wird und die wichtigsten Zahlen des heutigen Streams zeigt, die Zuschauer interessieren könnten: wie sehr interagiert und unterstützt wurde, wann der Stream losging, wie lange er dauerte, wer am meisten interagiert hat, mit monetärem Support oder mit Chat- und Poll-Interaktion. Widgets erhalten nie Client-Secrets (AGENTS.md).
+
+Der Endscreen wird schon gezeigt, bevor der Stream ganz zu Ende ist, er liest also die laufenden Werte. Er hat eine eigene, in OBS einbindbare Adresse und holt die Zahlen beim Server; auf die Daten der Webkonsole im Browser hat er keinen Zugriff. Später vorgemerkt: Aktualisieren im Sekundentakt, solange er in OBS sichtbar ist.
 
 Für später gemerkt, nicht für den Anfang: eine kurze Textzusammenfassung.
 
@@ -44,10 +46,19 @@ Für später gemerkt, nicht für den Anfang: eine kurze Textzusammenfassung.
 - `.env.example` enthält `channel:read:polls`, `channel:read:predictions` und `moderator:read:shoutouts`, nicht aber `channel:read:hype_train`, `bits:read` und `channel:read:redemptions`.
 - `channel.chat.message` liefert kein Feld für eine erste Nachricht oder einen wiederkehrenden Chatter. IRC kannte `first-msg` und `returning-chatter`. Über EventSub muss der Server das selbst ermitteln.
 
-## Offen [UNGEKLÄRT]
-- „API-Anfragen“: nur Anfragen an Twitch oder auch an Home Assistant?
-- „Erste“ und „wiederkehrende Chatter“: Was genau zählt?
-- „Abstimmungen“ und „Stimmen“: nur Twitch-Polls oder auch das eigene Poll-Widget?
-- „Eingesetzte Kanalpunkte“: nur Wetten und Polls oder auch eingelöste Belohnungen?
-- „Monetärer Support“: Gehören Bits dazu?
-- Zählen Broadcaster und Bots bei Chatnachrichten und in Ranglisten mit?
+## Festlegungen des Nutzers (09.11.2026)
+- **API-Anfragen und erste oder wiederkehrende Chatter:** zurückgestellt. Gemini ruft das Enigma-Widget direkt auf, davon sieht der Server nichts; erste und wiederkehrende Chatter gäbe es nur über eine zusätzliche IRC-Verbindung.
+- **Abstimmungen und Stimmen:** Twitch-Polls (auch das eigene Poll-Widget läuft darüber) und die noch zu bauende Spielbewertung per Kanalpunkte-Belohnungen (`stream-bericht.md`). Die Belohnungen legt der Nutzer noch an.
+- **Kanalpunkte und monetärer Support:** jeweils alles zusammen, also auch eingelöste Belohnungen und Bits.
+- **Ausnahmen:** Broadcaster und Bots zählen nicht bei Chatnachrichten und in Ranglisten. Vorbelegt sind Nightbot, StreamElements und DerBdu; das Feld „Genutzte Chat-Bots“ wird im Reiter „Whitelist“ bearbeitbar.
+- **Alarm und Marker:** per zusätzlicher Aktion in der Stream-Deck-Multi-Aktion direkt an den Server, auch für Nutzer ohne Home Assistant.
+
+## Stufen
+| Stufe | Inhalt | Stand |
+|---|---|---|
+| 1 | Grundgerüst `lib/stats.js`, Bereich Server-Instanz, Reiter „Statistik“ | in Arbeit |
+| 2 | Stream-Ablauf und einfache Stream-Zahlen, `stream_stats.json` | offen |
+| 3 | Archiv je Stream und globale Summe | offen |
+| 4 | Polls, Wetten, Stimmen, Shoutouts, Hype Trains, Bits, Kanalpunkte, Spielbewertung, Ranglisten, Feld „Genutzte Chat-Bots“ | offen |
+| 5 | Endscreen | offen |
+| 6 | Clip-Kandidaten mit Alarm und Marker | offen |

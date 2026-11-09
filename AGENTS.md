@@ -17,7 +17,12 @@
 - Konstanten oben in `server.js` definieren, nicht inline.
 - Wiederholte Log-Zeilen über `logIfChanged()` ausgeben.
 - Widgets erhalten nie Client-Secrets.
-- Neue Hardware und Lichtlogik gehören nach Home Assistant, nicht in den Server. Der Server liefert nur `type` und `meta`.
+- Lichtlogik und Hardwaresteuerung gehören nicht in den Server. Home Assistant ist eines von mehreren optionalen Zielen, keine Voraussetzung. Der Server liefert nur `type` und `meta`.
+
+## Produktausrichtung
+- Die Architektur soll der größten Gruppe von Nutzern die meiste Funktion liefern. Angenommene Häufigkeit: Nutzer ohne alles > nur mit Stream Deck > mit Stream Deck und eigenem Chatbot > mit Stream Deck, eigenem Chatbot und Home Assistant.
+- Möglichst viel Funktion kommt über Module. Eine Grundfunktion läuft ohne alle Module, und Module hängen so wenig wie möglich voneinander ab.
+- Der Projektordner samt Laufzeitdateien liegt in der Cloud und wird vermutlich nach jedem Schreiben neu synchronisiert. Dateigrößen im Auge behalten, Vorgänge mit großen oder sehr oft beschriebenen Dateien besonders kritisch prüfen.
 
 ## Arbeitsweise
 - Kleine, testbare Schritte statt großer Umbauten. Ein Commit je logischer Änderung.

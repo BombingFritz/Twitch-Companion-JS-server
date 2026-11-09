@@ -37,6 +37,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation
+- ADR 0019 (Grundgerüst der Statistik). AGENTS.md: Produktausrichtung (Grundfunktion ohne Module, Home Assistant optional, Dateigrößen in der Cloud). Spec `effekt-queue.md`: Home Assistant auch ohne den Server auslösen.
 - OFFEN: Ausbau der Webkonsole und spätere Module vorgemerkt (mehr Einstellungen, Soldbuch, Trennung von Modulen und Grundeinstellungen, Bot-Timer, Channel-Emotes, ESP32-Monitor, Chat-Auswertung).
 - Neue Spec `statistik.md`: Ziele für Statistik und Endscreen, geprüfte Twitch-Angaben, offene Fragen. Noch kein Code.
 - Konzept der Webkonsole: ADR 0018, Spec `webkonsole.md`, Nachträge in ADR 0006 und 0010, Vorgaben zum Streamlog in OFFEN. Noch kein Code.

@@ -12,6 +12,9 @@ Follow-, Sub- und Gift-Ereignisse gebündelt und nacheinander als Home-Assistant
 - `triggerEffect` schreibt in `events.json` und sendet an `HA_WEBHOOK_URL`, falls gesetzt.
 - Vor der Verarbeitung ignoriert der Server bereits gesehene `message_id`s.
 
+## Home Assistant auch ohne den Server auslösen
+Home Assistant ist optional. Hooks lassen sich auch unabhängig vom Server auslösen. Beim Betreiber dieses Servers schickt eine Multi-Aktion auf dem Stream Deck einen Webhook an Home Assistant, der das WLED-Skript oder die Playlist startet; eine solche Multi-Aktion lässt sich um weitere Aktionen wie Hotkeys oder Batch-Dateien ergänzen. Das ist eine Möglichkeit von mehreren, jeder andere Weg, der den Webhook aufruft, geht genauso, auch ohne Stream Deck.
+
 ## Nicht-Ziele
 - Keine Effekte für Raids.
 - Kein Retry bei Webhook-Fehlern.
