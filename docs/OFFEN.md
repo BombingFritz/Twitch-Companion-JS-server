@@ -122,6 +122,9 @@ Vorgemerkt für die Zeit nach dem laufenden Durchgang durch die Stufen der Webko
 6. **Kleiner Monitor am ESP32:** Hinweise an den Nutzer ausgeben, z. B. „>100 Zuschauer, automatisch Werbung steht an“, „Nutzer xyz hat über 20er Stream-Serie erreicht“, „Erster Chatter schreibt“, „VIP/Gifter schreibt heute zum ersten Mal“. Laut AGENTS.md gehört neue Hardware nach Home Assistant, der Server liefert nur `type` und `meta`; Anbindung vor der Umsetzung klären [UNGEKLÄRT].
 7. **Modul Chat-Auswertung:** Zusammenfassung des Chats des gesamten Streams, Chat-Statistiken und Chat-Zusammenfassungen einzelner Streamer. Geht vermutlich nur mit API-Anbindung; weiter ausloten [UNGEKLÄRT, welcher Dienst, Kosten, Umgang mit Chat-Daten].
 
+## Geplant: Statistik und Endscreen (Nutzer, 09.11.2026)
+Ziele in [specs/statistik.md](specs/statistik.md): drei Bereiche (Server-Instanz, laufender oder letzter Stream, global aus den Stream-Berichten) und als Stufe 2b ein Endscreen-Widget. Noch nicht vollständig. Erst Grundgerüst überlegen, dann die Punkte nach Aufwand und Risiko einteilen, gemeinsam abwägen, dann umsetzen.
+
 ## Geplant: Stream-Bericht mit Clip-Kandidaten und Spielbewertung (Nutzer, 04.11.2026)
 Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-bericht.md). Noch nicht entschieden, kein ADR.
 - Kurz: Nach jedem Stream ein Bericht mit zwei Teilen: (1) Stream-Dokumentation mit den wichtigsten Daten: Raids, Follows, Subs, Gifts, Hype Trains, Watch-Serien, Top 10 der Chatter, Whitelist-Auffälligkeiten (ADR 0015) und die Spielbewertung (je Spiel; bevorzugt per zwei Kanalpunkte-Belohnungen, Namen offen, falls unsichtbar einlösbar; später stündlicher Zwischenstand durch den Bot); (2) Clip-Kandidaten (Enigma-Antworten, Hype Trains, Alarm-Taste, Stream-Deck-Marker) mit Timecode und VOD-Link. Raids sind keine Clip-Kandidaten; die separate Raid-Statistik bleibt. Später Ein-Klick-Clips und Shorts.
