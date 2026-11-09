@@ -100,6 +100,8 @@ const STREAM_CLOSE_GRACE_MS = 2 * 60 * 60 * 1000; // so lange nach dem letzten O
 const STREAM_SAVE_INTERVAL_MS = 30 * 1000;        // stream_stats.json höchstens so oft schreiben
 const STREAM_HEARTBEAT_MS = 5 * 60 * 1000;        // auch ohne Änderung, solange live: Lebenszeichen für den Abgleich nach einem Absturz
 const STREAM_TICK_MS = 5 * 1000;                  // so oft Frist und Speichern prüfen
+const STREAM_MAX_CHATTERS = 1000;                 // Obergrenze je Stream, damit stream_stats.json klein bleibt
+const STREAM_TOP_CHATTERS = 5;                    // so viele aktivste Chatter werden angezeigt
 const STREAM_RECONCILE_MIN_AGE_MS = 5 * 60 * 1000; // jünger: „nicht live“ von Twitch ist vermutlich noch die alte Antwort
 const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
@@ -175,6 +177,8 @@ const streamSession = createStreamSession({
   saveIntervalMs: STREAM_SAVE_INTERVAL_MS,
   heartbeatMs: STREAM_HEARTBEAT_MS,
   reconcileMinAgeMs: STREAM_RECONCILE_MIN_AGE_MS,
+  maxChatters: STREAM_MAX_CHATTERS,
+  topChatters: STREAM_TOP_CHATTERS,
 });
 const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   // vor dem Umhüllen von console, zählt die Fehler mit
 setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
@@ -1643,6 +1647,9 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToChat(sessionId);
       await subscribeToStreamOnline(sessionId);
       await subscribeToStreamOffline(sessionId);
+      await subscribeToPollEnd(sessionId);
+      await subscribeToPredictionEnd(sessionId);
+      await subscribeToShoutoutCreate(sessionId);
       await subscribeToSubscriptions(sessionId);
       await subscribeToChatNotifications(sessionId);
       await subscribeToFollows(sessionId);
@@ -1671,7 +1678,10 @@ function connectEventSub(reconnectUrl = null) {
       }
 
       if (subType === 'channel.chat.message') {
-        if (isCountedChatter(msg.payload.event)) stats.count('chat_messages');
+        if (isCountedChatter(msg.payload.event)) {
+          stats.count('chat_messages');
+          streamSession.noteChatter(msg.payload.event.chatter_user_id, msg.payload.event.chatter_user_name || msg.payload.event.chatter_user_login);
+        }
         await handleChatCommand(msg.payload.event);
         handleBduCommand(msg.payload.event);
         await handleUboatCommand(msg.payload.event);
@@ -1681,6 +1691,10 @@ function connectEventSub(reconnectUrl = null) {
       if (subType === 'channel.update') {
         setCurrentCategory(msg.payload.event.category_name || null, 'channel.update');
       }
+
+      if (subType === 'channel.poll.end') recordPollEnd(msg.payload.event);
+      if (subType === 'channel.prediction.end') recordPredictionEnd(msg.payload.event);
+      if (subType === 'channel.shoutout.create') stats.count('shoutouts');
 
       if (subType === 'stream.offline') {
         console.log('Twitch meldet: Stream ist offline');
@@ -1821,6 +1835,51 @@ async function subscribeToStreamOffline(sessionId) {
   } catch (err) {
     console.error('Fehler beim Abonnieren von stream.offline:', err.response?.data || err.message);
   }
+}
+
+// Nur für die Statistik: Fehlt ein Scope, steht das einmal im Fehlerprotokoll, der Rest läuft weiter.
+async function subscribeForStats(sessionId, type, condition) {
+  try {
+    const accessToken = await getValidAccessToken();
+    await axios.post(
+      'https://api.twitch.tv/helix/eventsub/subscriptions',
+      { type, version: '1', condition, transport: { method: 'websocket', session_id: sessionId } },
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
+    );
+    console.log(`${type}-Subscription aktiv (für die Statistik)`);
+  } catch (err) {
+    console.error(`Fehler beim Abonnieren von ${type}:`, err.response?.data || err.message);
+  }
+}
+
+async function subscribeToPollEnd(sessionId) {
+  await subscribeForStats(sessionId, 'channel.poll.end', { broadcaster_user_id: loadTokens().broadcaster_id });
+}
+
+async function subscribeToPredictionEnd(sessionId) {
+  await subscribeForStats(sessionId, 'channel.prediction.end', { broadcaster_user_id: loadTokens().broadcaster_id });
+}
+
+async function subscribeToShoutoutCreate(sessionId) {
+  const { broadcaster_id: id } = loadTokens();
+  await subscribeForStats(sessionId, 'channel.shoutout.create', { broadcaster_user_id: id, moderator_user_id: id });
+}
+
+function recordPollEnd(evt) {
+  if (evt.status !== 'completed' && evt.status !== 'terminated') return;   // „archived“ meldet dieselbe Abstimmung noch einmal
+  const choices = evt.choices || [];
+  stats.count('polls');
+  stats.count('poll_votes', choices.reduce((sum, c) => sum + (c.votes || 0), 0));
+  const perVote = evt.channel_points_voting?.amount_per_vote || 0;
+  stats.count('channel_points', choices.reduce((sum, c) => sum + (c.channel_points_votes || 0), 0) * perVote);
+}
+
+function recordPredictionEnd(evt) {
+  if (evt.status !== 'resolved') return;   // bei „canceled“ gibt Twitch die Punkte zurück
+  const outcomes = evt.outcomes || [];
+  stats.count('predictions');
+  stats.count('prediction_users', outcomes.reduce((sum, o) => sum + (o.users || 0), 0));
+  stats.count('channel_points', outcomes.reduce((sum, o) => sum + (o.channel_points || 0), 0));
 }
 
 // Beim Verbinden: Ereignisse während einer Lücke könnten fehlen (ADR 0019).
@@ -2103,7 +2162,6 @@ async function sendShoutout(toBroadcasterId, toBroadcasterName) {
       }
     );
     console.log(`Shoutout erfolgreich gesendet für @${toBroadcasterName}`);
-    stats.count('shoutouts');
     return true;
   } catch (e) {
     // Erwartbare Ablehnungen durch Twitch als kurze Hinweise statt als Fehler ausgeben

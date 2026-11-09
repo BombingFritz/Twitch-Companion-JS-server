@@ -176,6 +176,31 @@ check('N9 Frisch gestartet: „nicht live“ wird ignoriert', snap(session).stat
 session.reconcile(null);
 check('N10 Kein Stream und nicht live: bleibt so', snap(session).status === 'none');
 
+// Chatter
+({ session, clock } = setup({ maxChatters: 3, topChatters: 2 }));
+session.noteChatter('a', 'Anna');
+check('C1 Ohne Stream keine Chatter', snap(session).unique_chatters === 0);
+session.onOnline({ id: 's1' });
+session.noteChatter('a', 'Anna');
+session.noteChatter('a', 'Anna');
+session.noteChatter('b', 'Bert');
+session.noteChatter('c', 'Cleo');
+session.noteChatter('c', 'Cleo');
+session.noteChatter('c', 'Cleo');
+s = snap(session);
+check('C2 Verschiedene Chatter und die Aktivsten', s.unique_chatters === 3 && s.top_chatters.length === 2 && s.top_chatters[0].name === 'Cleo' && s.top_chatters[0].count === 3 && s.top_chatters[1].name === 'Anna', JSON.stringify(s.top_chatters));
+session.noteChatter('d', 'Dora');
+session.noteChatter('a', 'Anna');
+s = snap(session);
+check('C3 Begrenzt: keine neuen mehr, bekannte zählen weiter', s.unique_chatters === 3 && s.top_chatters.find(c => c.name === 'Anna').count === 3, JSON.stringify(s.top_chatters));
+session.noteChatter('__proto__', 'x');
+check('C4 Sonderschlüssel richten nichts an', ({}).name === undefined && snap(session).unique_chatters === 3);
+session.onRaidOut();
+session.noteChatter('a', 'Anna');
+check('C5 Abgeschlossen: Werte bleiben, nichts kommt dazu', snap(session).top_chatters.find(c => c.name === 'Anna').count === 3);
+session.onOnline({ id: 's2' });
+check('C6 Nächster Stream beginnt leer', snap(session).unique_chatters === 0);
+
 // Robustheit
 ({ session } = setup({ save: () => { throw new Error('Datei gesperrt'); } }));
 let threw = false;
