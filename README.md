@@ -25,8 +25,8 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet von DerBdu bzw. ohne Bot als „FT vom BdU: …“ (ADR 0014, 0017)
 - UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
 - Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu (ADR 0017)
-- Modul-Schalter: BdU-Chat und Soldbuch per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten
-- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC mit Knöpfen zum Beenden und Neustarten des Servers, Live-Log mit Fehlerprotokoll und Whitelist-Verwaltung, weitere Bereiche folgen (ADR 0018)
+- Modul-Schalter: BdU-Chat und Soldbuch in der Webkonsole oder per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten
+- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC mit Knöpfen zum Beenden und Neustarten des Servers, Live-Log mit Fehlerprotokoll, Whitelist-Verwaltung, Effekt-Modus und Modul-Schaltern, weitere Bereiche folgen (ADR 0018)
 
 ## Dokumentation
 
