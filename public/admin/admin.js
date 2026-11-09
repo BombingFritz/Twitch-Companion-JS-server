@@ -14,12 +14,6 @@ const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
 const WHITELIST_URL = '/api/admin/whitelist';
 const MODULES_URL = '/api/admin/modules';
 const EFFECT_MODE_URL = '/api/admin/effects/mode';
-const EFFECT_CONFIRM_URL = '/api/admin/effects/confirm';
-const EFFECT_MODES = [
-  { mode: 'auto', label: 'Automatisch', text: 'Effekte laufen sofort.' },
-  { mode: 'manual', label: 'Manuell', text: 'Jeder Effekt wartet kurz auf deine Bestätigung, sonst entfällt er.' },
-  { mode: 'off', label: 'Aus', text: 'Neue Effekte werden verworfen, eine wartende Bestätigung ebenso.' },
-];
 const MODULE_SETTINGS = [
   { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
   { key: 'uboat', name: 'UBOAT-Soldbuch', text: 'Beantwortet !soldbuch im Chat. Aus: Der Befehl wird still ignoriert, der Spielstand wird weiter eingelesen.' },
@@ -50,7 +44,7 @@ const state = {
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
   settings: {
     view: null, rows: {}, message: null, busy: new Set(),
-    effects: { buttons: {}, text: null, hint: null, confirmText: null, confirmButton: null, busy: false },
+    effects: { input: null, state: null, hint: null, busy: false },
   },
   whitelist: {
     view: null, list: null, count: null, input: null, addButton: null, message: null,
@@ -349,71 +343,44 @@ function updateSettings(d) {
 
 function updateEffectSettings(d) {
   const fx = state.settings.effects;
-  for (const { mode } of EFFECT_MODES) {
-    fx.buttons[mode].setAttribute('aria-pressed', String(mode === d.effect_mode));
-    fx.buttons[mode].disabled = fx.busy;
-  }
-  const current = EFFECT_MODES.find(m => m.mode === d.effect_mode);
-  fx.text.textContent = current ? current.text : '';
+  if (!fx.busy) fx.input.checked = d.effect_mode !== 'off';
+  fx.state.textContent = fx.input.checked ? 'an' : 'aus';
   fx.hint.hidden = d.ha_webhook_configured;
   fx.hint.textContent = 'HA_WEBHOOK_URL ist nicht gesetzt. Effekte werden nur lokal protokolliert.';
-  const waiting = d.pending_confirmation;
-  fx.confirmText.textContent = waiting
-    ? `${EFFECT_LABELS[waiting.type] || waiting.type} ×${waiting.count} wartet auf Bestätigung.`
-    : 'Kein Effekt wartet auf Bestätigung.';
-  fx.confirmButton.disabled = !waiting || fx.busy;
 }
 
-async function runEffectAction(action) {
+async function toggleEffects() {
   const fx = state.settings.effects;
+  const enabled = fx.input.checked;
   fx.busy = true;
-  updateEffectSettings(state.data);
+  fx.input.disabled = true;
   try {
-    showSettingsMessage(await action(), false);
+    const { mode } = await postJson(EFFECT_MODE_URL, { mode: enabled ? 'auto' : 'off' });
+    state.data.effect_mode = mode;
+    showSettingsMessage(`HA-Effekte ${enabled ? 'eingeschaltet' : 'ausgeschaltet'}.`, false);
   } catch (err) {
-    showSettingsMessage(err.message, true);
+    fx.input.checked = !enabled;
+    showSettingsMessage(`HA-Effekte: ${err.message}`, true);
   } finally {
     fx.busy = false;
+    fx.input.disabled = false;
     updateEffectSettings(state.data);
   }
 }
 
-function chooseEffectMode(choice) {
-  return runEffectAction(async () => {
-    const { mode } = await postJson(EFFECT_MODE_URL, { mode: choice.mode });
-    state.data.effect_mode = mode;
-    if (mode === 'off') state.data.pending_confirmation = null;
-    return `Effekt-Modus: ${choice.label}.`;
-  });
-}
-
-function confirmEffect() {
-  return runEffectAction(async () => {
-    try {
-      await postJson(EFFECT_CONFIRM_URL, {});
-    } finally {
-      state.data.pending_confirmation = null;   // bestätigt oder nicht mehr offen
-    }
-    return 'Effekt bestätigt.';
-  });
-}
-
 function effectCard() {
   const fx = state.settings.effects;
-  const buttons = EFFECT_MODES.map(choice => {
-    fx.buttons[choice.mode] = actionButton(choice.label, 'mode', () => chooseEffectMode(choice), false);
-    return fx.buttons[choice.mode];
-  });
-  fx.text = el('div', { class: 'sub' });
+  fx.input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': 'HA-Effekte' });
+  fx.input.addEventListener('change', toggleEffects);
+  fx.state = el('span', { class: 'setting-state' });
   fx.hint = el('div', { class: 'sub setting-hint' });
   fx.hint.hidden = true;
-  fx.confirmText = el('span');
-  fx.confirmButton = actionButton('Effekt bestätigen', '', confirmEffect, true);
-  return card('HA-Effekte',
-    el('div', { class: 'log-modes', role: 'group', 'aria-label': 'Effekt-Modus' }, ...buttons),
-    fx.text,
-    fx.hint,
-    el('div', { class: 'effect-confirm' }, fx.confirmText, fx.confirmButton));
+  return card('HA-Effekte', el('div', { class: 'setting' },
+    el('div', { class: 'setting-text' },
+      el('div', { class: 'setting-name', text: 'Effekte' }),
+      el('div', { class: 'sub', text: 'Follows, Subs und Gifts lösen Effekte in Home Assistant aus. Aus: Neue Effekte werden verworfen.' }),
+      fx.hint),
+    el('div', { class: 'setting-control' }, fx.state, el('label', { class: 'switch' }, fx.input, el('span', { class: 'track' })))));
 }
 
 async function toggleModule(setting) {
@@ -731,8 +698,6 @@ function twitchCard(d) {
 }
 
 function effectsCard(d) {
-  const modes = { auto: ['ok', 'automatisch'], manual: ['warn', 'manuell (Bestätigung nötig)'], off: ['warn', 'aus'] };
-  const [level, label] = modes[d.effect_mode] || ['off', String(d.effect_mode)];
   const list = d.recent_effects.length
     ? d.recent_effects.map(e => {
       const name = EFFECT_LABELS[e.type] || e.type;
@@ -746,11 +711,8 @@ function effectsCard(d) {
     : [el('li', { class: 'empty', text: 'Noch keine Effekte.' })];
   return card('HA-Effekte', rows(
     row('Webhook', d.ha_webhook_configured ? indicator('ok', 'eingetragen') : indicator('bad', 'nicht eingetragen')),
-    row('Modus', indicator(level, label)),
+    row('Effekte', d.effect_mode === 'off' ? indicator('off', 'aus') : indicator('ok', 'an')),
     row('Warteschlange', el('span', { text: String(d.effect_queue_length) })),
-    row('Wartet auf Bestätigung', d.pending_confirmation
-      ? indicator('warn', `${EFFECT_LABELS[d.pending_confirmation.type] || d.pending_confirmation.type} ×${d.pending_confirmation.count}`)
-      : el('span', { text: 'nein' })),
   ), el('ul', { class: 'events' }, ...list));
 }
 

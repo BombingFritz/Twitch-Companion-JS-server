@@ -1,4 +1,4 @@
-// K3-Test: Effekt-Modus OFF verwirft wartende manuelle Bestätigung.
+// Effekt-Modus: auto und off über Webkonsole und Konsole; off verwirft neue Effekte, manual gibt es nicht mehr.
 // Attrappen: ws, axios, readline per Module._load. Eigenes Arbeitsverzeichnis, Fake-tokens.json.
 const Module = require('module');
 const path = require('path');
@@ -59,7 +59,6 @@ const post = (p, body) => new Promise((res, rej) => {
   req.end(JSON.stringify(body));
 });
 const setMode = mode => post('/api/admin/effects/mode', { mode });
-const confirmEffect = () => post('/api/admin/effects/confirm', {});
 let msgN = 0;
 function follow(user) {
   sockets[0].emit('message', JSON.stringify({
@@ -67,75 +66,44 @@ function follow(user) {
     payload: { event: { user_login: user, user_id: `u-${user}` } } }));
 }
 const events = () => fs.existsSync('events.json') ? JSON.parse(fs.readFileSync('events.json', 'utf8')) : [];
-async function waitPending(maxMs = 12000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < maxMs) { if ((await get('/api/effects/mode')).pendingConfirmation) return true; await sleep(200); }
-  return false;
-}
 const results = [];
 function check(name, cond, info = '') { results.push({ name, ok: !!cond, info }); }
 
 (async () => {
   await sleep(300);
-  // 1) HTTP: manual -> wartet -> off -> confirm
-  await setMode('manual');
-  follow('alice');
-  check('1a Bestätigung wartet (manual)', await waitPending());
-  const off1 = await setMode('off');
-  check('1b Moduswechsel per HTTP ok', off1.ok && off1.mode === 'off');
-  await sleep(50);
-  const st1 = await get('/api/effects/mode');
-  check('1c nach OFF keine wartende Bestätigung', st1.pendingConfirmation === null, JSON.stringify(st1));
-  const c1 = await confirmEffect();
-  check('1d confirm nach OFF liefert ok:false', c1.ok === false, JSON.stringify(c1));
-  await sleep(300);
-  check('1e kein Webhook an HA', haPosts.length === 0, `${haPosts.length} Posts`);
-  check('1f kein Event-Log-Eintrag', events().length === 0, JSON.stringify(events()));
+  const savedMode = () => JSON.parse(fs.readFileSync('effect_mode.json', 'utf8')).mode;
 
-  // 2) Konsole: manual -> wartet -> effects mode off -> confirm
-  rlEmitter.emit('line', 'effects mode manual');
+  // 1) Webkonsole: off verwirft neue Effekte
+  const off1 = await setMode('off');
+  check('1a Moduswechsel per Webkonsole ok', off1.ok && off1.mode === 'off', JSON.stringify(off1));
+  follow('alice');
+  await sleep(7000);
+  const st1 = await get('/api/effects/mode');
+  check('1b OFF: Effekt verworfen, Queue leer', st1.queueLength === 0 && haPosts.length === 0 && events().length === 0, JSON.stringify(st1));
+  check('1c Keine Bestätigung mehr in der Antwort', !('pendingConfirmation' in st1), JSON.stringify(st1));
+
+  // 2) Konsole: auto löst sofort aus, Payload unverändert
+  rlEmitter.emit('line', 'effects mode auto');
   await sleep(50);
+  check('2a Modus auto gespeichert', savedMode() === 'auto');
   follow('bob');
-  check('2a Bestätigung wartet (manual, Konsole)', await waitPending());
+  await sleep(8000);
+  const p = haPosts[0] || {};
+  check('2b auto: genau ein Webhook ohne Bestätigung', haPosts.length === 1, `${haPosts.length} Posts`);
+  check('2c Payload {type,count,meta,timestamp}', JSON.stringify(Object.keys(p)) === '["type","count","meta","timestamp"]'
+    && p.type === 'follow' && p.count === 1 && p.meta.userName === 'bob', JSON.stringify(p));
+
+  // 3) Konsole: off
   rlEmitter.emit('line', 'effects mode off');
   await sleep(50);
-  const c2 = await confirmEffect();
-  check('2b confirm nach Konsolen-OFF liefert ok:false', c2.ok === false, JSON.stringify(c2));
-  await sleep(300);
-  check('2c kein Webhook an HA', haPosts.length === 0, `${haPosts.length} Posts`);
-  check('2d kein Event-Log-Eintrag', events().length === 0);
-  check('2e Modus in effect_mode.json gespeichert', JSON.parse(fs.readFileSync('effect_mode.json', 'utf8')).mode === 'off');
+  check('3a Modus off gespeichert', savedMode() === 'off');
 
-  // 3) OFF verwirft neue Effekte, Queue leer
-  follow('carol');
-  await sleep(7000);
-  const st3 = await get('/api/effects/mode');
-  check('3a OFF: neuer Effekt verworfen, Queue leer', st3.queueLength === 0 && haPosts.length === 0, JSON.stringify(st3));
-
-  // 4) manual + Bestätigung löst weiterhin aus, Payload unverändert
-  await setMode('manual');
-  follow('dave');
-  check('4a Bestätigung wartet', await waitPending());
-  const c4 = await confirmEffect();
-  await sleep(300);
-  const p = haPosts[0] || {};
-  check('4b confirm ok:true und genau ein Webhook', c4.ok === true && haPosts.length === 1, JSON.stringify(c4));
-  check('4c Payload {type,count,meta,timestamp}', JSON.stringify(Object.keys(p)) === '["type","count","meta","timestamp"]'
-    && p.type === 'follow' && p.count === 1 && p.meta.userName === 'dave', JSON.stringify(p));
-
-  // 5) manual ohne Bestätigung: nach 30 s Timeout-Eintrag wie bisher
-  follow('erin');
-  check('5a Bestätigung wartet', await waitPending());
-  await sleep(31000);
-  const ev5 = events().filter(e => e.userName === 'erin');
-  check('5b Timeout: Eintrag mit skippedManualTimeout', ev5.length === 1 && ev5[0].skippedManualTimeout === true, JSON.stringify(ev5));
-  check('5c Timeout: kein Webhook', haPosts.length === 1);
-
-  // 6) auto löst direkt aus
-  await setMode('auto');
-  follow('frank');
-  await sleep(8000);
-  check('6a auto: Webhook ohne Bestätigung', haPosts.length === 2 && haPosts[1].meta.userName === 'frank', `${haPosts.length} Posts`);
+  // 4) manual gibt es nicht mehr
+  rlEmitter.emit('line', 'effects mode manual');
+  await sleep(50);
+  check('4a Konsole lehnt manual ab', savedMode() === 'off' && logs.some(l => l === 'Nutzung: effects mode <auto|off>'));
+  const m = await setMode('manual');
+  check('4b Webkonsole lehnt manual ab', !m.ok && !!m.error && savedMode() === 'off', JSON.stringify(m));
 
   console.log = realLog;
   for (const r of results) realLog(`${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.ok ? '' : '  -> ' + r.info}`);

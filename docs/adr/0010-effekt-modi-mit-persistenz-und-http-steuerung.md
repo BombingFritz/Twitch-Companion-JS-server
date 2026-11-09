@@ -13,3 +13,5 @@
 **Nachtrag (08.11.2026):** Der Nutzer hat entschieden, dass die Webkonsole die Stream-Deck-Tasten für den Effekt-Modus ersetzen kann (ADR 0018). Mit dem Reiter „Einstellungen“ entfallen deshalb `GET /api/effects/mode/:mode` und `GET /api/effects/confirm` zugunsten geschützter POST-Endpoints; das Mitnehmen der Bestätigung hat Claude vorgeschlagen. Bis dahin gilt dieses ADR unverändert. Die drei Modi, ihre Speicherung und die Konsolenbefehle bleiben.
 
 **Nachtrag (09.11.2026):** Umgesetzt und vom Nutzer freigegeben: Umschalten und Bestätigen gehen nur noch über `POST /api/admin/effects/mode` und `/confirm` oder die Konsole, die beiden GET-Endpoints sind entfernt (ADR 0018).
+
+**Nachtrag (09.11.2026, Nutzer):** Der Modus `manual` entfällt komplett. Es bleiben `auto` und `off`, in der Webkonsole als Schalter An/Aus, an der Konsole `effects mode auto|off`. Begründung: Ohne Stream-Deck-Tasten wäre eine Bestätigung binnen 30 s im Stream kaum praktikabel. `POST /api/admin/effects/confirm` ist mit entfernt. Von Claude festgelegt: Ein gespeichertes `manual` gilt beim Start als `auto`; ältere Einträge mit `skippedManualTimeout` bleiben in `events.json` lesbar.

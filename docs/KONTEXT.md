@@ -14,11 +14,11 @@ Der Server ist die zentrale Software-Schnittstelle zwischen Twitch, den OBS-Widg
 Twitch (EventSub / Helix)
   └─ Twitch Companion JS server
        ├─ OBS-Browser-Widgets   (holen Token/Daten über HTTP)
-       ├─ Effekt-Queue           (auto / manual / off)
+       ├─ Effekt-Queue           (an / aus)
        ├─ Bot-Account „DerBdu“   (sendet BdU- und Soldbuch-Antworten im Chat)
        └─ Home-Assistant-Webhook ──> Scripts, Szenen, WLED, Matter
 UBOAT-Spielstände ──nur lesen──> Server (Soldbuch)
-Stream Deck ──HTTP──> Server (Effekt-Modus, Bestätigung)
+Browser am Streaming-PC ──HTTP──> Server (Webkonsole, u. a. Effekte an/aus)
 Stream Deck ──────> Home Assistant, OBS (direkt, nicht über den Server)
 Arduino / ESP32 ──> Home Assistant (ESPHome, Serial, Webhook) bzw. USB-HID an den PC
 ```
@@ -77,7 +77,7 @@ Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT]
 
 ### Stream Deck
 - Heute: OBS-Szenen und Overlays, Sounds, Videos, HA-Lichteffekte, Startskript, Werbung, Marker, Audio.
-- Laut Kontext geplant: Widget-Zustände und Show-Abläufe steuern. Effekt-Modus und Bestätigung laufen nicht über das Stream Deck, sondern über den Reiter „Einstellungen“ der Webkonsole (Nutzer, 08. und 09.11.2026, ADR 0010, ADR 0018).
+- Laut Kontext geplant: Widget-Zustände und Show-Abläufe steuern. Effekte an/aus laufen nicht über das Stream Deck, sondern über den Reiter „Einstellungen“ der Webkonsole (Nutzer, 08. und 09.11.2026, ADR 0010, ADR 0018).
 
 ## Leitlinien mit Bezug zum Server
 

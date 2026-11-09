@@ -26,7 +26,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0004](0004-effekte-nur-ueber-scheduleeffect.md) | Alle Licht- und Show-Effekte laufen über `scheduleEffect` und die Effekt-Queue. |
 | [0008](0008-sub-gift-effekte-aus-chat-notification.md) | Sub- und Gift-Effekte löst die Chat-Ankündigung aus, ein Gift-Bomb nur einen Effekt. |
 | [0009](0009-entdoppelung-message-id-und-zeitfenster.md) | Doppelt gelieferte Twitch-Ereignisse werden erkannt und nur einmal verarbeitet. |
-| [0010](0010-effekt-modi-mit-persistenz-und-http-steuerung.md) | Effekt-Modi `auto`/`manual`/`off`, umschaltbar per Stream Deck und Konsole. |
+| [0010](0010-effekt-modi-mit-persistenz-und-http-steuerung.md) | Effekt-Modi, gespeichert; seit den Nachträgen nur noch `auto`/`off`, umschaltbar über Webkonsole und Konsole. |
 
 ### Raids und Shoutouts
 | ADR | Worum es geht |

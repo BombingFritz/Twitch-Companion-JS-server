@@ -45,6 +45,7 @@ const runs = [
   ['admin-test.js', ['whitelist']],
   ['admin-test.js', ['module']],
   ['admin-test.js', ['effekte']],
+  ['admin-test.js', ['effekte-alt']],
   ['admin-format-test.js', []],
   ['authserver-test.js', []],
 ];

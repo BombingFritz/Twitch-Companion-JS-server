@@ -48,3 +48,5 @@ Von Claude festgelegt, vom Nutzer als Gesamtkonzept gebilligt, aber nicht einzel
 **Nachtrag (09.11.2026, Stufe 4, Modul-Schalter):** Der Nutzer hat die Modul-Schalter beauftragt. Von Claude festgelegt, nicht einzeln zur Wahl gestellt: keine Rückfrage beim Schalten; die Folgen eines Schalters (offene BdU-Anfragen verwerfen, Hinweis ohne `UBOAT_SAVES_DIR`) stehen in `switchModule` und gelten für Konsole und Webkonsole gleich.
 
 **Nachtrag (09.11.2026, Stufe 4, Effekt-Modus):** Der Nutzer hat den Wegfall der GET-Endpoints und damit der Stream-Deck-Tasten ausdrücklich freigegeben. Umgesetzt wie oben unter „Effekt-Modus“; die Lücke aus OFFEN.md (Priorität 2) ist damit geschlossen. Von Claude festgelegt, nicht einzeln zur Wahl gestellt: keine Rückfrage beim Umschalten; Bestätigung ohne wartenden Effekt antwortet 409; `GET /api/effects/mode` bleibt ohne Änderung. Die Bot-Zuordnung folgt als eigener Schritt.
+
+**Nachtrag (09.11.2026, Nutzer):** Der Modus „Manuell“ und damit `POST /api/admin/effects/confirm` entfallen, der Reiter „Einstellungen“ hat für die Effekte nur noch einen Schalter An/Aus (ADR 0010, Nachtrag).
