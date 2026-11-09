@@ -1,6 +1,6 @@
 # Architektur (Ist-Zustand)
 
-Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016); die Webkonsole liegt in `public/admin/` (ADR 0018). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
+Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016); die Statistik in `lib/stats.js` (ADR 0019); die Webkonsole liegt in `public/admin/` (ADR 0018). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
 
 ## 1. Datenfluss
 
@@ -37,6 +37,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
+| Statistik (ADR 0019) | `server.js`: `isCountedChatter`; RAM: `stats`. `lib/stats.js`: `createStats` (`count`, `snapshot`), zentrale Liste `METRICS` |
 | Live-Log (ADR 0018) | `sanitizeLogText`, `recordLogLine`, `writeLogEntry`, `logRedactedValues`, `loadErrorLog`, `saveErrorLog`, `appendErrorLog`; `console.log/info/warn/error` werden umhüllt; RAM: `logBuffer`, `logClients`, `nextLogId`, `logRedactions`, `errorLog` |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification`; in `connectEventSub` intern `armKeepalive` (Zeitgeber für die Keepalive-Überwachung) |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`; mit `feature` aus `BOT_FEATURES` über den Bot), `sendShoutout` |
@@ -89,6 +90,7 @@ Zugriffsschutz (ADR 0013):
 | `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), ha_webhook_configured (nur ja/nein, nie die Adresse), category, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/stream` | Server-Sent Events für den Live-Log: `retry: 5000`, Ereignis `hello` `{pid, started_at}`, dann der Puffer und jede neue Zeile als `line` `{id, at, level: info/warn/error, text}`, Kommentar-Ping alle 30 s. Texte ohne Secrets, Tokens, Webhook-Adresse und private Adressen | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/errors` | `{entries: [{at, pid, text}] (neuester zuerst, höchstens 1000), limit}` aus `error_log.json` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
+| `/api/admin/stats` | `{enabled, instance: {started_at, uptime_seconds, metrics: [{key, label, value}]}}`. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/whitelist` | `{entries: [{id, name}] (nach Namen), count}` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `POST /api/admin/whitelist/add` | JSON `{user}` (Name, `@Name` oder ID); `{ok:true, entry:{id, name}}` | 403 wie `POST /api/admin/server/…`; 415 ohne JSON; 400 ungültig; 404 Konto unbekannt; 409 schon gelistet; 413 zu groß; 502 Twitch nicht erreichbar |
 | `POST /api/admin/whitelist/remove` | JSON `{id}`; `{ok:true, id}` | 403 und 415 wie oben; 400 ungültige ID; 404 nicht gelistet; 413 zu groß |
@@ -207,6 +209,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `LOG_REDACTED` / `LOG_PRIVATE_ADDRESS` | `<entfernt>` / `<privat>` | Platzhalter im Live-Log |
 | `ADMIN_ERROR_LOG_PATH` / `ERROR_LOG_MAX_ENTRIES` | `/api/admin/log/errors` / 1000 | Fehlerprotokoll |
 | `ADMIN_WHITELIST_PATH` / `ADMIN_MODULES_PATH` / `ADMIN_JSON_LIMIT` | `/api/admin/whitelist` / `/api/admin/modules` / `1kb` | Pfade der Webkonsole, Größe ihrer JSON-Anfragen |
+| `ADMIN_STATS_PATH` / `STATS_ENABLED` | `/api/admin/stats` / `true` | Statistik der Webkonsole, Abschalten der ganzen Statistik |
+| `STATS_EXCLUDED_CHATTERS` | `nightbot`, `streamelements`, `derbdu` | Zählen nicht als Chatnachricht (ADR 0019) |
 | `ADMIN_EFFECT_MODE_PATH` | `/api/admin/effects/mode` | Effekte an/aus in der Webkonsole |
 | `EFFECT_MODES` | `auto`, `off` | Erlaubte Modi |
 | `TWITCH_LOGIN_PATTERN` / `TWITCH_ID_PATTERN` | `^[a-z0-9_]{1,25}$` / `^\d{1,20}$` | Prüfung von Eingaben der Webkonsole |

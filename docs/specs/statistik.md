@@ -53,10 +53,18 @@ Für später gemerkt, nicht für den Anfang: eine kurze Textzusammenfassung.
 - **Ausnahmen:** Broadcaster und Bots zählen nicht bei Chatnachrichten und in Ranglisten. Vorbelegt sind Nightbot, StreamElements und DerBdu; das Feld „Genutzte Chat-Bots“ wird im Reiter „Whitelist“ bearbeitbar.
 - **Alarm und Marker:** per zusätzlicher Aktion in der Stream-Deck-Multi-Aktion direkt an den Server, auch für Nutzer ohne Home Assistant.
 
+## Verhalten Stufe 1
+- `lib/stats.js`: `createStats({metrics, enabled, now, warn})` liefert `count(key, menge = 1)` und `snapshot()`. Die Kennzahlen stehen in `METRICS` (Schlüssel, Bezeichnung, Bereiche). `count` wirft nie; ein unbekannter Schlüssel wird einmal gewarnt und nicht gezählt. `STATS_ENABLED` in `server.js` schaltet alles ab.
+- Bereich Server-Instanz, nur im Arbeitsspeicher, beginnt mit dem Prozess: Laufzeit, Fehler (`console.error`), ausgelöste Effekte (einer je ausgeführtem Job), Follows, Subs, verschenkte Subs, Chatnachrichten.
+- Gezählt wird nach der Entdoppelung. Gift-Empfänger zählen nicht als Sub, ein Gift-Bomb zählt mit der Anzahl der Subs. Chatnachrichten ohne Broadcaster, `STATS_EXCLUDED_CHATTERS` und Nachrichten aus fremden Kanälen (Shared Chat).
+- `GET /api/admin/stats`: `{enabled, instance: {started_at, uptime_seconds, metrics: [{key, label, value}]}}`. Zugriff wie alle `/api/admin/…`, erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll.
+- Reiter „Statistik“: Karte „Diese Server-Instanz“, aktualisiert mit der Abfrage alle 5 s.
+- Geprüft mit `test/stats-test.js` und dem Szenario `statistik` in `test/admin-test.js`, im Browser mit Attrappen; am echten Server noch nicht.
+
 ## Stufen
 | Stufe | Inhalt | Stand |
 |---|---|---|
-| 1 | Grundgerüst `lib/stats.js`, Bereich Server-Instanz, Reiter „Statistik“ | in Arbeit |
+| 1 | Grundgerüst `lib/stats.js`, Bereich Server-Instanz, Reiter „Statistik“ | umgesetzt, siehe unten |
 | 2 | Stream-Ablauf und einfache Stream-Zahlen, `stream_stats.json` | offen |
 | 3 | Archiv je Stream und globale Summe | offen |
 | 4 | Polls, Wetten, Stimmen, Shoutouts, Hype Trains, Bits, Kanalpunkte, Spielbewertung, Ranglisten, Feld „Genutzte Chat-Bots“ | offen |

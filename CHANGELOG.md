@@ -14,6 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Webkonsole, Stufe 4 (Teil): Reiter „Einstellungen“ mit Schaltern für BdU-Chat und UBOAT-Soldbuch. Neu: `POST /api/admin/modules` (nur POST mit JSON und eigener Herkunft). Konsole und Webkonsole nutzen dafür `switchModule` (ADR 0018, Spec `webkonsole.md`).
 - Webkonsole, Stufe 4 (Teil): Schalter An/Aus für die HA-Effekte im Reiter „Einstellungen“. Neu: `POST /api/admin/effects/mode` (ADR 0010, ADR 0018, Spec `webkonsole.md`).
 
+- Statistik, Stufe 1: Modul `lib/stats.js` mit zentraler Kennzahlenliste und Reiter „Statistik“ mit den Zahlen der laufenden Server-Instanz (Laufzeit, Fehler, Effekte, Follows, Subs, verschenkte Subs, Chatnachrichten). Neu: `GET /api/admin/stats` (ADR 0019, Spec `statistik.md`).
+
 ### Security
 - Entfernt: `GET /api/effects/mode/:mode` und `GET /api/effects/confirm`. Sie änderten ohne Schutz den Zustand des Servers; Einbindungen ohne `Origin` konnten sie auslösen. Stream-Deck-Tasten auf diese Adressen funktionieren nicht mehr, Ersatz ist der Reiter „Einstellungen“. `GET /api/effects/mode` (nur lesen) und die Konsolenbefehle bleiben (ADR 0018).
 - Login-CSRF geschlossen: `/login`, `/login-bot` und `/callback` nehmen nur noch Aufrufe vom eigenen Rechner an (wie `/token`). Der Broadcaster-Login trägt jetzt einen zufälligen, einmal gültigen `state`; `/callback` speichert nur mit gültigem `state`. Vorher konnte ein Gerät im Heimnetz einen Code für ein fremdes Konto an `/callback` schicken und `tokens.json` überschreiben (ADR 0013, Nachtrag 07.11.2026).
@@ -34,6 +36,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Neuer Test `test/authserver-test.js` (die Schleife in `AuthServer.cmd` startet nur bei Code 75 neu).
 - `test/admin-test.js`: Szenario `live-log` (Zugriff, Live-Zeilen, Bereinigung, Begrenzung des Puffers), Szenarien `fehler-protokoll` und `fehler-defekt` (Erhalt über Läufe, nur Fehler, Bereinigung, Begrenzung, defekte Datei), Szenario `whitelist` (Zugriff, Eingaben, Twitch-Fehler, Hinzufügen, Entfernen), Szenario `module` (Zugriff, Eingaben, Schalten, Speichern), Szenario `effekte` (alte Adressen 404, Zugriff, Eingaben, Umschalten).
 - `test/k3-test.js` prüft jetzt `auto` und `off` über Webkonsole und Konsole und dass `manual` abgelehnt wird. Szenario `effekte-alt` in `test/admin-test.js`.
+- Neuer Test `test/stats-test.js`, Szenario `statistik` in `test/admin-test.js`.
 - Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation

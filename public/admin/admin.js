@@ -11,6 +11,7 @@ const EXIT_POLL_MS = 1000;
 const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
+const STATS_URL = '/api/admin/stats';
 const WHITELIST_URL = '/api/admin/whitelist';
 const MODULES_URL = '/api/admin/modules';
 const EFFECT_MODE_URL = '/api/admin/effects/mode';
@@ -35,13 +36,14 @@ const TABS = [
   { id: 'log', title: 'Live-Log', ready: true, render: renderLog },
   { id: 'einstellungen', title: 'Einstellungen', ready: true, render: renderSettings },
   { id: 'whitelist', title: 'Whitelist', ready: true, render: renderWhitelist },
-  { id: 'statistik', title: 'Statistik', ready: false },
+  { id: 'statistik', title: 'Statistik', ready: true, render: renderStatistics },
 ];
 
 const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
+  statistics: { view: null, rows: null, note: null, loading: false },
   settings: {
     view: null, rows: {}, message: null, busy: new Set(),
     effects: { input: null, state: null, hint: null, busy: false },
@@ -319,6 +321,44 @@ function renderWhitelist(content, d) {
   } else if (wl.loaded && d.whitelist_count !== wl.entries.length) {
     loadWhitelistEntries();   // an der Konsole geändert
   }
+}
+
+// ── Statistik ───────────────────────────────────────────────────────
+async function loadStatistics() {
+  const statistics = state.statistics;
+  if (statistics.loading) return;
+  statistics.loading = true;
+  try {
+    const response = await fetch(STATS_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const { started_at: started, metrics } = data.instance;
+    statistics.rows.replaceChildren(
+      row('Läuft', el('span', { text: `${uptime(started)}, Start ${dateTime(started)}` })),
+      ...metrics.map(m => row(m.label, el('span', { class: 'mono', text: String(m.value) }))));
+    statistics.note.textContent = data.enabled
+      ? 'Der Broadcaster und genutzte Chat-Bots zählen nicht bei den Chatnachrichten. Laufender Stream und Gesamtstatistik folgen.'
+      : 'Die Statistik ist abgeschaltet.';
+  } catch {
+    statistics.note.textContent = 'Die Statistik konnte nicht geladen werden.';
+  } finally {
+    statistics.loading = false;
+  }
+}
+
+function statisticsView() {
+  const statistics = state.statistics;
+  if (statistics.view) return statistics.view;
+  statistics.rows = rows();
+  statistics.note = el('p', { class: 'sub' });
+  statistics.view = el('section', { class: 'settings' }, card('Diese Server-Instanz', statistics.rows), statistics.note);
+  return statistics.view;
+}
+
+function renderStatistics(content) {
+  const view = statisticsView();
+  if (content.firstChild !== view) content.replaceChildren(view);
+  loadStatistics();
 }
 
 // ── Einstellungen ───────────────────────────────────────────────────

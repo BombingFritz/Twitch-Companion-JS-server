@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module|effekte|effekte-alt]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module|effekte|effekte-alt|statistik]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -26,7 +26,8 @@ if (scenario === 'effekte-alt') fs.writeFileSync(path.join(workDir, 'effect_mode
 if (scenario === 'fehler-defekt') fs.writeFileSync(path.join(workDir, 'error_log.json'), '{ keine gültige Liste');
 process.chdir(workDir);
 
-class FakeWS extends EventEmitter { constructor() { super(); this.readyState = 1; } close() {} terminate() {} }
+const sockets = [];
+class FakeWS extends EventEmitter { constructor() { super(); this.readyState = 1; sockets.push(this); } close() {} terminate() {} }
 FakeWS.OPEN = 1;
 const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
 const fakeAxios = {
@@ -63,6 +64,7 @@ const ERROR_LOG = '/api/admin/log/errors';
 const WHITELIST = '/api/admin/whitelist';
 const MODULES = '/api/admin/modules';
 const EFFECT_MODE = '/api/admin/effects/mode';
+const STATS = '/api/admin/stats';
 const EFFECT_CONFIRM = '/api/admin/effects/confirm';
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 const EXIT_WAIT_MS = 500;
@@ -420,6 +422,64 @@ async function effekte() {
   check('N13 Wechsel steht in der Konsole', logs.some(l => l.includes('Effekt-Modus geändert auf: OFF')));
 }
 
+async function statistik() {
+  let n = 0;
+  const send = (subType, event, id = `s${++n}`) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
+  const chat = (login, id, extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `c${n}`, message: { text: 'hallo' }, badges: [], ...extra });
+  const notice = (notice_type, extra) => send('channel.chat.notification', { notice_type, broadcaster_user_id: '4711', chatter_user_id: `u${n}`, chatter_user_login: `gast${n}`, chatter_user_name: `gast${n}`, ...extra });
+  const values = async () => Object.fromEntries(JSON.parse((await request(STATS)).body).instance.metrics.map(m => [m.key, m.value]));
+
+  let r = await request(STATS, { Host: 'example.com' });
+  check('S1 Statistik mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await request(STATS, { Origin: 'null' });
+  check('S2 Statistik von Herkunft null: 403', r.status === 403, String(r.status));
+  r = await request(STATS);
+  const first = JSON.parse(r.body);
+  check('S3 Antwort mit Laufzeit und Kennzahlen', r.status === 200 && first.enabled === true && first.instance.uptime_seconds >= 0 && !Number.isNaN(Date.parse(first.instance.started_at)) && first.instance.metrics.length === 6, r.body);
+  check('S4 Beginnt bei 0', first.instance.metrics.every(m => m.value === 0), r.body);
+
+  send('channel.follow', { user_login: 'folgt', user_id: 'f1' }, 'doppelt');
+  send('channel.follow', { user_login: 'folgt', user_id: 'f1' }, 'doppelt');
+  send('channel.follow', { user_login: 'folgt', user_id: 'f1' });
+  send('channel.follow', { user_login: 'folgt2', user_id: 'f2' });
+  await sleep(50);
+  let v = await values();
+  check('S5 Follows: doppelte Zustellung und Wiederholung zählen nicht', v.follows === 2, JSON.stringify(v));
+
+  chat('zuschauer', 'z1');
+  chat('zuschauer', 'z1');
+  chat('testkanal', '4711');
+  chat('NightBot', 'b1');
+  chat('streamelements', 'b2');
+  chat('derbdu', 'b3');
+  chat('gast_anderswo', 'z2', { source_broadcaster_user_id: '999' });
+  await sleep(100);
+  v = await values();
+  check('S6 Chat: nur echte Zuschauer im eigenen Kanal', v.chat_messages === 2, JSON.stringify(v));
+
+  notice('sub', { sub: { is_gift: false } });
+  notice('resub', { resub: { is_gift: false } });
+  notice('sub', { sub: { is_gift: true } });
+  notice('community_sub_gift', { community_sub_gift: { total: 5 } });
+  notice('sub_gift', { sub_gift: { community_gift_id: 'x' } });
+  notice('sub_gift', { sub_gift: {} });
+  await sleep(50);
+  v = await values();
+  check('S7 Subs ohne Gift-Empfänger', v.subs === 2, JSON.stringify(v));
+  check('S8 Gifts: Bomb nach Anzahl, Einzel-Gift dazu, Teil-Meldungen nicht', v.gifts === 6, JSON.stringify(v));
+
+  console.warn('[Test] nur Warnung');
+  console.error('[Test] echter Fehler');
+  v = await values();
+  check('S9 Fehler zählen, Warnungen nicht', v.errors === 1, JSON.stringify(v));
+
+  await sleep(3500);
+  v = await values();
+  check('S10 Ausgelöste Effekte zählen', v.effects >= 1, JSON.stringify(v));
+  check('S11 Erfolgreiche Abrufe fluten die Konsole nicht', !logs.some(l => /\[HTTP\] GET \/api\/admin\/stats -> 200/.test(l)));
+  check('S12 Abgelehnte Abrufe stehen in der Konsole', logs.some(l => /\[HTTP\] GET \/api\/admin\/stats -> 403/.test(l)));
+}
+
 async function effekteAlt() {
   const r = await request(OVERVIEW);
   check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
@@ -495,6 +555,7 @@ async function ohneTokens() {
   else if (scenario === 'module') await module_();
   else if (scenario === 'effekte') await effekte();
   else if (scenario === 'effekte-alt') await effekteAlt();
+  else if (scenario === 'statistik') await statistik();
   else await ablauf();
 
   console.log = realLog;
