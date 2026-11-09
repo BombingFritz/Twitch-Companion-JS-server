@@ -61,12 +61,54 @@ Für später gemerkt, nicht für den Anfang: eine kurze Textzusammenfassung.
 - Reiter „Statistik“: Karte „Diese Server-Instanz“, aktualisiert mit der Abfrage alle 5 s.
 - Geprüft mit `test/stats-test.js` und dem Szenario `statistik` in `test/admin-test.js`, im Browser mit Attrappen; am echten Server noch nicht.
 
+## Stream-Ablauf (Nutzer, 09.11.2026)
+Gezählt wird von `stream.online` bis zum Ende der Erfassung, auch während der Stream kurz offline ist. Die Erfassung endet auf einem von drei Wegen:
+
+| Ende | Wann | Als Streamende gilt |
+|---|---|---|
+| Raid zu einem anderen Kanal | sofort, automatisch erkannt | Zeitpunkt des Raids; war der Stream schon offline, das letzte Offline |
+| Knopf „Streamlog beenden“ (Stufe 3) | sofort | Knopfdruck; war der Stream schon offline, das letzte Offline |
+| Fallback | 2 Stunden nach dem letzten Offline ohne neues Live | das letzte Offline |
+
+Sonderfälle: Der Server gleicht sich bei jeder frischen Verbindung einmal mit Twitch ab (`syncStreamWithTwitch`). Twitchs Antwort kann einige Minuten alt sein, deshalb zählt ein bekanntes Ereignis mehr als die Abfrage.
+
+| Gespeichert | Twitch meldet | Verhalten |
+|---|---|---|
+| live | live, bekannte Stream-ID | weiterzählen |
+| live | live, neue ID, letztes Speichern binnen 2 Stunden | derselbe Stream |
+| live | live, neue ID, länger her | alten Stream als abgebrochen abschließen, neuen mit „spät begonnen“ beginnen |
+| live | nicht live | offline ab dem letzten Speichern, als abgebrochen markiert; Frist schon vorbei: sofort abschließen. In den ersten 5 Minuten eines Streams wird „nicht live“ ignoriert |
+| offline | live, neue ID | derselbe Stream läuft weiter |
+| offline | live, bekannte ID | bleibt offline (vermutlich alte Antwort) |
+| kein Stream, abgeschlossen | live, neue ID | neuer Stream, „spät begonnen“ |
+| abgeschlossen | live, bekannte ID | bleibt abgeschlossen (nach dem Raid läuft derselbe Stream noch) |
+
+Twitch nicht erreichbar: keine Änderung am Ablauf, aber deutlicher Fehler in der Kopfzeile.
+
+Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speichern (höchstens 30 s fehlen, ohne Änderung bis 5 Minuten). Ob sich das Ende aus der VOD-Länge nachtragen lässt, ist vor Stufe 3 gegen die Twitch-Doku zu prüfen [UNGEKLÄRT].
+
+## Weitere Vorgaben (Nutzer, 09.11.2026)
+- **Abschlussmeldung (Stufe 3):** Sichtbar, ob und wann der Streamlog erfolgreich abgeschlossen wurde, damit klar ist, dass der Knopf nicht mehr nötig ist, mit Link zur Logdatei. Den Link liefert der Server aus, weil Browser aus einer Webseite heraus keine lokalen Dateien öffnen.
+- **Warnung bei ungewöhnlichen Berichten (Stufe 3):** Hinweis, wenn der letzte Bericht auffällig ist, etwa unter einer Stunde lang oder abgebrochen. Berichte lassen sich löschen. Eine feste Regel für kurze Streams gibt es nicht.
+- **Tags und Kategorien:** Berichte können markiert werden (etwa „Frontpage-Promotion“, „Teststream“). Kategorien werden auch als Tags geführt. Tags sind nachträglich bearbeitbar, die Statistik lässt sich danach filtern. Das kommt später; `tags` und `categories` mit der Dauer je Kategorie sind von Anfang an im Stand enthalten.
+- **Alarm „Stream läuft nach dem Raid weiter“:** Läuft der Stream 30 bis 3000 Sekunden nach dem Raid noch, droht ungewollte Aufzeichnung. Eigener Schritt nach Stufe 3. Twitchs Antworten können einige Minuten alt sein (nur Forenangaben, 1 bis 3, beim Offline bis etwa 5 Minuten), deshalb in Stufen: ab 30 Sekunden Banner, ab 2 Minuten Ton und optional Home-Assistant-Effekt. Grundfunktion ohne Module, quittierbar. Genauer wäre eine Abfrage von OBS selbst über dessen WebSocket-Schnittstelle [UNGEKLÄRT, vor dem Bau prüfen].
+
+## Verhalten Stufe 2
+- `lib/stream-session.js`: Zustände `none`, `live`, `offline`, `closed` wie oben, ohne Abhängigkeit von Twitch oder Dateien. `count` zählt nur bei `live` und `offline`.
+- `stream_stats.json`, Schema-Version 1, atomar geschrieben: sofort bei Beginn, Offline und Abschluss, sonst höchstens alle 30 s bei Änderung und alle 5 Minuten als Lebenszeichen, solange live. Beim Beenden über die Webkonsole wird vorher gespeichert.
+- Neue Ereignisse: `stream.offline`, `channel.raid` mit `from_broadcaster_user_id`. Ausgehende Raids werden nicht begrüßt und nicht als Raid gezählt.
+- Stream-Kennzahlen: Follows, Subs, verschenkte Subs, eingehende Raids, Chatnachrichten, Botnachrichten (nur über den Bot gesendete), eigene Shoutouts, Enigma-Antworten.
+- `GET /api/admin/stats` liefert zusätzlich `stream` mit `{status, started_at, ended_at, offline_at, closes_at, close_reason, aborted, late_start, duration_seconds, interruptions, interruption_seconds, categories, tags, metrics}`.
+- Reiter „Statistik“: Karte „Laufender oder letzter Stream“. Die Kopfzeile meldet „Twitch nicht erreichbar“, wenn EventSub länger als 20 s getrennt ist.
+- Geprüft mit `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen; am echten Stream noch nicht.
+
 ## Stufen
 | Stufe | Inhalt | Stand |
 |---|---|---|
-| 1 | Grundgerüst `lib/stats.js`, Bereich Server-Instanz, Reiter „Statistik“ | umgesetzt, siehe unten |
-| 2 | Stream-Ablauf und einfache Stream-Zahlen, `stream_stats.json` | offen |
-| 3 | Archiv je Stream und globale Summe | offen |
+| 1 | Grundgerüst `lib/stats.js`, Bereich Server-Instanz, Reiter „Statistik“ | umgesetzt, siehe oben |
+| 2 | Stream-Ablauf und einfache Stream-Zahlen, `stream_stats.json` | umgesetzt, siehe oben |
+| 3 | Archiv je Stream, Knopf „Streamlog beenden“, Abschlussmeldung mit Link, Warnung bei auffälligen Berichten, globale Summe | offen |
+| 3b | Alarm „Stream läuft nach dem Raid weiter“ | offen |
 | 4 | Polls, Wetten, Stimmen, Shoutouts, Hype Trains, Bits, Kanalpunkte, Spielbewertung, Ranglisten, Feld „Genutzte Chat-Bots“ | offen |
 | 5 | Endscreen | offen |
 | 6 | Clip-Kandidaten mit Alarm und Marker | offen |

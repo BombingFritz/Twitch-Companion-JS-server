@@ -19,6 +19,8 @@ modules.json
 bot.json
 error_log.json
 error_log.json.tmp
+stream_stats.json
+stream_stats.json.tmp
 # Spielstände (Zuschauernamen, mehrere MB) gehören nicht ins Repository; Tests erzeugen eigene
 *.save
 # Sicherungskopien von Tokens (z. B. BACKUPtokens.json)

@@ -12,6 +12,8 @@ const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
 const STATS_URL = '/api/admin/stats';
+const TWITCH_DOWN_GRACE_MS = 20000;
+const CLOSE_REASONS = { raid: 'nach dem Raid', frist: '2 Stunden nach dem letzten Offline', neustart: 'beim Serverstart' };
 const WHITELIST_URL = '/api/admin/whitelist';
 const MODULES_URL = '/api/admin/modules';
 const EFFECT_MODE_URL = '/api/admin/effects/mode';
@@ -43,7 +45,8 @@ const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
-  statistics: { view: null, rows: null, note: null, loading: false },
+  statistics: { view: null, rows: null, streamRows: null, note: null, loading: false },
+  twitchDownSince: null,
   settings: {
     view: null, rows: {}, message: null, busy: new Set(),
     effects: { input: null, state: null, hint: null, busy: false },
@@ -98,6 +101,12 @@ function dateTime(iso) {
 }
 
 // Einträge von heute nur mit Uhrzeit, ältere zusätzlich mit Datum.
+function duration(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours} Std. ${minutes % 60} Min.` : `${minutes} Min.`;
+}
+
 function logTime(iso) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
@@ -324,6 +333,29 @@ function renderWhitelist(content, d) {
 }
 
 // ── Statistik ───────────────────────────────────────────────────────
+function metricRow(m) {
+  return row(m.label, el('span', { class: 'mono', text: String(m.value) }));
+}
+
+function streamStatusIndicator(s) {
+  if (s.status === 'live') return indicator('ok', 'läuft');
+  if (s.status === 'offline') return indicator('warn', `offline, Erfassung bis ${clock(s.closes_at)} Uhr`);
+  const reason = CLOSE_REASONS[s.close_reason] || s.close_reason;
+  return indicator(s.aborted ? 'bad' : 'off', `${s.aborted ? 'abgebrochen' : 'abgeschlossen'} ${reason}, Ende ${dateTime(s.ended_at)}`);
+}
+
+function streamStatisticRows(s) {
+  if (!s || s.status === 'none') return [row('Status', el('span', { text: 'noch kein Stream erfasst' }))];
+  const items = [
+    row('Status', streamStatusIndicator(s)),
+    row('Start', el('span', { text: `${dateTime(s.started_at)}${s.late_start ? ' (Server kam später dazu)' : ''}` })),
+    row('Dauer', el('span', { text: duration(s.duration_seconds) })),
+  ];
+  if (s.interruptions) items.push(row('Unterbrechungen', el('span', { text: `${s.interruptions}, zusammen ${duration(s.interruption_seconds)}` })));
+  for (const c of s.categories) items.push(row(c.name, el('span', { text: duration(c.seconds) })));
+  return [...items, ...s.metrics.map(metricRow)];
+}
+
 async function loadStatistics() {
   const statistics = state.statistics;
   if (statistics.loading) return;
@@ -335,9 +367,10 @@ async function loadStatistics() {
     const { started_at: started, metrics } = data.instance;
     statistics.rows.replaceChildren(
       row('Läuft', el('span', { text: `${uptime(started)}, Start ${dateTime(started)}` })),
-      ...metrics.map(m => row(m.label, el('span', { class: 'mono', text: String(m.value) }))));
+      ...metrics.map(metricRow));
+    statistics.streamRows.replaceChildren(...streamStatisticRows(data.stream));
     statistics.note.textContent = data.enabled
-      ? 'Der Broadcaster und genutzte Chat-Bots zählen nicht bei den Chatnachrichten. Laufender Stream und Gesamtstatistik folgen.'
+      ? 'Der Broadcaster und genutzte Chat-Bots zählen nicht bei den Chatnachrichten. Die Gesamtstatistik folgt.'
       : 'Die Statistik ist abgeschaltet.';
   } catch {
     statistics.note.textContent = 'Die Statistik konnte nicht geladen werden.';
@@ -350,8 +383,12 @@ function statisticsView() {
   const statistics = state.statistics;
   if (statistics.view) return statistics.view;
   statistics.rows = rows();
+  statistics.streamRows = rows();
   statistics.note = el('p', { class: 'sub' });
-  statistics.view = el('section', { class: 'settings' }, card('Diese Server-Instanz', statistics.rows), statistics.note);
+  statistics.view = el('section', { class: 'settings' },
+    card('Laufender oder letzter Stream', statistics.streamRows),
+    card('Diese Server-Instanz', statistics.rows),
+    statistics.note);
   return statistics.view;
 }
 
@@ -859,7 +896,16 @@ function connectionView() {
   if (exit && exit.kind === 'restart') return ['pending', exit.warned ? 'Neustart ausgeblieben' : 'Neustart läuft …'];
   if (exit && state.online) return ['pending', 'Server wird beendet …'];
   if (exit) return ['stopped', `Server beendet um ${clock(exit.at)} (PID ${exit.pid})`];
-  return state.online ? ['online', 'verbunden'] : ['offline', 'Server nicht erreichbar'];
+  if (!state.online) return ['offline', 'Server nicht erreichbar'];
+  if (state.twitchDownSince !== null && Date.now() - state.twitchDownSince >= TWITCH_DOWN_GRACE_MS) return ['offline', 'Twitch nicht erreichbar'];
+  return ['online', 'verbunden'];
+}
+
+// Kurze Reconnects sollen nicht aufblinken, deshalb erst nach TWITCH_DOWN_GRACE_MS.
+function trackTwitchConnection(data) {
+  const down = data.authenticated && !data.eventsub_connected;
+  if (!down) state.twitchDownSince = null;
+  else if (state.twitchDownSince === null) state.twitchDownSince = Date.now();
 }
 
 function renderConnection() {
@@ -928,6 +974,7 @@ async function poll() {
     state.data = data;
     state.pollMs = data.poll_ms || DEFAULT_POLL_MS;
     document.getElementById('version').textContent = `v${data.version}`;
+    trackTwitchConnection(data);
     setConnection(true);
     renderContent();
   } catch {
