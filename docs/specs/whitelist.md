@@ -5,7 +5,7 @@ Bestimmte Streamer beim ersten Chat-Beitrag je Session automatisch shouten.
 
 ## Verhalten
 - Speicher: `whitelist.json` (`userId` → `userName`).
-- Verwaltung nur über Konsolenbefehle (siehe docs/ARCHITEKTUR.md).
+- Verwaltung über Konsolenbefehle (siehe docs/ARCHITEKTUR.md) und den Reiter „Whitelist“ der Webkonsole (Spec `webkonsole.md`, Stufe 5).
 - `handleWhitelistShoutout` prüft jede Chat-Nachricht. Ein gelisteter Nutzer wird einmal je Session geshoutet, `shoutedOutThisSession` merkt das.
 - Vor dem Shoutout prüft `getChannelActivity()` den Kanal (ADR 0015):
   - selbst gerade live (chattet hier, während er streamt): kein Hinweis, kein Shoutout, Eintrag im Prüfprotokoll,
@@ -20,7 +20,7 @@ Bestimmte Streamer beim ersten Chat-Beitrag je Session automatisch shouten.
 - Ein Shoutout vor dem Streamstart scheitert bei Twitch (400, Kanal nicht live). Der Nutzer bleibt trotzdem als geshoutet markiert, damit nicht jede weitere Nachricht einen neuen Versuch auslöst; nach `stream.online` folgt der Shoutout bei seiner nächsten Nachricht.
 
 ## Nicht-Ziele
-- Kein HTTP-Endpoint zur Verwaltung.
+- Kein HTTP-Endpoint zur Verwaltung außerhalb der geschützten Pfade `/api/admin/…` (ADR 0018).
 - Keine Prüfung, ob eine bei `whitelist add <id> <name>` angegebene ID zum Namen passt.
 
 ## Akzeptanzkriterien

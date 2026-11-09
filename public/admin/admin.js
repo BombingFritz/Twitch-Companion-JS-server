@@ -11,6 +11,7 @@ const EXIT_POLL_MS = 1000;
 const CONFIRM_MS = 15000;
 const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
+const WHITELIST_URL = '/api/admin/whitelist';
 const LOG_STREAM_URL = '/api/admin/log/stream';
 const ERROR_LOG_URL = '/api/admin/log/errors';
 const LOG_MAX_LINES = 2000;
@@ -27,7 +28,7 @@ const TABS = [
   { id: 'uebersicht', title: 'Übersicht', ready: true, render: renderOverview },
   { id: 'log', title: 'Live-Log', ready: true, render: renderLog },
   { id: 'einstellungen', title: 'Einstellungen', ready: false },
-  { id: 'whitelist', title: 'Whitelist', ready: false },
+  { id: 'whitelist', title: 'Whitelist', ready: true, render: renderWhitelist },
   { id: 'statistik', title: 'Statistik', ready: false },
 ];
 
@@ -35,6 +36,10 @@ const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
+  whitelist: {
+    view: null, list: null, count: null, input: null, addButton: null, message: null,
+    entries: [], filter: '', confirming: null, confirmTimer: null, loaded: false, loading: false, busy: false,
+  },
   log: {
     view: null, list: null, errorList: null, status: null, toEnd: null, problems: null, modeButtons: null,
     source: null, pid: null, lastId: 0, filter: '', onlyProblems: false, follow: true, mode: 'live',
@@ -167,6 +172,139 @@ function renderContent() {
     return;
   }
   activeTab().render(content, state.data);
+}
+
+// ── Whitelist ───────────────────────────────────────────────────────
+function showWhitelistMessage(text, isError) {
+  const { message } = state.whitelist;
+  message.textContent = text;
+  message.className = `wl-message ${isError ? 'error' : 'ok'}`;
+}
+
+function cancelWhitelistConfirm() {
+  clearTimeout(state.whitelist.confirmTimer);
+  state.whitelist.confirming = null;
+  renderWhitelistRows();
+}
+
+function askWhitelistRemove(id) {
+  const wl = state.whitelist;
+  clearTimeout(wl.confirmTimer);
+  wl.confirming = id;
+  wl.confirmTimer = setTimeout(cancelWhitelistConfirm, CONFIRM_MS);
+  renderWhitelistRows();
+}
+
+async function postWhitelist(path, body) {
+  const response = await fetch(`${WHITELIST_URL}/${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store',
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+  return result;
+}
+
+async function loadWhitelistEntries() {
+  const wl = state.whitelist;
+  if (wl.loading) return;
+  wl.loading = true;
+  try {
+    const response = await fetch(WHITELIST_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    wl.entries = (await response.json()).entries;
+    wl.loaded = true;
+    renderWhitelistRows();
+  } catch {
+    showWhitelistMessage('Die Whitelist konnte nicht geladen werden.', true);
+  } finally {
+    wl.loading = false;
+  }
+}
+
+async function addWhitelistEntry() {
+  const wl = state.whitelist;
+  const user = wl.input.value.trim();
+  if (!user || wl.busy) return;
+  wl.busy = true;
+  wl.addButton.disabled = true;
+  try {
+    const { entry } = await postWhitelist('add', { user });
+    wl.input.value = '';
+    showWhitelistMessage(`@${entry.name} hinzugefügt.`, false);
+    await loadWhitelistEntries();
+  } catch (err) {
+    showWhitelistMessage(err.message, true);
+  } finally {
+    wl.busy = false;
+    wl.addButton.disabled = false;
+    wl.input.focus();
+  }
+}
+
+async function removeWhitelistEntry(entry) {
+  cancelWhitelistConfirm();
+  try {
+    await postWhitelist('remove', { id: entry.id });
+    showWhitelistMessage(`@${entry.name} entfernt.`, false);
+    await loadWhitelistEntries();
+  } catch (err) {
+    showWhitelistMessage(err.message, true);
+  }
+}
+
+function whitelistRow(entry) {
+  const wl = state.whitelist;
+  let actions = [actionButton('Entfernen', '', () => askWhitelistRemove(entry.id), false)];
+  if (wl.confirming === entry.id) {
+    const yes = actionButton('Ja, entfernen', 'danger', () => removeWhitelistEntry(entry), true);
+    setTimeout(() => { yes.disabled = false; }, CONFIRM_LOCK_MS);
+    actions = [yes, actionButton('Abbrechen', '', cancelWhitelistConfirm, false)];
+  }
+  return el('li', { class: 'wl-row' },
+    el('div', { class: 'wl-name' }, el('span', { text: `@${entry.name}` }), el('span', { class: 'wl-id mono', text: entry.id })),
+    el('div', { class: 'wl-actions' }, ...actions));
+}
+
+function renderWhitelistRows() {
+  const wl = state.whitelist;
+  const shown = wl.entries.filter(e => !wl.filter || e.name.toLowerCase().includes(wl.filter) || e.id.includes(wl.filter));
+  wl.count.textContent = wl.entries.length === 1 ? '1 Eintrag' : `${wl.entries.length} Einträge`;
+  if (shown.length) {
+    wl.list.replaceChildren(...shown.map(whitelistRow));
+  } else {
+    wl.list.replaceChildren(el('li', { class: 'wl-empty', text: wl.entries.length ? 'Kein Treffer.' : 'Die Whitelist ist leer.' }));
+  }
+}
+
+function whitelistView() {
+  const wl = state.whitelist;
+  if (wl.view) return wl.view;
+  wl.input = el('input', { type: 'text', class: 'wl-input', placeholder: 'Twitch-Name, @Name oder ID', 'aria-label': 'Streamer hinzufügen', maxlength: '40', autocomplete: 'off' });
+  wl.input.addEventListener('keydown', event => { if (event.key === 'Enter') addWhitelistEntry(); });
+  wl.addButton = actionButton('Hinzufügen', '', addWhitelistEntry, false);
+  wl.message = el('p', { class: 'wl-message', role: 'status' });
+  const search = el('input', { type: 'search', class: 'wl-input', placeholder: 'Filtern …', 'aria-label': 'Whitelist filtern' });
+  search.addEventListener('input', () => { wl.filter = search.value.trim().toLowerCase(); renderWhitelistRows(); });
+  wl.count = el('span', { class: 'log-status' });
+  wl.list = el('ul', { class: 'wl-list' });
+  wl.view = el('section', { class: 'wl' },
+    el('div', { class: 'log-toolbar' }, wl.input, wl.addButton),
+    wl.message,
+    el('div', { class: 'log-toolbar' }, search, wl.count),
+    wl.list);
+  renderWhitelistRows();
+  return wl.view;
+}
+
+function renderWhitelist(content, d) {
+  const wl = state.whitelist;
+  const view = whitelistView();
+  if (content.firstChild !== view) {
+    content.replaceChildren(view);
+    loadWhitelistEntries();
+  } else if (wl.loaded && d.whitelist_count !== wl.entries.length) {
+    loadWhitelistEntries();   // an der Konsole geändert
+  }
 }
 
 // ── Live-Log ────────────────────────────────────────────────────────

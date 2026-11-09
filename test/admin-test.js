@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -21,12 +21,21 @@ const effects = ['eins', 'zwei', 'drei', 'vier', 'fuenf', 'sechs'].map((userName
 fs.writeFileSync(path.join(workDir, 'events.json'), JSON.stringify(effects));
 fs.writeFileSync(path.join(workDir, 'subgoal_cache.json'), JSON.stringify({ current: 7, target: 10, title: 'Ziel', goalId: 'g', status: 'active', lastUpdated: 'x' }));
 if (scenario === 'fehler-protokoll') fs.writeFileSync(path.join(workDir, 'error_log.json'), JSON.stringify([{ at: '2026-11-01T10:00:00.000Z', pid: 1, text: '[Test] Fehler aus einem früheren Lauf' }]));
+if (scenario === 'whitelist') fs.writeFileSync(path.join(workDir, 'whitelist.json'), JSON.stringify({ 111: 'zeta', 222: 'Alpha' }));
 if (scenario === 'fehler-defekt') fs.writeFileSync(path.join(workDir, 'error_log.json'), '{ keine gültige Liste');
 process.chdir(workDir);
 
 class FakeWS extends EventEmitter { constructor() { super(); this.readyState = 1; } close() {} terminate() {} }
 FakeWS.OPEN = 1;
-const fakeAxios = { post: async () => ({ data: { data: [] } }), get: async () => ({ data: { data: [] } }) };
+const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
+const fakeAxios = {
+  post: async () => ({ data: { data: [] } }),
+  get: async url => {
+    if (url.includes('login=twitchfehler')) throw new Error('Twitch nicht erreichbar');
+    const key = Object.keys(WHITELIST_USERS).find(k => url.endsWith(`?${k}`));
+    return { data: { data: url.includes('helix/users') && key ? [WHITELIST_USERS[key]] : [] } };
+  },
+};
 const orig = Module._load;
 Module._load = function (r, ...a) { if (r === 'ws') return FakeWS; if (r === 'axios') return fakeAxios; if (r === 'readline') return { createInterface: () => new EventEmitter() }; return orig.call(this, r, ...a); };
 const realLog = console.log, logs = [];
@@ -50,6 +59,7 @@ const SHUTDOWN = '/api/admin/server/shutdown';
 const RESTART = '/api/admin/server/restart';
 const LOG_STREAM = '/api/admin/log/stream';
 const ERROR_LOG = '/api/admin/log/errors';
+const WHITELIST = '/api/admin/whitelist';
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 const EXIT_WAIT_MS = 500;
 const OWN =[`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
@@ -257,6 +267,68 @@ async function fehlerDefekt() {
   check('I2 Der nächste Fehler schreibt eine gültige Datei', readErrorFile().length === 1);
 }
 
+async function whitelist() {
+  const own = { Origin: OWN[0], ...JSON_TYPE };
+  const file = () => JSON.parse(fs.readFileSync(path.join(workDir, 'whitelist.json'), 'utf8'));
+  const post = (p, body, headers = own) => request(`${WHITELIST}/${p}`, headers, 'POST', typeof body === 'string' ? body : JSON.stringify(body));
+  const before = JSON.stringify(file());
+
+  let r = await request(WHITELIST);
+  let d = JSON.parse(r.body);
+  check('W1 Liste nach Namen sortiert, mit IDs', r.status === 200 && d.count === 2 && d.entries[0].name === 'Alpha' && d.entries[0].id === '222' && d.entries[1].name === 'zeta', r.body);
+  r = await request(WHITELIST, { Host: 'example.com' });
+  check('W2 Liste mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await request(WHITELIST, { Origin: 'null' });
+  check('W3 Liste von Herkunft null: 403', r.status === 403, String(r.status));
+
+  r = await post('add', { user: 'neuer_streamer' }, JSON_TYPE);
+  check('W4 Hinzufügen ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await post('add', { user: 'neuer_streamer' }, { Origin: 'https://fremd.example', ...JSON_TYPE });
+  check('W5 Hinzufügen von fremder Herkunft: 403', r.status === 403, String(r.status));
+  r = await post('add', '{"user":"neuer_streamer"}', { Origin: OWN[0], 'Content-Type': 'text/plain' });
+  check('W6 Hinzufügen ohne JSON: 415', r.status === 415, String(r.status));
+  r = await post('remove', { id: '111' }, JSON_TYPE);
+  check('W7 Entfernen ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await request(`${WHITELIST}/add`);
+  check('W8 GET auf Hinzufügen: 404', r.status === 404, String(r.status));
+
+  for (const user of ['', '   ', 'zwei worte', '../datei', 'x'.repeat(26), 5, null]) {
+    r = await post('add', { user });
+    check(`W9 Ungültige Eingabe ${JSON.stringify(user).slice(0, 12)}: 400`, r.status === 400, String(r.status));
+  }
+  r = await post('add', { user: 'gibtsnicht' });
+  check('W10 Unbekanntes Konto: 404', r.status === 404 && JSON.parse(r.body).error.includes('gibtsnicht'), r.body);
+  r = await post('add', { user: 'twitchfehler' });
+  check('W11 Twitch-Fehler: 502', r.status === 502, String(r.status));
+  r = await post('add', { user: 'zeta' });
+  check('W12 Schon vorhanden: 409', r.status === 409, String(r.status));
+  r = await post('add', '{kaputt');
+  check('W13 Kaputtes JSON: 400', r.status === 400, String(r.status));
+  r = await post('add', { user: 'x'.repeat(2000) });
+  check('W14 Zu große Anfrage: 413', r.status === 413, String(r.status));
+  check('W15 Fehlversuche ändern die Datei nicht', JSON.stringify(file()) === before, JSON.stringify(file()));
+
+  r = await post('add', { user: '  @Neuer_Streamer ' });
+  check('W16 Hinzufügen per @Name', r.status === 200 && JSON.parse(r.body).entry.id === '333' && file()['333'] === 'neuer_streamer', r.body);
+  check('W17 Hinzufügen steht in der Konsole', logs.some(l => l.includes('@neuer_streamer (ID: 333) zur Whitelist hinzugefügt')));
+  r = await post('add', { user: '444' });
+  check('W18 Hinzufügen per ID', r.status === 200 && file()['444'] === 'per_id', r.body);
+  r = await post('add', { user: '@12345' });
+  check('W19 @ mit Ziffern ist ein Name', r.status === 200 && file()['777'] === '12345', r.body);
+
+  for (const id of ['abc', '__proto__', '', 5]) {
+    r = await post('remove', { id });
+    check(`W20 Ungültige ID ${JSON.stringify(id)}: 400`, r.status === 400, String(r.status));
+  }
+  r = await post('remove', { id: '999' });
+  check('W21 Unbekannte ID: 404', r.status === 404, String(r.status));
+  r = await post('remove', { id: '111' });
+  check('W22 Entfernen', r.status === 200 && !('111' in file()) && file()['222'] === 'Alpha', r.body);
+  check('W23 Entfernen steht in der Konsole', logs.some(l => l.includes('@zeta (ID: 111) aus der Whitelist entfernt')));
+  r = await request(OVERVIEW);
+  check('W24 Die Übersicht kennt die neue Anzahl', JSON.parse(r.body).whitelist_count === 4, r.body.slice(0, 80));
+}
+
 async function serverBeenden() {
   let r = await request(OVERVIEW);
   check('D1 Ohne AuthServer.cmd: can_restart ist false', JSON.parse(r.body).can_restart === false, r.body);
@@ -323,6 +395,7 @@ async function ohneTokens() {
   else if (scenario === 'live-log') await liveLog();
   else if (scenario === 'fehler-protokoll') await fehlerProtokoll();
   else if (scenario === 'fehler-defekt') await fehlerDefekt();
+  else if (scenario === 'whitelist') await whitelist();
   else await ablauf();
 
   console.log = realLog;
