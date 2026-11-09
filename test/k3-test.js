@@ -51,6 +51,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const get = p => new Promise((res, rej) => http.get({ host: '127.0.0.1', port: PORT, path: p }, r => {
   let d = ''; r.on('data', c => d += c); r.on('end', () => res(JSON.parse(d)));
 }).on('error', rej));
+const post = (p, body) => new Promise((res, rej) => {
+  const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method: 'POST', headers: { Origin: `http://localhost:${PORT}`, 'Content-Type': 'application/json' } }, r => {
+    let d = ''; r.on('data', c => d += c); r.on('end', () => res(JSON.parse(d)));
+  });
+  req.on('error', rej);
+  req.end(JSON.stringify(body));
+});
+const setMode = mode => post('/api/admin/effects/mode', { mode });
+const confirmEffect = () => post('/api/admin/effects/confirm', {});
 let msgN = 0;
 function follow(user) {
   sockets[0].emit('message', JSON.stringify({
@@ -69,15 +78,15 @@ function check(name, cond, info = '') { results.push({ name, ok: !!cond, info })
 (async () => {
   await sleep(300);
   // 1) HTTP: manual -> wartet -> off -> confirm
-  await get('/api/effects/mode/manual');
+  await setMode('manual');
   follow('alice');
   check('1a Bestätigung wartet (manual)', await waitPending());
-  const off1 = await get('/api/effects/mode/off');
+  const off1 = await setMode('off');
   check('1b Moduswechsel per HTTP ok', off1.ok && off1.mode === 'off');
   await sleep(50);
   const st1 = await get('/api/effects/mode');
   check('1c nach OFF keine wartende Bestätigung', st1.pendingConfirmation === null, JSON.stringify(st1));
-  const c1 = await get('/api/effects/confirm');
+  const c1 = await confirmEffect();
   check('1d confirm nach OFF liefert ok:false', c1.ok === false, JSON.stringify(c1));
   await sleep(300);
   check('1e kein Webhook an HA', haPosts.length === 0, `${haPosts.length} Posts`);
@@ -90,7 +99,7 @@ function check(name, cond, info = '') { results.push({ name, ok: !!cond, info })
   check('2a Bestätigung wartet (manual, Konsole)', await waitPending());
   rlEmitter.emit('line', 'effects mode off');
   await sleep(50);
-  const c2 = await get('/api/effects/confirm');
+  const c2 = await confirmEffect();
   check('2b confirm nach Konsolen-OFF liefert ok:false', c2.ok === false, JSON.stringify(c2));
   await sleep(300);
   check('2c kein Webhook an HA', haPosts.length === 0, `${haPosts.length} Posts`);
@@ -104,10 +113,10 @@ function check(name, cond, info = '') { results.push({ name, ok: !!cond, info })
   check('3a OFF: neuer Effekt verworfen, Queue leer', st3.queueLength === 0 && haPosts.length === 0, JSON.stringify(st3));
 
   // 4) manual + Bestätigung löst weiterhin aus, Payload unverändert
-  await get('/api/effects/mode/manual');
+  await setMode('manual');
   follow('dave');
   check('4a Bestätigung wartet', await waitPending());
-  const c4 = await get('/api/effects/confirm');
+  const c4 = await confirmEffect();
   await sleep(300);
   const p = haPosts[0] || {};
   check('4b confirm ok:true und genau ein Webhook', c4.ok === true && haPosts.length === 1, JSON.stringify(c4));
@@ -123,7 +132,7 @@ function check(name, cond, info = '') { results.push({ name, ok: !!cond, info })
   check('5c Timeout: kein Webhook', haPosts.length === 1);
 
   // 6) auto löst direkt aus
-  await get('/api/effects/mode/auto');
+  await setMode('auto');
   follow('frank');
   await sleep(8000);
   check('6a auto: Webhook ohne Bestätigung', haPosts.length === 2 && haPosts[1].meta.userName === 'frank', `${haPosts.length} Posts`);

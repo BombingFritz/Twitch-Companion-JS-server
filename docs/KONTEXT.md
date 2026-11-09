@@ -77,7 +77,7 @@ Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT]
 
 ### Stream Deck
 - Heute: OBS-Szenen und Overlays, Sounds, Videos, HA-Lichteffekte, Startskript, Werbung, Marker, Audio.
-- Laut Kontext geplant: Effekt-Modus umschalten, manuelle Effekte bestätigen, Widget-Zustände und Show-Abläufe steuern. Die Server-Seite dafür gibt es schon (`/api/effects/mode/:mode`, `/api/effects/confirm`, ADR 0010).
+- Laut Kontext geplant: Widget-Zustände und Show-Abläufe steuern. Effekt-Modus und Bestätigung laufen nicht über das Stream Deck, sondern über den Reiter „Einstellungen“ der Webkonsole (Nutzer, 08. und 09.11.2026, ADR 0010, ADR 0018).
 
 ## Leitlinien mit Bezug zum Server
 

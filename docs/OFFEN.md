@@ -83,7 +83,7 @@ Noch nicht entschieden, nicht spezifiziert.
 Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UNGEKLÄRT]. Je Punkt vor der Umsetzung eigenes ADR und eigene Spec.
 
 ### P1 Server-Konsole im Browser
-- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`, Stufe 1 (Statusseite unter `/TwitchCompanionAdmin`) und Stufe 2 (Server beenden und neu starten) umgesetzt und vom Nutzer am echten Server geprüft, Stufe 3 (Live-Log), Stufe 5 (Whitelist, vom Nutzer am echten Server geprüft) und aus Stufe 4 die Modul-Schalter umgesetzt. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
+- **Stand 08.11.2026:** Konzept in ADR 0018 und Spec `docs/specs/webkonsole.md`, Stufe 1 (Statusseite unter `/TwitchCompanionAdmin`) und Stufe 2 (Server beenden und neu starten) umgesetzt und vom Nutzer am echten Server geprüft, Stufe 3 (Live-Log), Stufe 5 (Whitelist, vom Nutzer am echten Server geprüft) und aus Stufe 4 Modul-Schalter und Effekt-Modus umgesetzt. Die Stichpunkte unten sind der ältere Planungsstand; bei Abweichungen gelten ADR und Spec.
 - Ziel: Weboberfläche des Servers (z. B. `http://localhost:3000/admin`) mit ausführlicherem Log, Whitelist-Verwaltung und Einstellungen, etwa Effekt-Modus und manuelles Auslösen von Effekten.
 - Berührt **ADR 0006** (Whitelist nur per Konsole): Das ADR müsste abgelöst werden; bei der Umsetzung nachfragen.
 - Voraussetzung: Zugriffsschutz für alle zustandsändernden Aktionen (nur lokal wie `/token`, ADR 0013; POST statt GET, siehe Priorität 2). Sonst könnte jede Webseite im Browser des Streaming-PCs die Whitelist ändern oder Effekte auslösen.
@@ -93,7 +93,7 @@ Vorgemerkt, noch nicht entschieden oder spezifiziert. Reihenfolge und Umfang [UN
 
 ### P2 Sicherheitsprüfung
 - Ziel: Server systematisch auf Sicherheitslücken prüfen und gefundene schließen.
-- Bekannte Ansatzpunkte: Zustandsändernde GET-Endpoints ohne Authentifizierung (Priorität 2), Herkunft `null` als Restlücke (K1), Server lauscht auf allen Schnittstellen (K1, [UNGEKLÄRT], ob Home Assistant aus dem LAN abfragt), keine Begrenzung der Anfragerate, Abhängigkeiten (`npm audit`).
+- Bekannte Ansatzpunkte: Herkunft `null` als Restlücke (K1), Server lauscht auf allen Schnittstellen (K1, [UNGEKLÄRT], ob Home Assistant aus dem LAN abfragt), keine Begrenzung der Anfragerate, Abhängigkeiten (`npm audit`).
 - Sinnvoll vor P1 und P3 und zwingend vor P4.
 
 ### P3 Widgets vom Server ausliefern, als optionale Module
@@ -121,7 +121,7 @@ Vorlage des Nutzers, ausgearbeitet in [specs/stream-bericht.md](specs/stream-ber
 
 ## Priorität 2
 - Viewer-Schwelle für Raid-Shoutout (3) ist hart im Code, keine Variable.
-- Zustandsändernde Endpoints (`/api/effects/mode/:mode`, `/api/effects/confirm`) sind GET ohne Authentifizierung. Fremde Webseiten werden per Herkunftsprüfung abgelehnt, Einbindungen ohne `Origin` nicht (siehe K1). Lösung geplant: Sie entfallen mit dem Reiter „Einstellungen“ der Webkonsole (ADR 0018).
+- Erledigt (09.11.2026): Die zustandsändernden GET-Endpoints `/api/effects/mode/:mode` und `/api/effects/confirm` sind entfernt, Ersatz sind geschützte POST-Endpoints der Webkonsole (ADR 0018).
 - Funktionsdetails der Widgets (Polling-Widget: dokumentiert im Repository BombingFritz/TwitchPoll als `SpargelPoll.html`; `bFCoinFlipV9_final.html`) sind nicht dokumentiert. Die Anhänge `pollingWidget.html` und `Creator-Overlay.html` sind nicht ausgewertet.
 - Wirkung des Home-Assistant-Scripts und der WLED-Effektauswahl: separate Doku, nicht Teil dieses Repos [UNGEKLÄRT].
 - Ob Twitch `channel.chat.notification` zeitgleich mit der Chat-Anzeige und den Overlay-Alerts liefert, ist nicht belegt [UNGEKLÄRT].

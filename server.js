@@ -94,6 +94,9 @@ const ADMIN_ERROR_LOG_PATH = '/api/admin/log/errors';
 const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bleiben in error_log.json
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
+const ADMIN_EFFECT_MODE_PATH = '/api/admin/effects/mode';
+const ADMIN_EFFECT_CONFIRM_PATH = '/api/admin/effects/confirm';
+const EFFECT_MODES = ['auto', 'manual', 'off'];
 const ADMIN_JSON_LIMIT = '1kb';                   // Webkonsole-Aktionen senden nur kurze JSON-Objekte
 const TWITCH_LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
 const TWITCH_ID_PATTERN = /^\d{1,20}$/;
@@ -737,8 +740,8 @@ function switchModule(key, on) {
   return changed;
 }
 
-// Setzt den Effekt-Modus (HTTP-Endpoint und Konsole). Beim Wechsel auf OFF wird eine
-// wartende Bestätigung verworfen, damit /api/effects/confirm den Effekt nicht trotzdem
+// Setzt den Effekt-Modus (Webkonsole und Konsole). Beim Wechsel auf OFF wird eine
+// wartende Bestätigung verworfen, damit eine spätere Bestätigung den Effekt nicht trotzdem
 // auslöst (OFFEN.md, K3). Kein Eintrag im Event-Log, wie bei den übrigen verworfenen Jobs.
 function setEffectMode(mode) {
   effectMode = mode;
@@ -806,9 +809,9 @@ async function triggerEffect(job) {
 }
 
 // Führt einen Effekt im MANUELL-Modus aus: wartet bis zu 30s auf eine
-// Bestätigung über /api/effects/confirm, bevor der Effekt tatsächlich
+// Bestätigung in der Webkonsole, bevor der Effekt tatsächlich
 // läuft. Ohne Bestätigung wird der Job übersprungen (nicht nachgeholt),
-// damit sich bei verpasstem Stream-Deck-Klick nichts aufstaut.
+// damit sich bei verpasster Bestätigung nichts aufstaut.
 async function runManualConfirmation(job) {
   console.log(`[Effekt-Modus: MANUELL] Warte auf Bestätigung für ${job.type} (${job.count}x) – 30 Sekunden Zeit...`);
 
@@ -1286,19 +1289,6 @@ app.get('/api/homeassistant/events', (req, res) => {
   });
 });
 
-// Modus setzen – per Stream Deck "Website öffnen"-Aktion aufrufbar:
-// http://localhost:3000/api/effects/mode/auto
-// http://localhost:3000/api/effects/mode/manual
-// http://localhost:3000/api/effects/mode/off
-app.get('/api/effects/mode/:mode', (req, res) => {
-  const mode = req.params.mode.toLowerCase();
-  if (!['auto', 'manual', 'off'].includes(mode)) {
-    return res.status(400).json({ error: 'Ungültiger Modus. Erlaubt: auto, manual, off' });
-  }
-  setEffectMode(mode);
-  res.json({ ok: true, mode });
-});
-
 // Aktuellen Modus + Queue-Status abfragen (z.B. für ein Status-Widget)
 app.get('/api/effects/mode', (req, res) => {
   res.json({
@@ -1308,16 +1298,6 @@ app.get('/api/effects/mode', (req, res) => {
       ? { type: pendingManualConfirmation.job.type, count: pendingManualConfirmation.job.count }
       : null
   });
-});
-
-// Bestätigung im Manuell-Modus – zweiter Stream-Deck-Knopf:
-// http://localhost:3000/api/effects/confirm
-app.get('/api/effects/confirm', (req, res) => {
-  if (!pendingManualConfirmation) {
-    return res.json({ ok: false, message: 'Kein Effekt wartet aktuell auf Bestätigung.' });
-  }
-  pendingManualConfirmation.resolve(true);
-  res.json({ ok: true, message: 'Effekt bestätigt und wird ausgelöst.' });
 });
 
 // UBOAT-Crew aus dem letzten Spielstand (ADR 0016), z. B. für ein späteres Widget „Heute an Bord“
@@ -1519,6 +1499,19 @@ app.post(ADMIN_MODULES_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled muss true oder false sein' });
   const changed = switchModule(key, enabled);
   res.json({ ok: true, changed, modules: { ...moduleSwitches } });
+});
+
+app.post(ADMIN_EFFECT_MODE_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  const mode = req.body && req.body.mode;
+  if (!EFFECT_MODES.includes(mode)) return res.status(400).json({ error: 'Ungültiger Modus. Erlaubt: auto, manual, off' });
+  setEffectMode(mode);
+  res.json({ ok: true, mode });
+});
+
+app.post(ADMIN_EFFECT_CONFIRM_PATH, requireAdminWrite, (req, res) => {
+  if (!pendingManualConfirmation) return res.status(409).json({ ok: false, error: 'Kein Effekt wartet auf Bestätigung' });
+  pendingManualConfirmation.resolve(true);
+  res.json({ ok: true });
 });
 
 let adminExitRequested = false;

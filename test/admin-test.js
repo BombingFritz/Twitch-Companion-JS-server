@@ -1,7 +1,7 @@
 // Webkonsole Stufe 1 (ADR 0018, docs/specs/webkonsole.md): Seite und /api/admin/overview nur lokal, strenge Herkunft,
 // keine Secrets, nichts außerhalb von public/admin abrufbar, /status unverändert.
 // Stufe 2: Server beenden und neu starten (process.exit wird dabei nur aufgezeichnet).
-// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module]
+// Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis. Aufruf: node admin-test.js <server.js> [ablauf|alle-herkuenfte|ohne-tokens|server-beenden|server-neustart|live-log|fehler-protokoll|fehler-defekt|whitelist|module|effekte]
 // Nicht abgedeckt: Aufruf von einer fremden IP-Adresse (Test läuft über 127.0.0.1; geprüft wird der fremde Host-Header).
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
@@ -61,6 +61,8 @@ const LOG_STREAM = '/api/admin/log/stream';
 const ERROR_LOG = '/api/admin/log/errors';
 const WHITELIST = '/api/admin/whitelist';
 const MODULES = '/api/admin/modules';
+const EFFECT_MODE = '/api/admin/effects/mode';
+const EFFECT_CONFIRM = '/api/admin/effects/confirm';
 const JSON_TYPE = { 'Content-Type': 'application/json' };
 const EXIT_WAIT_MS = 500;
 const OWN =[`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
@@ -378,6 +380,48 @@ async function module_() {
   check('M18 Einschalten ohne Ordner: Hinweis in der Konsole', r.status === 200 && logs.some(l => l.includes('UBOAT_SAVES_DIR ist nicht gesetzt')), r.body);
 }
 
+async function effekte() {
+  const own = { Origin: OWN[0], ...JSON_TYPE };
+  const post = (p, body, headers = own) => request(p, headers, 'POST', typeof body === 'string' ? body : JSON.stringify(body));
+  const modeFile = path.join(workDir, 'effect_mode.json');
+
+  for (const old of ['/api/effects/mode/off', '/api/effects/confirm']) {
+    const res = await request(old);
+    check(`N1 Alte Adresse ${old}: 404`, res.status === 404, String(res.status));
+  }
+  check('N2 Die alten Adressen ändern nichts', !fs.existsSync(modeFile));
+  let r = await request('/api/effects/mode');
+  check('N3 Lesen bleibt möglich', r.status === 200 && JSON.parse(r.body).mode === 'auto', r.body);
+
+  r = await request(EFFECT_MODE);
+  check('N4 GET schaltet nicht: 404', r.status === 404, String(r.status));
+  r = await post(EFFECT_MODE, { mode: 'off' }, JSON_TYPE);
+  check('N5 POST ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await post(EFFECT_MODE, { mode: 'off' }, { Origin: 'http://absolute', ...JSON_TYPE });
+  check('N6 POST von OBS-Herkunft: 403', r.status === 403, String(r.status));
+  r = await post(EFFECT_MODE, { mode: 'off' }, { Origin: OWN[0], ...JSON_TYPE, Host: 'example.com' });
+  check('N7 POST mit fremdem Host: 403', r.status === 403, String(r.status));
+  r = await post(EFFECT_MODE, '{"mode":"off"}', { Origin: OWN[0], 'Content-Type': 'text/plain' });
+  check('N8 POST ohne JSON: 415', r.status === 415, String(r.status));
+  for (const mode of ['AUTO', 'irgendwas', 5, null, ['off']]) {
+    r = await post(EFFECT_MODE, { mode });
+    check(`N9 Ungültiger Modus ${JSON.stringify(mode)}: 400`, r.status === 400, String(r.status));
+  }
+  r = await post(EFFECT_CONFIRM, {}, JSON_TYPE);
+  check('N10 Bestätigen ohne Herkunft: 403', r.status === 403, String(r.status));
+  check('N11 Fehlversuche ändern den Modus nicht', !fs.existsSync(modeFile));
+
+  for (const mode of ['manual', 'off', 'auto']) {
+    r = await post(EFFECT_MODE, { mode });
+    const d = JSON.parse(r.body);
+    check(`N12 Modus ${mode}`, r.status === 200 && d.ok === true && d.mode === mode && JSON.parse(fs.readFileSync(modeFile, 'utf8')).mode === mode, r.body);
+  }
+  check('N13 Wechsel steht in der Konsole', logs.some(l => l.includes('Effekt-Modus geändert auf: MANUAL')));
+  r = await post(EFFECT_CONFIRM, {});
+  const d = JSON.parse(r.body);
+  check('N14 Nichts wartet: 409', r.status === 409 && d.ok === false && !!d.error, r.body);
+}
+
 async function serverBeenden() {
   let r = await request(OVERVIEW);
   check('D1 Ohne AuthServer.cmd: can_restart ist false', JSON.parse(r.body).can_restart === false, r.body);
@@ -446,6 +490,7 @@ async function ohneTokens() {
   else if (scenario === 'fehler-defekt') await fehlerDefekt();
   else if (scenario === 'whitelist') await whitelist();
   else if (scenario === 'module') await module_();
+  else if (scenario === 'effekte') await effekte();
   else await ablauf();
 
   console.log = realLog;
