@@ -51,6 +51,7 @@ const runs = [
   ['stream-session-test.js', []],
   ['admin-format-test.js', []],
   ['authserver-test.js', []],
+  ['prediction-test.js', []],
 ];
 
 let ok = 0, fail = 0;

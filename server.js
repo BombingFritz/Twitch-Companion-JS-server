@@ -1234,12 +1234,26 @@ app.get('/api/twitch/prediction/current', async (req, res) => {
       logIfChanged('prediction', `Prediction "${prediction.title}" - Status: ${prediction.status}`);
     }
 
-    const outcomes = prediction.outcomes.map(outcome => ({
+    // Helix-Felder laut Twitch-Doku „Get Predictions“: locked_at, ended_at, prediction_window, winning_outcome_id;
+    // locks_at/ends_at gibt es nicht (Issue #38). channel_points_won steht nur je Top-Tipper, nicht je Ausgang.
+    const outcomes = (prediction.outcomes || []).map(outcome => ({
       id: outcome.id,
       title: outcome.title,
-      channelPoints: outcome.channel_points_won || outcome.channel_points,
-      users: outcome.users || 0
+      channelPoints: outcome.channel_points || 0,
+      users: outcome.users || 0,
+      color: outcome.color || null,
+      topPredictors: (outcome.top_predictors || []).map(p => ({
+        userName: p.user_name,
+        userLogin: p.user_login,
+        channelPointsUsed: p.channel_points_used || 0,
+        channelPointsWon: p.channel_points_won || 0
+      }))
     }));
+    const predictionWindow = Number.isFinite(prediction.prediction_window) ? prediction.prediction_window : null;
+    const createdMs = Date.parse(prediction.created_at);
+    const locksAt = predictionWindow !== null && Number.isFinite(createdMs)
+      ? new Date(createdMs + predictionWindow * 1000).toISOString()
+      : null;
 
     res.json({
       predictionId: prediction.id,
@@ -1247,8 +1261,12 @@ app.get('/api/twitch/prediction/current', async (req, res) => {
       status: prediction.status,
       outcomes: outcomes,
       createdAt: prediction.created_at,
-      locksAt: prediction.locks_at,
-      endsAt: prediction.ends_at
+      locksAt: locksAt,                              // geplantes Ende der Wettphase: created_at + prediction_window
+      endsAt: prediction.ended_at || null,           // bisheriger Name, gleicher Wert wie endedAt
+      lockedAt: prediction.locked_at || null,
+      endedAt: prediction.ended_at || null,
+      predictionWindow: predictionWindow,
+      winningOutcomeId: prediction.winning_outcome_id || null
     });
   } catch (err) {
     console.error('Prediction API Fehler:', err.response?.data || err.message);
