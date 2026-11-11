@@ -53,6 +53,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - KONTEXT: Widget-Tabelle mit Repositories und Ständen (SpargelPoll 0.8.2, CoinFlip 0.1.0, Enigma 1.3.0); Quelle „Genereller Kontext“ am 08.11.2026 abgeglichen.
 - Abgleich mit Enigma-Widget 1.3.0 (Schnittstelle unverändert): Spec `bdu-chat.md` mit neuem Abschnitt „Verhalten des Widgets“, Einleitung nennt DerBdu statt nur „FT vom BdU“, `hello`-Ereignis beschrieben; OFFEN und KONTEXT nennen die aktuelle Widget-Version.
 
+### Fixed
+- `/api/twitch/prediction/current`: `locksAt` und `endsAt` fehlten immer, weil der Server die nicht vorhandenen Twitch-Felder `locks_at`/`ends_at` las. Jetzt `locksAt` = Erstellung + Wettdauer, `endsAt` = Zeitpunkt der Auflösung bzw. des Abbruchs. Neu, abwärtskompatibel: `lockedAt`, `endedAt`, `predictionWindow`, `winningOutcomeId` (Sieger statt Raten nach den meisten Punkten) und je Ausgang `color` und `topPredictors`. `channelPoints` liest nur noch `channel_points`. Test `test/prediction-test.js` (Issue #38). Die Feldnamen stammen aus der Twitch-Doku; Bestätigung mit einer echten Wette steht aus.
+
+
 ## [1.1.5] – 2026-11-07
 
 Versionsnummer nach Wahl des Nutzers: Version 1.2 bleibt der geplanten Webkonsole vorbehalten. Nach Semantic Versioning wären die neuen Funktionen eine Minor-Version (1.2); 1.1.2 bis 1.1.4 gibt es nicht.
