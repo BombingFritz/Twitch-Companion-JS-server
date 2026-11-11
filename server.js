@@ -8,8 +8,9 @@ const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
 const { createUboatCrew } = require('./lib/uboat-crew');
-const { createStats, streamMetricKeys } = require('./lib/stats');
+const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats');
 const { createStreamSession } = require('./lib/stream-session');
+const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
 require('dotenv').config();
 
 const app = express();
@@ -38,6 +39,7 @@ const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-L
 const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
 const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
+const STREAM_REPORTS_DIR = './stream_reports';             // je abgeschlossenem Stream eine .json und eine .txt (ADR 0019)
 const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Konsole und Webkonsole schaltbare Chat-Module, Standard: an
 
 // Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
@@ -101,6 +103,9 @@ const STREAM_SAVE_INTERVAL_MS = 30 * 1000;        // stream_stats.json höchsten
 const STREAM_HEARTBEAT_MS = 5 * 60 * 1000;        // auch ohne Änderung, solange live: Lebenszeichen für den Abgleich nach einem Absturz
 const STREAM_TICK_MS = 5 * 1000;                  // so oft Frist und Speichern prüfen
 const STREAM_MAX_CHATTERS = 1000;                 // Obergrenze je Stream, damit stream_stats.json klein bleibt
+const STREAM_REPORT_SHORT_SECONDS = 60 * 60;      // kürzere Streams bekommen im Bericht einen Hinweis
+const ADMIN_REPORTS_PATH = '/api/admin/reports';
+const ADMIN_STREAM_CLOSE_PATH = '/api/admin/stream/close';
 const STREAM_TOP_CHATTERS = 5;                    // so viele aktivste Chatter werden angezeigt
 const STREAM_RECONCILE_MIN_AGE_MS = 5 * 60 * 1000; // jünger: „nicht live“ von Twitch ist vermutlich noch die alte Antwort
 const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
@@ -167,11 +172,20 @@ function saveStreamStats(data) {
   writeJsonAtomic(STREAM_STATS_FILE, data);
 }
 
+const streamReports = createStreamReports({
+  dir: STREAM_REPORTS_DIR,
+  metrics: streamMetricDefs(),
+  shortSeconds: STREAM_REPORT_SHORT_SECONDS,
+  writeJson: writeJsonAtomic,
+  log: (message, level = 'log') => console[level](message),
+});
+
 const streamSession = createStreamSession({
   keys: streamMetricKeys(),
   enabled: STATS_ENABLED,
   load: loadStreamStats,
   save: saveStreamStats,
+  onClose: closed => streamReports.archive(closed),
   log: (message, level = 'log') => console[level](message),
   graceMs: STREAM_CLOSE_GRACE_MS,
   saveIntervalMs: STREAM_SAVE_INTERVAL_MS,
@@ -182,6 +196,7 @@ const streamSession = createStreamSession({
 });
 const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   // vor dem Umhüllen von console, zählt die Fehler mit
 setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
+streamSession.ensureArchived();   // z. B. wenn der Abschluss vor dem Speichern des Berichts endete
 
 const logBuffer = [];
 const logClients = new Set();     // offene Live-Log-Verbindungen
@@ -299,7 +314,7 @@ app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on('finish', () => {
     // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
-    if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH].includes(req.path) && res.statusCode === 200) return;
+    if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH, ADMIN_REPORTS_PATH].includes(req.path) && res.statusCode === 200) return;
     const durationMs = Date.now() - startedAt;
     // OAuth-Code und state aus /callback nicht ins Protokoll schreiben
     const url = req.originalUrl.replace(/([?&](?:code|state)=)[^&]*/g, '$1…');
@@ -1428,6 +1443,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     can_restart: SERVER_SUPERVISED,
     ha_webhook_configured: Boolean(HA_WEBHOOK_URL),
     category: currentCategory,
+    stream: overviewStream(),
     recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
       type: e.type,
       count: e.count,
@@ -1462,7 +1478,56 @@ app.get(ADMIN_ERROR_LOG_PATH, (req, res) => {
   res.json({ entries: [...errorLog].reverse(), limit: ERROR_LOG_MAX_ENTRIES });
 });
 
-app.get(ADMIN_STATS_PATH, (req, res) => res.json(stats.snapshot()));
+// Wurde der Bericht des letzten Streams gelöscht, keinen toten Link anbieten
+function withReportState(s) {
+  if (!s || !s.report_id || streamReports.exists(s.report_id)) return s;
+  return { ...s, report_id: null, report_deleted: true };
+}
+
+function statsWithReportState() {
+  const snap = stats.snapshot();
+  return { ...snap, stream: withReportState(snap.stream) };
+}
+
+// Für die Hauptseite: Stand der Stream-Erfassung, Abschlussmeldung und Hinweise
+function overviewStream() {
+  const s = withReportState(streamSession.snapshot());
+  return {
+    status: s.status,
+    started_at: s.started_at,
+    ended_at: s.ended_at,
+    closes_at: s.closes_at,
+    close_reason: s.close_reason,
+    report_id: s.report_id,
+    report_deleted: Boolean(s.report_deleted),
+    warnings: s.status === 'closed' ? reportWarnings(s, STREAM_REPORT_SHORT_SECONDS) : [],
+  };
+}
+
+app.get(ADMIN_STATS_PATH, (req, res) => res.json(statsWithReportState()));
+
+app.get(ADMIN_REPORTS_PATH, (req, res) => res.json({ reports: streamReports.list(), totals: streamReports.totals() }));
+
+// Lesbarer Bericht, zum Öffnen im Browser
+app.get(`${ADMIN_REPORTS_PATH}/:id`, (req, res) => {
+  if (!isReportId(req.params.id)) return res.status(400).json({ error: 'Ungültige Bericht-ID' });
+  const text = streamReports.text(req.params.id);
+  if (text === null) return res.status(404).json({ error: 'Bericht nicht gefunden' });
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.type('text/plain; charset=utf-8').send(text);
+});
+
+app.post(`${ADMIN_REPORTS_PATH}/delete`, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  const id = req.body && req.body.id;
+  if (!isReportId(id)) return res.status(400).json({ error: 'Ungültige Bericht-ID' });
+  if (!streamReports.remove(id)) return res.status(404).json({ error: 'Bericht nicht gefunden' });
+  res.json({ ok: true, id });
+});
+
+app.post(ADMIN_STREAM_CLOSE_PATH, requireAdminWrite, (req, res) => {
+  if (!streamSession.closeManually()) return res.status(409).json({ error: 'Es wird gerade kein Stream erfasst' });
+  res.json({ ok: true, stream: statsWithReportState().stream });
+});
 
 // Ändernde Aktionen: Browser senden bei POST immer einen Origin-Header, er ist hier Pflicht.
 function requireAdminWrite(req, res, next) {

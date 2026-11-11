@@ -223,6 +223,9 @@ body.stale .log-list { opacity: .75; }
 .wl-id { color: var(--muted); }
 .wl-actions { display: flex; gap: 8px; }
 .wl-empty { padding: 12px 16px; color: var(--muted); }
+.warn-text { margin: 8px 0 0; color: var(--warn); font-size: 14px; }
+.wl-name .warn-text { flex-basis: 100%; margin: 0; font-size: 13px; }
+.actions p.error, .wl-empty.error { color: var(--bad); }
 
 .group { max-width: 1400px; margin-top: 24px; }
 .group-head {

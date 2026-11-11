@@ -85,7 +85,7 @@ Sonderfälle: Der Server gleicht sich bei jeder frischen Verbindung einmal mit T
 
 Twitch nicht erreichbar: keine Änderung am Ablauf, aber deutlicher Fehler in der Kopfzeile.
 
-Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speichern (höchstens 30 s fehlen, ohne Änderung bis 5 Minuten). Ob sich das Ende aus der VOD-Länge nachtragen lässt, ist vor Stufe 3 gegen die Twitch-Doku zu prüfen [UNGEKLÄRT].
+Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speichern (höchstens 30 s fehlen, ohne Änderung bis 5 Minuten). Ob sich das Ende aus der VOD-Länge nachtragen lässt, ist noch gegen die Twitch-Doku zu prüfen [UNGEKLÄRT]; Stufe 3 kennzeichnet solche Berichte nur mit dem Hinweis „abgebrochen, das Ende ist geschätzt“.
 
 ## Weitere Vorgaben (Nutzer, 09.11.2026)
 - **Abschlussmeldung (Stufe 3):** Sichtbar, ob und wann der Streamlog erfolgreich abgeschlossen wurde, damit klar ist, dass der Knopf nicht mehr nötig ist, mit Link zur Logdatei. Den Link liefert der Server aus, weil Browser aus einer Webseite heraus keine lokalen Dateien öffnen.
@@ -104,14 +104,31 @@ Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speiche
 - Chatter: je Stream höchstens `STREAM_MAX_CHATTERS` (1000), danach kommen keine neuen dazu; Broadcaster und genutzte Chat-Bots zählen nicht.
 - `GET /api/admin/stats` liefert zusätzlich `stream` mit `{status, started_at, ended_at, offline_at, closes_at, close_reason, aborted, late_start, duration_seconds, interruptions, interruption_seconds, categories, tags, unique_chatters, top_chatters, metrics}`.
 - Reiter „Statistik“: Karte „Laufender oder letzter Stream“. Die Kopfzeile meldet „Twitch nicht erreichbar“, wenn EventSub länger als 20 s getrennt ist.
-- Geprüft mit `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen; am echten Stream noch nicht.
+- Geprüft mit `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen und am echten Stream vom 10.11.2026 (Zahlen stimmten mit Twitch überein; Abweichungen bei Chattern durch Broadcaster und Bots, bei Follows durch einen Follow vor dem Serverstart).
+
+## Verhalten Stufe 3
+- **Archiv:** Beim Abschluss (Raid, Knopf, Frist, Serverstart) schreibt `lib/stream-reports.js` je Stream zwei Dateien nach `stream_reports/`: `<ID>.json` (Version 1: `{v, id, created_at, warnings, summary, state}`, atomar) und `<ID>.txt` (lesbarer Bericht, Windows-Zeilenenden). Die ID ist die Startzeit in Ortszeit des Servers, z. B. `2026-11-10_2113`. Derselbe Stream (gleiches `started_at`) überschreibt seinen Bericht; ein anderer Stream mit derselben Startminute bekommt `-2`, `-3` … angehängt.
+- Die Bericht-ID steht danach als `report_id` in `stream_stats.json`. Scheitert das Schreiben, holt `ensureArchived()` es beim nächsten Serverstart nach; ein Fehler im Archiv bricht den Abschluss nicht ab.
+- **Gesamt:** Es gibt keinen zweiten Zähler. Die Summe wird beim Lesen aus allen Berichten gebildet (Anzahl Streams, Gesamtdauer, alle Stream-Kennzahlen). Gelöschte Berichte fallen damit auch aus der Summe. Die Berichte werden zwischengespeichert, solange sich die Dateinamen im Ordner nicht ändern; auch von Hand gelöschte Berichte fallen so heraus. Unlesbare Dateien werden mit Warnung übergangen, fremde Dateinamen ignoriert.
+- **Hinweise:** „abgebrochen, das Ende ist geschätzt“, „Server kam erst während des Streams dazu, frühere Ereignisse fehlen“ und „kürzer als 1 Std. 0 Min.“ (`STREAM_REPORT_SHORT_SECONDS`). Sie stehen im Bericht, in der Berichtsliste und nach dem Abschluss in der Übersicht.
+- **Knopf „Streamlog beenden“:** auf der Übersicht (Karte „Stream“) und im Reiter „Statistik“, nur während der Erfassung (live oder offline in der Frist). Mit Rückfrage wie beim Beenden des Servers: „Ja, beenden“ ist kurz gesperrt, die Rückfrage verfällt von selbst. War der Stream schon offline, gilt das letzte Offline als Ende.
+- **Abschlussmeldung:** Karte „Stream“ auf der Übersicht: „Streamlog läuft seit …“, „offline, Erfassung bis …“ oder „abgeschlossen um … Uhr, per Knopf/nach dem Raid/…“ mit Link „Bericht öffnen“ und den Hinweisen. Wurde der Bericht gelöscht, steht dort „gelöscht“ statt eines Links.
+- **Berichte:** Reiter „Statistik“, Karten „Gesamt“ und „Berichte“ (neuester zuerst, mit Dauer, Grund, Hinweisen, „Bericht öffnen“ und „Löschen“ mit Rückfrage). Löschen entfernt `.json` und `.txt` und lässt sich nicht rückgängig machen.
+- Endpunkte (Zugriff wie alle `/api/admin/…`, ändernde nur per POST mit JSON und eigener Herkunft):
+  - `GET /api/admin/reports` → `{reports: [{id, started_at, ended_at, duration_seconds, close_reason, aborted, warnings}], totals: {streams, duration_seconds, metrics}}`
+  - `GET /api/admin/reports/<ID>` → Bericht als `text/plain`; ungültige ID 400, unbekannte 404.
+  - `POST /api/admin/reports/delete` mit `{id}` → `{ok, id}`; 400 bzw. 404.
+  - `POST /api/admin/stream/close` → `{ok, stream}`; 409, wenn gerade nichts erfasst wird.
+  - `GET /api/admin/overview` enthält `stream: {status, started_at, ended_at, closes_at, close_reason, report_id, report_deleted, warnings}`; `GET /api/admin/stats` enthält im Bereich `stream` zusätzlich `report_id` (und `report_deleted`).
+- Dateigröße: Ein Bericht ist einige KB groß (Chatter höchstens 1000), geschrieben wird nur einmal je Stream.
+- Geprüft mit `test/stream-reports-test.js`, `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen (auch Handybreite); am echten Stream noch nicht.
 
 ## Stufen
 | Stufe | Inhalt | Stand |
 |---|---|---|
 | 1 | Grundgerüst `lib/stats.js`, Bereich Server-Instanz, Reiter „Statistik“ | umgesetzt, siehe oben |
 | 2 | Stream-Ablauf und einfache Stream-Zahlen, `stream_stats.json` | umgesetzt, siehe oben |
-| 3 | Archiv je Stream, Knopf „Streamlog beenden“, Abschlussmeldung mit Link, Warnung bei auffälligen Berichten, globale Summe | offen |
+| 3 | Archiv je Stream, Knopf „Streamlog beenden“, Abschlussmeldung mit Link, Warnung bei auffälligen Berichten, globale Summe | umgesetzt, siehe oben |
 | 3b | Alarm „Stream läuft nach dem Raid weiter“ | offen |
 | 4 | Hype Trains, Bits, eingelöste Kanalpunkte, Spielbewertung (neue Scopes, neuer Login), Ranglisten für den Support, Feld „Genutzte Chat-Bots“ | offen; Abstimmungen, Wetten, Stimmen, Shoutouts und Chatter sind umgesetzt |
 | 5 | Endscreen | offen |

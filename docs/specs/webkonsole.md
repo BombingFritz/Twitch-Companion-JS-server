@@ -11,9 +11,9 @@ Eine Oberfläche im Browser des Streaming-PCs, mit der sich der Server ansehen u
 | 3 | Reiter „Live-Log“: Puffer im Server, Live-Anzeige per Server-Sent Events | umgesetzt, siehe unten |
 | 4 | Reiter „Einstellungen“: Modul-Schalter, Effekte an/aus (GET-Endpoints entfallen), Bot-Zuordnung | Modul-Schalter und Effekte an/aus umgesetzt, siehe unten; Bot-Zuordnung offen |
 | 5 | Reiter „Whitelist“: anzeigen, hinzufügen, entfernen | umgesetzt, siehe unten |
-| 6 | Reiter „Statistik“ | Bereich Server-Instanz umgesetzt, weitere Stufen in `statistik.md` |
+| 6 | Reiter „Statistik“ | Server-Instanz, laufender oder letzter Stream, Gesamt und Berichte umgesetzt, weitere Stufen in `statistik.md` |
 
-Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Streamlog gibt (Spec `stream-bericht.md`, eigenes ADR). Die Reihenfolge der Stufen 2 bis 6 ist ein Vorschlag von Claude.
+Der Knopf „Streamlog beenden“ sitzt auf der Hauptseite in der Karte „Stream“ und im Reiter „Statistik“ (Statistik Stufe 3, ADR 0019, Spec `statistik.md`). Die Reihenfolge der Stufen 2 bis 6 ist ein Vorschlag von Claude.
 
 ## Verhalten Stufe 1
 ### Aufruf
@@ -30,6 +30,7 @@ Der Knopf „Streamlog beenden“ kommt auf die Hauptseite, sobald es den Stream
 | Karte | Angezeigt | Quelle |
 |---|---|---|
 | Server | Prozess-ID, läuft seit, Port | `pid`, `started_at` |
+| Stream | Streamlog läuft / offline mit Frist / abgeschlossen (Uhrzeit, Grund), Link zum Bericht oder „gelöscht“, Hinweise, Knopf „Streamlog beenden“ mit Rückfrage (Statistik Stufe 3) | `stream` |
 | Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, `currentCategory` |
 | Bot | DerBdu eingerichtet, Funktionen über den Bot | `bot_*` |
 | *Gruppe „Optionale Module“:* | | |
