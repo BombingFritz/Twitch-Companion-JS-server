@@ -13,7 +13,7 @@
 - ~~EventSub-Keepalive~~ – erledigt (Nov. 2026): Stille Verbindungen werden nach Keepalive-Intervall plus 5 s getrennt und neu aufgebaut (ARCHITEKTUR.md, „Verbindungsverwaltung“). Ob stille Abbrüche in der Praxis vorkamen, ist weiter [UNGEKLÄRT]; die Konsole meldet sie jetzt.
 
 ## Geplant: Intro-Topics und Stream-Deck-Plugin (Nutzer, 12.11.2026)
-- Abhakbare Themenliste fürs Intro (eigenes Widget), bedient per Stream Deck, optional mit Lichteffekt; dazu eine allgemeine Stream-Deck-Schnittstelle mit eigenem Plugin und der Clip-Moment-Taste. Fahrplan und Stand: [FAHRPLAN.md](FAHRPLAN.md); Specs `intro-topics.md` und `stream-deck.md`; ADR 0020 und 0021.
+- Abhakbare Themenliste fürs Intro (CheckTalk-Widget), bedient per Stream Deck, optional mit Lichteffekt; dazu eine allgemeine Stream-Deck-Schnittstelle mit eigenem Plugin und der Clip-Moment-Taste. Fahrplan und Stand: [FAHRPLAN.md](FAHRPLAN.md); Specs `intro-topics.md` und `stream-deck.md`; ADR 0020 und 0021.
 
 ## Abgleich mit dem Gesamtkontext (Okt. 2026)
 

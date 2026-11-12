@@ -53,7 +53,7 @@ Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand 
 | Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand. Repository `BombingFritz/CoinFlip` (privat), Stand 0.1.0 | aktiv |
 | Enigma-Widget | immersive Kommunikation für U-Boot-Streams; Repository `BombingFritz/Uboat-Widget` (öffentlich, MIT ab 1.3.1). Ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), aktuell 1.3.0 mit Benchmark zur Modellwahl; funktioniert ohne Server, der Chat-Modus ist dort optional und eingeklappt | aktiv |
 | Companion-Widget | Anzeige und Steuerung von Sub-Goals, Effekten, Server-Daten | geplant / in Arbeit |
-| Intro-Topics-Widget | abhakbare Themenliste fürs Intro, Steuerung per Stream Deck über den Server; eigenes Repository (Name offen), Fahrplan in [FAHRPLAN.md](FAHRPLAN.md) | geplant (12.11.2026) |
+| CheckTalk-Widget (Intro-Topics) | abhakbare Themenliste fürs Intro, Steuerung per Stream Deck über den Server; Repository `BombingFritz/CheckTalk-Widget` (MIT), Fahrplan in [FAHRPLAN.md](FAHRPLAN.md) | geplant (12.11.2026) |
 | Spiel-Statistik-Widgets | spielbezogene Statistiken | angefangen |
 | Flavor-KI-Widgets | thematische KI-Interaktion | Idee / angefangen |
 
@@ -78,7 +78,7 @@ Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT]
 
 ### Stream Deck
 - Heute: OBS-Szenen und Overlays, Sounds, Videos, HA-Lichteffekte, Startskript, Werbung, Marker, Audio.
-- Geplant (12.11.2026): eigenes Stream-Deck-Plugin für Server-Funktionen (Intro-Topics, Clip-Moment), Schnittstelle in `specs/stream-deck.md`, ADR 0020, Fahrplan in [FAHRPLAN.md](FAHRPLAN.md). Bis dahin über ein fertiges HTTP-Plugin.
+- Geplant (12.11.2026): eigenes Stream-Deck-Plugin für Server-Funktionen (Intro-Topics, Clip-Moment), Repository `BombingFritz/TwitchCompanion_Streamdeck_Plugin` (MIT), Schnittstelle in `specs/stream-deck.md`, ADR 0020, Fahrplan in [FAHRPLAN.md](FAHRPLAN.md). Bis dahin über ein fertiges HTTP-Plugin.
 - Laut Kontext geplant: Widget-Zustände und Show-Abläufe steuern. Effekte an/aus laufen nicht über das Stream Deck, sondern über den Reiter „Einstellungen“ der Webkonsole (Nutzer, 08. und 09.11.2026, ADR 0010, ADR 0018).
 
 ## Leitlinien mit Bezug zum Server
