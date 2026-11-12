@@ -59,6 +59,12 @@ Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Fu
 - `/status`: `bdu_widget_connected`, `bdu_silence_until`, `modules.bdu`.
 - Konsole: `bdu show` (Schalter, Limits, Funkstille, offene Anfrage), `bdu silence off` (Funkstille beenden), `bdu activate` / `bdu deactivate` (Modul ein- bzw. ausschalten, bleibt nach Neustart; beim Deaktivieren werden offene Anfragen verworfen, eine späte Antwort des Widgets bekommt 404 und wird nicht gepostet; die Widget-Verbindung bleibt bestehen).
 
+### Datenschutzhinweis für Zuschauer (Empfehlung, 12.11.2026)
+- `!BdU` nimmt Nachrichten aus dem Chat an und gibt sie an eine externe KI weiter: Der Server reicht den Text (ohne Nutzernamen, höchstens 200 Zeichen) an das Enigma-Widget, das ihn mit dem Spielkontext an den dort eingestellten KI-Anbieter schickt (beim Nutzer Google Gemini, kostenloser Zugang; bei kostenlosen Angeboten können Eingaben zur Verbesserung der Dienste genutzt werden).
+- Empfehlung des Nutzers: Zuschauer darauf hinweisen, z. B. über einen Hilfebefehl (Idee `!bduHilfe`, siehe `docs/OFFEN.md`), im Infobereich unter dem Stream oder in den Chat-Regeln.
+- Beispieltext: „Hinweis: Nachrichten mit !BdU werden ohne euren Namen an eine KI (Google Gemini) geschickt, damit der BdU antworten kann. Google kann solche Eingaben zur Verbesserung seiner Dienste nutzen. Bitte keine persönlichen Daten schreiben.“
+- Ob und in welcher Form ein Hinweis rechtlich nötig ist (z. B. nach DSGVO), ist hier nicht geprüft [UNGEKLÄRT]; die Empfehlung ersetzt keine Rechtsberatung.
+
 ## Nicht-Ziele
 - KI-Aufruf, Prompt oder Funkverlauf im Server.
 - Absendernamen in der Antwort; Ausnahmen von den Limits.

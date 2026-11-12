@@ -75,6 +75,9 @@ Ziel: Antworten, Warnung und Funkstille-Ansage des BdU erscheinen nicht als Broa
 - Offene Frage an den Nutzer: nur BdU-Nachrichten über den Bot (Vorschlag) oder auch Raid-Begrüßung und `!raidstats`?
 - Quellen: Twitch Developer Forum „Introducing the Chat Bot badge and chat identity for chatbots“ (28.08.2025); Twitch-Doku „Authenticating and EventSub“ (Chat).
 
+## Idee: Hilfebefehl `!bduHilfe` mit Datenschutzhinweis (Nutzer, 12.11.2026)
+Noch nicht entschieden, nicht spezifiziert. Ein Befehl, der kurz erklärt, wie `!BdU` funktioniert (Limits, Funkstille) und dass die Texte ohne Namen an einen externen KI-Anbieter gehen. Beispieltext und Hintergrund: `docs/specs/bdu-chat.md`, Abschnitt „Datenschutzhinweis für Zuschauer“. Zu klären: Wortlaut (Nutzer), Cooldown, ob über DerBdu, ob auch als Hinweis bei der ersten `!BdU`-Nachricht eines Zuschauers je Stream.
+
 ## Ideen zum Enigma-Widget (Nutzer, 11.11.2026)
 Noch nicht entschieden, nicht spezifiziert. Gegenstück in `docs/OFFEN.md` des Repositorys Uboat-Widget.
 1. **Landurlaub-Antwort auf `!BdU`:** Läuft das Enigma-Widget nicht oder ist die Twitch-Kategorie keine der hinterlegten (z. B. UBOAT, Wolfpack, Sonar; genaue Namen [UNGEKLÄRT], Muster `UBOAT_CATEGORY_NAMES`), antwortet der BdU anders, mit Hinweis auf Freiwache bzw. Landurlaub („Schön, dass du dich bei mir sogar aus deinem Landurlaub meldest, Soldat, aber …“). Heute ignoriert der Server `!BdU` ohne verbundenes Widget still (ADR 0014). Der Server kennt Kategorie (`currentCategory`) und Verbindung (`bduClients`) bereits. Zu klären: Ohne Widget keine KI (ADR 0004 des Widgets: der Server ruft keine KI auf), also feste Texte im Server; mit Widget außerhalb der Kategorie Antwort per KI mit Landurlaub-Hinweis. Limits (Cooldown, Tagesgrenze) gelten weiter.

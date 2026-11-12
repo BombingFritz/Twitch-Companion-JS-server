@@ -20,3 +20,5 @@
 - Neue Laufzeitdatei `bot.json` (in `.gitignore`), neue Adresse `/login-bot` (nur lokal, Muster `/token`, ADR 0013), Konsolenbefehle `bot show` und `bot remove`, Felder in `/status`.
 - Einmalige Einrichtung durch den Nutzer: `/mod DerBdu` im Chat und `/login-bot` in einem Browserfenster, in dem „DerBdu“ bei Twitch angemeldet ist.
 - Entzieht das Bot-Konto der App die Freigabe oder verliert es die Moderatorrolle, greift der Rückfall auf den Broadcaster; die Konsole nennt den Fehler.
+
+**Nachtrag 12.11.2026 (Nutzer):** Das „Chat Bot“-Abzeichen erscheint. Die Moderatorrolle bleibt, auch wenn das Bot-Konto ein Abonnement auf Lebenszeit hat: Ein Abo ersetzt weder `channel:bot` noch die Moderatorrolle, und die Rolle schützt die Antworten vor AutoMod. Empfehlung: Zwei-Faktor-Authentifizierung und eigenes starkes Passwort für das Bot-Konto (Spec `bot-account.md`).

@@ -6,6 +6,7 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 ## Verhalten
 
 ### Einrichtung (einmalig, durch den Nutzer)
+0. **Empfehlung (Nutzer, 12.11.2026): Zwei-Faktor-Authentifizierung** für das Bot-Konto (und das Broadcaster-Konto) einschalten, dazu ein eigenes, starkes Passwort. Das Bot-Konto hat als Moderator Rechte im Kanal; wer es übernimmt, kann sie nutzen. Der Server selbst speichert kein Token des Bots.
 1. Im eigenen Chat: `/mod DerBdu`.
 2. Ein Browserfenster öffnen, in dem bei Twitch „DerBdu“ angemeldet ist (z. B. privates Fenster), und `http://localhost:<PORT>/login-bot` aufrufen.
 3. Twitch fragt nach der Freigabe `user:bot` und `user:write:chat`; bestätigen. Der Server speichert ID und Name des Bots in `bot.json` und meldet das in Browser und Konsole.
@@ -43,6 +44,11 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 ### Konstanten (oben in `server.js`)
 `BOT_FILE = './bot.json'`, `BOT_SCOPES = 'user:bot user:write:chat'`, `BOT_FEATURES = ['bdu', 'uboat']`, `LOGIN_STATE_TTL_MS = 10 min`, `APP_TOKEN_REFRESH_MARGIN_MS = 5 min`.
 
+### Warum Moderator (Stand 12.11.2026)
+- Twitch verlangt für das Senden mit App-Token (nur so erscheint das „Chat Bot“-Abzeichen) entweder `channel:bot` vom Broadcaster oder Moderatorrechte des Bots. Ein Abonnement des Bots (auch auf Lebenszeit) oder ein früherer Status als bekannter/verifizierter Bot ersetzt das nicht (Twitch-Doku „Chat & Chatbots“ und „Send Chat Message“, geprüft 12.11.2026).
+- Die Moderatorrolle bringt außerdem: Nachrichten werden nicht von AutoMod zurückgehalten (ohne Rolle käme bei `is_sent: false` gar keine Antwort, ein Rückfall ist dort absichtlich nicht vorgesehen), langsamer Modus und Nur-Follower gelten nicht, Sendelimit 100 statt 20 Nachrichten je 30 s.
+- Ohne Moderatorrolle ginge es nur mit `channel:bot` (zusätzlicher Scope beim Broadcaster-Login, neues Login, Änderung an ADR 0017). Entscheidung des Nutzers (12.11.2026): Moderatorrolle behalten.
+
 ## Nicht-Ziele (vorerst)
 - Umstellen per Konsole, welche Funktion über den Bot sendet (Wunsch Nutzer, später).
 - Flüstern, Empfangen von Chat über den Bot, eigene EventSub-Verbindung des Bots.
@@ -59,4 +65,4 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - Tests mit Attrappen (`test/bot-test.js`), kein echter Twitch-Aufruf.
 
 ## Status
-umgesetzt, veröffentlicht in Version 1.1.5 (PR #16). Test mit Attrappen: 27/27 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Mit echtem Twitch erprobt (07.11.2026): Freigabe über `/login-bot` und BdU-Antwort über DerBdu funktionieren. Noch offen: ob das Abzeichen „Chat Bot“ erscheint und wie sich Twitch ohne Moderatorrolle verhält [UNGEKLÄRT].
+umgesetzt, veröffentlicht in Version 1.1.5 (PR #16). Test mit Attrappen: 27/27 (`test/bot-test.js`, Szenarien `ablauf`, `eingerichtet` und `ohne-bot`). Mit echtem Twitch erprobt (07.11.2026): Freigabe über `/login-bot` und BdU-Antwort über DerBdu funktionieren. Das Abzeichen „Chat Bot“ erscheint (Nutzer, 12.11.2026). Wie sich Twitch ohne Moderatorrolle verhält, ist nicht erprobt (Rolle bleibt, siehe „Warum Moderator“).
