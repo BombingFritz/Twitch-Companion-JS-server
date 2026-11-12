@@ -1,6 +1,6 @@
 # Spec: Stream-Deck-Anbindung
 
-Stand: Entwurf 12.11.2026. Fahrplan: [FAHRPLAN.md](../FAHRPLAN.md). Entscheidung: [ADR 0020](../adr/0020-stream-deck-anbindung.md).
+Stand: 12.11.2026. Umgesetzt: Zugriff, `GET /api/deck`, Topics-Endpoints. Offen: `POST /api/clip/mark` (Fahrplan Schritt 7), eigenes Plugin (Schritt 8). Fahrplan: [FAHRPLAN.md](../FAHRPLAN.md). Entscheidung: [ADR 0020](../adr/0020-stream-deck-anbindung.md).
 
 ## Ziel
 Das Stream Deck steuert Server-Funktionen (zuerst Intro-Topics und Clip-Moment) über eine einheitliche, abgesicherte HTTP-Schnittstelle. Langfristig über ein eigenes Plugin mit fertigen Aktionen und Live-Anzeige auf den Tasten; bis dahin über ein beliebiges HTTP-Plugin.
@@ -28,12 +28,14 @@ Das Stream Deck steuert Server-Funktionen (zuerst Intro-Topics und Clip-Moment) 
   "version": "1.x",
   "actions": {
     "topics": { "enabled": true },
-    "clip":   { "enabled": true, "stream_live": false }
+    "clip":   { "enabled": false, "stream_live": false }
   }
 }
 ```
 
-### `POST /api/clip/mark`
+`clip.enabled` bleibt `false`, bis `POST /api/clip/mark` gebaut ist.
+
+### `POST /api/clip/mark` (noch nicht umgesetzt)
 - Body optional: `{ "note": "Kurztext, max. 100 Zeichen", "source": "streamdeck" }`.
 - Legt einen Clip-Kandidaten vom Typ `alarm` an (Statistik Stufe 6, Stream-Bericht 1e): Uhrzeit, berechnete Position im Stream, Notiz. Twitch-Marker setzt der Server erst, wenn die Scopes aus `stream-bericht.md` 1d da sind.
 - Ohne laufenden Stream: 409, nichts gespeichert.

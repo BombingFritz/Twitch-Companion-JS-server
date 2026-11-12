@@ -1,6 +1,6 @@
 # Architektur (Ist-Zustand)
 
-Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016); die Statistik in `lib/stats.js` (ADR 0019); die Webkonsole liegt in `public/admin/` (ADR 0018). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
+Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016); die Statistik in `lib/stats.js` (ADR 0019); die Intro-Topics in `lib/topics.js` (ADR 0021); die Webkonsole liegt in `public/admin/` (ADR 0018). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
 
 ## 1. Datenfluss
 
@@ -34,7 +34,8 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
 | Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode` |
 | Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch`, `switchModule` (Konsole `bdu`/`uboat activate\|deactivate` und Webkonsole), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
-| Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `processEffectQueue`; RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
+| Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `processEffectQueue`, `isSilentEffect` (Typen in `SILENT_EFFECT_TYPES`: kein Log, kein Event-Log, keine Statistik); RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
+| Intro-Topics (ADR 0020, 0021) | `server.js`: `loadTopicsFile`, `saveTopicsFile`, `broadcastTopics`, `isTopicsPath` (still im HTTP-Protokoll), `topicsDebugLog`, `topicsSummary`, `printTopicsStatus`; RAM: `topics`, `topicsClients`, `topicsDebug`. `lib/topics.js`: `createTopics` (`getState`, `getConfig`, `next`, `back`, `toggle`, `reset`, `setItems`, `setDisplay`, `notifyEnabledChanged`), `validateItems`, `validateDisplay` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged`, HTTP-Middleware (unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen) |
 | Statistik (ADR 0019) | `server.js`: `isCountedChatter`, `syncStreamWithTwitch`, `loadStreamStats`, `saveStreamStats`, `writeJsonAtomic`; RAM: `stats`, `streamSession`. `lib/stats.js`: `createStats` (`count`, `snapshot`), `streamMetricKeys`, zentrale Liste `METRICS`. `lib/stream-session.js`: `createStreamSession` (`onOnline`, `onOffline`, `onRaidOut`, `closeManually`, `ensureArchived`, `reconcile`, `setCategory`, `count`, `noteChatter`, `tick`, `flush`, `snapshot`; Option `onClose` für das Archiv). `lib/stream-reports.js`: `createStreamReports` (`archive`, `list`, `totals`, `text`, `remove`, `exists`), `reportIdFor`, `reportWarnings`, `isReportId`, `CLOSE_REASONS`. `server.js` außerdem: `subscribeForStats`, `recordPollEnd`, `recordPredictionEnd`, `overviewStream`, `withReportState`, `statsWithReportState`; RAM: `streamReports` |
@@ -64,7 +65,8 @@ Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`
 | `effect_mode.json` | `{mode}` mit `auto` oder `off`; fehlt die Datei oder ist ungültig (auch das frühere `manual`): `auto` |
 | `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
 | `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
-| `modules.json` | `{bdu, uboat}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an |
+| `modules.json` | `{bdu, uboat, topics}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an |
+| `topics.json` | `{items: [{title}], display: {title, theme, background: {horizontal, vertikal}}, updated_at}` (Intro-Topics, ADR 0021); fehlt oder defekt: Standardwerte. Fortschritt und Sichtbarkeit nur im Arbeitsspeicher |
 | `bot.json` | `{bot_id, bot_login, bot_name, authorized_at}` (ADR 0017), keine Tokens; fehlt die Datei: kein Bot, alles als Broadcaster |
 | `stream_stats.json` | Laufender oder letzter Stream (ADR 0019): `{v, status: none/live/offline/closed, started_at, ended_at, offline_at, close_reason, aborted, late_start, stream_ids, segments[{start,end}], categories[{name,seconds}], tags, counters, chatters{id:{name,count}} (höchstens 1000), report_id, last_saved_at}`; fehlt die Datei, ist sie ungültig oder hat eine andere Version: leer. Höchstens alle 30 s geschrieben, über `stream_stats.json.tmp` |
 | `stream_reports/<ID>.json` und `.txt` | Ein Bericht je abgeschlossenem Stream (ADR 0019), ID = Startzeit in Ortszeit, z. B. `2026-11-10_2113` (`-2` usw. bei gleicher Startminute). `.json`: `{v: 1, id, created_at, warnings, summary, state}`, `state` wie `stream_stats.json`; `.txt`: lesbarer Bericht, wird aus der `.json` neu erzeugt, falls er fehlt. Einmal je Stream geschrieben, gelöscht nur über die Webkonsole. Die Summe aller Streams wird beim Lesen gebildet |
@@ -111,6 +113,10 @@ Zugriffsschutz (ADR 0013):
 | `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
 | `/api/effects/mode` | `{mode, queueLength}` | – |
 | `/api/uboat/crew` | `{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew[{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, born, decorations, died, traits, skills, status, statusLabel, wounded, woundLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“, „gefallen“ oder `null`; `woundLabel`: „verwundet“, „im Krankenhaus“ oder `null`); ohne `UBOAT_SAVES_DIR` `{enabled:false, active:false, category, crew:[]}` (ADR 0016) | – |
+| `/api/topics` | Zustand der Intro-Topics `{enabled, visible, hide_reason, step, total, current, complete, items[{title, status}], display, revision}`. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
+| `/api/topics/stream` | Server-Sent Events für CheckTalk-Widget und Stream-Deck-Plugin: `retry: 5000`, Ereignis `state` beim Verbinden und nach jeder Änderung, Ping alle 30 s. Nur lokal | 403 wie oben |
+| `POST /api/topics/next\|back\|toggle\|reset` | Stream-Deck-Tasten, JSON (Body darf `{}` sein) → `{ok, state}`. Nur lokal, erfolgreiche Aufrufe ohne Log (ADR 0020, 0021) | 403, 404 unbekannte Aktion, 415 ohne JSON, 503 Modul aus |
+| `/api/deck` | Übersicht für das Stream-Deck-Plugin `{server, version, actions: {topics: {enabled}, clip: {enabled, stream_live}}}`. Nur lokal | 403 wie oben |
 | `/api/bdu/stream` | Server-Sent Events für das Enigma-Widget: `retry: 5000`, Ereignis `hello`, Ereignis `request` mit `{id, text}`, Kommentar-Ping alle 30 s. Nur lokal (wie `/token`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `POST /api/bdu/answer` | JSON `{id, status: ok/quota/error, text?, error?}`; `ok` postet die Antwort als Reply (über DerBdu ohne Präfix, als Broadcaster mit „FT vom BdU: “), `quota` startet Funkstille; Antwort `{ok:true}`, bei `quota` `{ok:true, silenceUntil}` (Millisekunden-Zeitstempel; beim Tageskontingent `null`, weil intern `Infinity`). `ok` ohne Text wird wie `error` behandelt. Nur lokal | 404 bei unbekannter/abgelaufener `id`; 403 wie oben |
 
@@ -140,6 +146,10 @@ Zugriffsschutz (ADR 0013):
 | `bot show` | Bot-Account: Name und ID, Funktionen über den Bot, letzter Sendefehler; ohne Bot Einrichtungshinweis |
 | `bot remove` | `bot.json` löschen, danach sendet wieder der Broadcaster (Freigabe bei Twitch bleibt bis zum Entzug durch das Bot-Konto) |
 | `help` | Befehlsübersicht (auch beim Start) |
+| `topics show` | Intro-Topics: Modul, Testmodus, Verbindungen, Stand, Liste, Anzeige |
+| `topics next` / `back` / `toggle` / `reset` | Intro-Topics bedienen wie die Stream-Deck-Tasten |
+| `topics debug on` / `off` | Testmodus bis Neustart: Topic-Effekte, Tastendrücke und HTTP-Aufrufe erscheinen im Log; Event-Log und Statistik bleiben unberührt |
+| `topics activate` / `topics deactivate` | Intro-Topics ein- bzw. ausschalten, gespeichert in `modules.json` |
 
 Es gibt keinen Konsolenbefehl zum Bestätigen eines Effekts.
 
@@ -270,7 +280,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 ```json
 {
-  "type": "follow | sub | gift",
+  "type": "follow | sub | gift | topic_active | topic_done | topics_complete",
   "count": 1,
   "meta": { },
   "timestamp": "2026-01-01T00:00:00.000Z"
@@ -282,6 +292,9 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `follow` | `{userName, userId}` |
 | `sub` | `{userName}` |
 | `gift` | `{userName, giftCount}` |
+| `topic_active` | `{index, title, total}` (Intro-Topics, still: kein Log, kein Event-Log, keine Statistik) |
+| `topic_done` | `{index, title, total}` (still) |
+| `topics_complete` | `{total}` (still) |
 
 - `count`: Anzahl gebündelter Ereignisse des Typs im Bündelungsfenster.
 - `meta`: Daten des letzten Ereignisses im Bündel.

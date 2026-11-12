@@ -1,6 +1,6 @@
 # ADR 0021: Intro-Topics als Server-Modul mit eigenem Widget
 
-**Status:** Vorgeschlagen (12.11.2026). Vom Nutzer entschieden: Anbindung an den Server, Liste bearbeitbar, Klickfolge aktiv → erledigt → nächstes, eigene Taste Ein/Aus, Ausblenden 5 s nach dem letzten Thema, ruhiges halbtransparentes Design im Channel-Branding, Widget in eigenem Repository (`BombingFritz/CheckTalk-Widget`, MIT), erledigte Themen abgehakt und ausgegraut statt durchgestrichen, Topic-Effekte standardmäßig in keinem Log (nur mit Testschalter). Von Claude festgelegt: Zustand als eine Schrittzahl, „Weiter“ bei ausgeblendeter Liste blendet nur ein, kein Ausblend-Timer nach manuellem Einblenden, Effekt-Typen.
+**Status:** Akzeptiert und umgesetzt (12.11.2026). Vom Nutzer entschieden: Anbindung an den Server, Liste bearbeitbar, Klickfolge aktiv → erledigt → nächstes, eigene Taste Ein/Aus, Ausblenden 5 s nach dem letzten Thema, ruhiges halbtransparentes Design im Channel-Branding, Widget in eigenem Repository (`BombingFritz/CheckTalk-Widget`, MIT), erledigte Themen abgehakt und ausgegraut statt durchgestrichen, Topic-Effekte standardmäßig in keinem Log (nur mit Testschalter). Von Claude festgelegt: Zustand als eine Schrittzahl, „Weiter“ bei ausgeblendeter Liste blendet nur ein, kein Ausblend-Timer nach manuellem Einblenden, Effekt-Typen.
 
 **Kontext:** Beim Intro sollen die Themen des Tages als abhakbare Liste im Stream stehen, bedient per Stream Deck, mit optionalem Lichteffekt (z. B. Talk-Licht → Spiel-Licht). Es gibt eine horizontale und eine vertikale Szene. Module sollen langfristig einzeln installierbar sein (OFFEN.md).
 
@@ -20,3 +20,5 @@
 - Neue Effekt-Typen erscheinen beim HA-Webhook; HA ignoriert unbekannte Typen nur, wenn die Automation das so vorsieht [UNGEKLÄRT, in HA prüfen].
 - Erste stille Effekt-Typen: `enqueueEffect`/`triggerEffect` brauchen eine Ausnahme, die das Payload-Schema nicht berührt.
 - Lizenzbereiche nach der Projektvorgabe vom 12.11.2026: Der Server-Teil ist Serverkern (Lizenz des Servers), das Widget ein eigenständiges MIT-Modul.
+
+**Nachtrag (12.11.2026, Nutzer): Anzeige-Einstellungen im Server.** Überschrift (Standard „Tagesthemen“), Design und Hintergrund je Ausgabe (horizontal/vertikal, durchscheinend/deckend) sind in der Webkonsole einstellbar, liegen in `topics.json` und gehen mit dem Zustand an die Widgets. Begründung: ein Ort für alle Einstellungen, beide Browserquellen bleiben gleich, ohne URL-Parameter von Hand zu pflegen. URL-Parameter überschreiben nur für eine Quelle. „Deckend“ füllt die ganze Browserquelle, damit die Liste im Hochformat Dreh-Logo und Untertitel überdeckt. Von Claude festgelegt: Parameter `output`, Standard vertikal deckend, Standardliste beim ersten Start, Reset bei neuer Stream-Session.

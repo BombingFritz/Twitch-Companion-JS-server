@@ -1,6 +1,6 @@
 # ADR 0020: Stream-Deck-Anbindung über POST-Endpoints und eigenes Plugin
 
-**Status:** Vorgeschlagen (12.11.2026). Grundsatz vom Nutzer bestätigt (eigenes Plugin als Ziel, Server-Schnittstelle zuerst). Pfade, Antwortformat und JSON-Pflicht hat Claude festgelegt.
+**Status:** Akzeptiert (12.11.2026); Server-Seite für Intro-Topics umgesetzt, Clip-Moment und Plugin offen. Grundsatz vom Nutzer bestätigt (eigenes Plugin als Ziel, Server-Schnittstelle zuerst). Pfade, Antwortformat und JSON-Pflicht hat Claude festgelegt.
 
 **Kontext:** Das Stream Deck soll Server-Funktionen auslösen: Intro-Topics (ADR 0021) und Clip-Momente aus vorhandenen Multi-Aktionen (ADR 0019, „Alarm und Marker“). Die eingebaute Aktion „Website“ kann nur GET; GET-Endpoints mit Zustandsänderung hat ADR 0018 entfernt. Die Elgato-Hilfe nennt „GET request in background“ für Webhooks; Nutzer berichten von Aussetzern. Laut KONTEXT.md spricht das Stream Deck bisher nur Home Assistant und OBS direkt an.
 
