@@ -31,12 +31,12 @@ if (section) {
   r = vm.runInContext('errorTime(iso)', context);
   check('F8 Fehlerprotokoll zeigt Datum mit Jahr und Sekunden', r.includes('08.11.2026') && r.includes('09:05:07'), r);
 
-  const healthy = { ha_webhook_configured: true, effect_mode: 'auto', uboat_enabled: true, modules: { bdu: true, uboat: true }, uboat_save: 'a.save', bdu_widget_connected: true, bdu_silence_until: null };
+  const healthy = { ha_webhook_configured: true, effect_mode: 'auto', uboat_enabled: true, modules: { bdu: true, uboat: true, topics: true }, uboat_save: 'a.save', bdu_widget_connected: true, bdu_silence_until: null, topics: { clients: 1 } };
   const lights = changes => { context.d = { ...healthy, ...changes }; return JSON.parse(vm.runInContext('JSON.stringify(moduleLights(d))', context)); };
   const level = (name, changes) => lights(changes).find(m => m.name === name).level;
   const names = lights({}).map(m => m.name).join(',');
-  check('L1 Die vier Module in der gewünschten Reihenfolge', names === 'HA-Effekte,UBOAT-Soldbuch,BdU-Chat,Sub-Goal', names);
-  check('L2 Alles eingerichtet: grün', ['HA-Effekte', 'UBOAT-Soldbuch', 'BdU-Chat'].every(n => level(n, {}) === 'ok'));
+  check('L1 Die fünf Module in der gewünschten Reihenfolge', names === 'HA-Effekte,UBOAT-Soldbuch,BdU-Chat,Intro-Topics,Sub-Goal', names);
+  check('L2 Alles eingerichtet: grün', ['HA-Effekte', 'UBOAT-Soldbuch', 'BdU-Chat', 'Intro-Topics'].every(n => level(n, {}) === 'ok'));
   check('L3 Sub-Goal hat kein Licht', level('Sub-Goal', {}) === null);
   check('L4 HA-Effekte: kein Webhook ist ein Fehler', level('HA-Effekte', { ha_webhook_configured: false }) === 'bad');
   check('L5 HA-Effekte: Modus off ist nur nicht aktiv', level('HA-Effekte', { effect_mode: 'off' }) === 'off');
@@ -46,6 +46,8 @@ if (section) {
   check('L10 BdU-Chat: ausgeschaltet ist nur nicht aktiv', level('BdU-Chat', { modules: { bdu: false, uboat: true } }) === 'off');
   check('L11 BdU-Chat: Widget noch nicht verbunden ist nur nicht aktiv', level('BdU-Chat', { bdu_widget_connected: false }) === 'off');
   check('L12 BdU-Chat: Funkstille ist nur nicht aktiv', level('BdU-Chat', { bdu_silence_until: 'bis Streamstart' }) === 'off');
+  check('L13 Intro-Topics: ausgeschaltet ist nur nicht aktiv', level('Intro-Topics', { modules: { bdu: true, uboat: true, topics: false } }) === 'off');
+  check('L14 Intro-Topics: kein Widget verbunden ist nur nicht aktiv', level('Intro-Topics', { topics: { clients: 0 } }) === 'off');
 }
 check('F6 Die Effektliste nutzt diese Anzeige', /el\('time', \{ text: effectTime\(e\.timestamp\) \}\)/.test(source));
 
