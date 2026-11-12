@@ -7,8 +7,8 @@ Beteiligt sind drei Repositories:
 | Teil | Repository | Inhalt |
 |---|---|---|
 | Server | `BombingFritz/Twitch-Companion-JS-server` (dieses) | Zustand, Endpoints, `topics.json`, Webkonsole, Effekte; **Schnittstellen-Specs** |
-| Widget | `BombingFritz/IntroTopics-Widget` [Name UNGEKLÄRT, bis das Repository angelegt ist] | OBS-Browserquelle mit der Topic-Liste |
-| Stream-Deck-Plugin | `BombingFritz/StreamDeck-Companion` [Name UNGEKLÄRT, bis das Repository angelegt ist] | ein Plugin für alle Server-Funktionen, nicht eines je Modul |
+| Widget | [`BombingFritz/CheckTalk-Widget`](https://github.com/BombingFritz/CheckTalk-Widget) | OBS-Browserquelle mit der Topic-Liste; MIT |
+| Stream-Deck-Plugin | [`BombingFritz/TwitchCompanion_Streamdeck_Plugin`](https://github.com/BombingFritz/TwitchCompanion_Streamdeck_Plugin) | ein Plugin für alle Server-Funktionen, nicht eines je Modul; MIT |
 
 Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-Deck-Anbindung](specs/stream-deck.md), [ADR 0020](adr/0020-stream-deck-anbindung.md), [ADR 0021](adr/0021-intro-topics-modul.md).
 
@@ -25,9 +25,9 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 | # | Schritt | Repository | Hängt ab von | Stand |
 |---|---|---|---|---|
 | 0 | Specs, ADRs und dieser Fahrplan | Server | – | in Arbeit (Branch `docs/intro-topics-stream-deck`) |
-| 1 | Widget 0.1 mit Demo-Modus: Liste, Zustände, Animationen, ohne Server testbar | Widget | 0 | Entwurf liegt vor; Design nach Screenshots der Intro-Szene |
+| 1 | Widget 0.1 mit Demo-Modus: Liste, Zustände, Animationen, ohne Server testbar | Widget | 0 | Entwurf liegt vor; Feinschliff nach Screenshots der Intro-Szene (Nutzer liefert nach) |
 | 2 | Server: `lib/topics.js` (Zustand, Liste), Endpoints und Events nach Spec, Tests | Server | 0; keine parallele Arbeit an `server.js` | offen |
-| 3 | Widget 0.2: Anbindung an den Server, Test in OBS (horizontal und vertikal) | Widget | 1, 2 | offen |
+| 3 | Widget 0.2: Anbindung an den Server, Test in OBS (2K horizontal, vertikal per Dualstream-Plugin) | Widget | 1, 2 | offen |
 | 4 | Stream Deck vorläufig: Tasten über ein fertiges HTTP-Plugin (z. B. „API Request“) | – (Einrichtung) | 2 | offen |
 | 5 | Webkonsole: Reiter „Topics“ zum Bearbeiten der Liste, Reset-Knopf | Server | 2 | offen |
 | 6 | Effekte `topic_active`, `topic_done`, `topics_complete` über `scheduleEffect`; Lichtlogik in Home Assistant | Server (+ HA, außerhalb) | 2 | offen |
@@ -38,10 +38,17 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 
 Schritt 1 und 2 können parallel laufen, weil das Widget bis Schritt 3 nur den Demo-Modus braucht. Schritt 7 ist unabhängig von den Topics und kann vorgezogen werden.
 
-## Entscheidungen, die noch ausstehen
+## Lizenzbereiche
+Nach der Projektvorgabe „Lizenz- und Entwicklungskontext“ (12.11.2026; Ablage im Repository [UNGEKLÄRT]):
+- **Server-Teil** (Schritte 2, 5, 6, 7: `lib/topics.js`, Endpoints, Webkonsole) ist eine Änderung am **Serverkern**, kein MIT-Modul. Er folgt der Lizenz des Servers (heute `ISC` laut `package.json`; Ziel PolyForm Perimeter 1.0.1, Umstellung ist eine eigene Entscheidung).
+- **Widget und Plugin** sind eigenständige Module unter **MIT**. Sie nutzen nur die dokumentierte Schnittstelle und enthalten keinen kopierten Servercode.
 
-- Namen der beiden neuen Repositories.
-- Lizenz von Widget und Plugin (Enigma-Widget: MIT).
+## Entschieden (Nutzer, 12.11.2026)
+- Repositories: `CheckTalk-Widget`, `TwitchCompanion_Streamdeck_Plugin`.
+- Lizenz: siehe „Lizenzbereiche“.
+- Ausgabe: OBS in 2K; vertikal über ein Dualstream-Plugin im selben OBS. Ein Design, zwei Browserquellen.
+- Erledigte Themen: abgehakt und ausgegraut, **nicht** durchgestrichen.
+- Topic-Effekte erscheinen standardmäßig in keinem Log; nur ein Testschalter macht sie sichtbar (Spec, Abschnitt „Effekte“).
+
+## Entscheidungen, die noch ausstehen
 - Automatischer Reset der Liste beim Streamstart (Vorschlag in der Spec).
-- Ob Topic-Effekte in Statistik und Event-Log zählen (Vorschlag in der Spec: nein).
-- Vertikales Format: eigene OBS-Instanz oder Plugin im selben OBS (betrifft nur Schritt 3).

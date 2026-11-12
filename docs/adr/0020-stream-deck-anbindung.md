@@ -7,7 +7,7 @@
 **Entscheidung:**
 - Der Server bietet für das Stream Deck POST-Endpoints mit JSON, nur vom eigenen Rechner (Loopback und Host wie `/token`, ADR 0013), ohne `Origin` oder mit erlaubter Herkunft.
 - Für Live-Anzeigen gibt es Server-Sent-Events-Endpoints je Funktion (Muster `/api/bdu/stream`, ADR 0014) und eine Übersicht `GET /api/deck`.
-- Ziel ist ein eigenes Stream-Deck-Plugin in einem eigenen Repository, eines für alle Server-Funktionen. Bis dahin funktionieren dieselben Endpoints mit fertigen HTTP-Plugins.
+- Ziel ist ein eigenes Stream-Deck-Plugin im Repository `BombingFritz/TwitchCompanion_Streamdeck_Plugin` (MIT), eines für alle Server-Funktionen. Bis dahin funktionieren dieselben Endpoints mit fertigen HTTP-Plugins.
 - Die Schnittstelle steht in `docs/specs/stream-deck.md` dieses Repositories; das Plugin-Repository verweist darauf.
 
 **Verworfene Alternativen:**
@@ -19,4 +19,5 @@
 **Konsequenzen:**
 - Erste Endpoints, die ohne `Origin` Zustand ändern dürfen. Restlücke wie bei ADR 0013: Herkunft `null` (abgeschottete iframes) ist erlaubt.
 - Ein weiteres Repository mit Build (Node, TypeScript laut SDK-Vorlage) und Pflege bei SDK-Änderungen.
+- Lizenzbereiche nach der Projektvorgabe vom 12.11.2026: Endpoints sind Serverkern, das Plugin ist ein eigenständiges MIT-Modul.
 - Ein Plugin sieht nur Drücke seiner eigenen Aktionen; vorhandene Tasten müssen zu Multi-Aktionen erweitert werden.

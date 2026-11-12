@@ -44,7 +44,7 @@ Das Stream Deck steuert Server-Funktionen (zuerst Intro-Topics und Clip-Moment) 
 
 | Weg | Wann |
 |---|---|
-| Eigenes Plugin (eigenes Repository) | Ziel. Fertige Aktionen, Live-Anzeige, Fehleranzeige, Profil |
+| Eigenes Plugin ([TwitchCompanion_Streamdeck_Plugin](https://github.com/BombingFritz/TwitchCompanion_Streamdeck_Plugin), MIT) | Ziel. Fertige Aktionen, Live-Anzeige, Fehleranzeige, Profil |
 | Fertiges HTTP-Plugin, z. B. „API Request“ oder „API Ninja“ | Übergang und für Nutzer, die das eigene Plugin nicht installieren |
 | Eingebaute Aktion „Website“ (nur GET) | nicht unterstützt: GET ändert keinen Zustand (ADR 0018) |
 
@@ -69,6 +69,9 @@ Das Stream Deck steuert Server-Funktionen (zuerst Intro-Topics und Clip-Moment) 
 - Globale Einstellung: Server-Adresse (Standard `http://localhost:3000`).
 - Live-Anzeige über `GET /api/topics/stream`; ohne Server zeigen alle Tasten des Plugins einen Fehlerzustand.
 - Vorschlag für eine einzige Topics-Taste per Key Logic: drücken = weiter, doppelt = zurück, halten = ein/aus.
+
+## Lizenzbereich
+Die Endpoints gehören zum Serverkern (Lizenz des Servers). Das Plugin ist ein eigenständiges MIT-Modul, nutzt nur diese Schnittstelle und enthält keinen kopierten Servercode.
 
 ## Nicht-Ziele
 - Keine Lichtsteuerung über das Plugin; Licht bleibt bei Home Assistant.

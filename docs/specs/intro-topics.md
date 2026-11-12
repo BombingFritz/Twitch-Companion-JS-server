@@ -17,7 +17,7 @@ Für Thema `i` (ab 0):
 |---|---|---|
 | `step < 2i + 1` | `offen` | halbtransparent |
 | `step = 2i + 1` | `aktiv` | etwas weniger transparent, hervorgehoben |
-| `step ≥ 2i + 2` | `erledigt` | durchgestrichen, noch transparenter |
+| `step ≥ 2i + 2` | `erledigt` | abgehakt, Text ausgegraut und noch transparenter; **nicht** durchgestrichen (Nutzer, 12.11.2026) |
 
 Alle erledigt: `step = 2 × Anzahl`.
 
@@ -101,13 +101,15 @@ Zugriff nach [stream-deck.md](stream-deck.md), Abschnitt „Zugriff“.
 Hinweise:
 - Die Effekt-Queue bündelt gleiche Typen 2,5 s und hält 4 s Abstand. Lichtwechsel kommen also mit bis zu einigen Sekunden Verzögerung. Für „Talk-Licht → Spiel-Licht“ eignet sich `topics_complete`.
 - Im Effekt-Modus `off` kommen keine Topic-Effekte an.
-- Vorschlag [vom Nutzer zu bestätigen]: Topic-Effekte zählen nicht als „Effekte“ in der Statistik und erscheinen nicht unter den letzten Effekten der Webkonsole, weil sie keine Zuschauer-Ereignisse sind. Das braucht eine kleine Ausnahme in `triggerEffect`.
+- **Kein Log (Nutzer, 12.11.2026):** Topic-Effekte erscheinen standardmäßig in keinem Log: keine Konsolenzeilen („Effekt eingereiht/ausgelöst“), kein Live-Log, kein Event-Log (`events.json`), keine letzten Effekte in der Webkonsole, keine Zählung in Statistik und Stream-Bericht. Umsetzung als Liste stiller Effekt-Typen (`SILENT_EFFECT_TYPES`) in `enqueueEffect`/`triggerEffect`; Queue, Abstand und Effekt-Modus gelten unverändert.
+- **Testschalter für Funktionstests:** Konsolenbefehl `topics debug on|off`, nur im Arbeitsspeicher, nach Neustart aus. Eingeschaltet erscheinen Topic-Effekte und Topic-Tastendrücke in Konsole und Live-Log; Event-Log und Statistik bleiben auch dann unberührt.
+- Fehler beim Senden an Home Assistant bleiben sichtbar (einmal je Fehlertext über `logIfChanged`), damit ein kaputter Webhook auffällt [Festlegung von Claude, vom Nutzer zu bestätigen].
 - Zurück löst keinen Effekt aus.
 
-## Widget (eigenes Repository)
+## Widget ([CheckTalk-Widget](https://github.com/BombingFritz/CheckTalk-Widget), MIT)
 - Verbindet sich per `EventSource` mit `/api/topics/stream`, baut neu auf, wenn der Server fehlt; ohne Verbindung unsichtbar.
-- Animiert nur: Abhaken (Strich), Zurücktreten erledigter Themen, Hervortreten des aktiven Themas, Aus- und Einblenden der Liste. Keine weiteren Bewegungen.
-- Ein Design für horizontal und vertikal: Das Widget füllt seine Browserquelle, Schriftgröße folgt der Quellgröße. Lage und Größe legt die OBS-Quelle je Canvas fest. Beide Quellen sind gleichzeitig verbunden und zeigen denselben Stand.
+- Animiert nur: Abhaken (Haken, Text ausgegraut), Zurücktreten erledigter Themen, Hervortreten des aktiven Themas, Aus- und Einblenden der Liste. Keine weiteren Bewegungen.
+- Ein Design für horizontal und vertikal: Das Widget füllt seine Browserquelle, Schriftgröße folgt der Quellgröße. Lage und Größe legt die OBS-Quelle je Canvas fest. Ausgabe beim Nutzer: 2K horizontal, vertikal über ein Dualstream-Plugin im selben OBS; beide Quellen sind gleichzeitig verbunden und zeigen denselben Stand.
 - URL-Parameter: `server` (Standard `http://localhost:3000`), `theme` (`brand` | `neutral`), `demo=1` (ohne Server, Tasten im Browser).
 
 ## Nicht-Ziele
@@ -123,7 +125,11 @@ Hinweise:
 - Neustart des Servers: Liste bleibt, `step = 0`, ausgeblendet.
 - Zwei Widgets (horizontal, vertikal) zeigen stets denselben Stand.
 - Aufruf von einem anderen Rechner im LAN: 403. Aufruf mit fremder `Origin`: 403.
+- Ohne Testschalter erzeugt ein kompletter Durchlauf keine einzige Zeile in Konsole, Live-Log, `events.json` und Statistik.
 - Tests in `test/topics-test.js`, eingetragen in `test/run-all.js`.
 
 ## Berührte Dateien
-Neu: `lib/topics.js`, `topics.json` (Laufzeit, nicht im Repository), `test/topics-test.js`. Geändert: `server.js` (Verdrahtung, Endpoints, Modulschalter, Konsolenbefehl `topics`), `public/admin/` (Reiter „Topics“).
+Neu: `lib/topics.js`, `topics.json` (Laufzeit, nicht im Repository), `test/topics-test.js`. Geändert: `server.js` (Verdrahtung, Endpoints, Modulschalter, Konsolenbefehl `topics`, stille Effekt-Typen), `public/admin/` (Reiter „Topics“).
+
+## Lizenzbereich
+Serverkern (Lizenz des Servers), kein MIT-Modul. Das Widget ist ein eigenständiges MIT-Modul und nutzt nur die hier beschriebene Schnittstelle.
