@@ -53,7 +53,7 @@ Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand 
 | Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand. Repository `BombingFritz/CoinFlip` (privat), Stand 0.1.0 | aktiv |
 | Enigma-Widget | immersive Kommunikation für U-Boot-Streams; Repository `BombingFritz/Uboat-Widget` (öffentlich, MIT ab 1.3.1). Ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), aktuell 1.3.0 mit Benchmark zur Modellwahl; funktioniert ohne Server, der Chat-Modus ist dort optional und eingeklappt | aktiv |
 | Companion-Widget | Anzeige und Steuerung von Sub-Goals, Effekten, Server-Daten | geplant / in Arbeit |
-| CheckTalk-Widget (Intro-Topics) | abhakbare Themenliste fürs Intro, Steuerung per Stream Deck über den Server; Repository `BombingFritz/CheckTalk-Widget` (MIT), Fahrplan in [FAHRPLAN.md](FAHRPLAN.md) | geplant (12.11.2026) |
+| CheckTalk-Widget (Intro-Topics) | abhakbare Themenliste fürs Intro, Steuerung per Stream Deck über den Server; Repository `BombingFritz/CheckTalk-Widget` (MIT), Fahrplan in [FAHRPLAN.md](FAHRPLAN.md) | Server-Teil und Widget 0.2.0 umgesetzt (12.11.2026), Test in OBS offen |
 | Spiel-Statistik-Widgets | spielbezogene Statistiken | angefangen |
 | Flavor-KI-Widgets | thematische KI-Interaktion | Idee / angefangen |
 

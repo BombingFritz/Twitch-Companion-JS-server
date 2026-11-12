@@ -52,8 +52,8 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 ### Stream Deck und Show-Ablauf
 | ADR | Worum es geht |
 |---|---|
-| [0020](0020-stream-deck-anbindung.md) | Stream Deck ruft POST-Endpoints nur vom eigenen Rechner auf; Ziel ist ein eigenes Plugin. Vorgeschlagen. |
-| [0021](0021-intro-topics-modul.md) | Intro-Topics: Zustand im Server, Anzeige im eigenen Widget, Effekte über die Queue. Vorgeschlagen. |
+| [0020](0020-stream-deck-anbindung.md) | Stream Deck ruft POST-Endpoints nur vom eigenen Rechner auf; Ziel ist ein eigenes Plugin. |
+| [0021](0021-intro-topics-modul.md) | Intro-Topics: Zustand im Server, Anzeige im eigenen Widget, stille Effekte über die Queue. Nachtrag: Anzeige-Einstellungen im Server. |
 
 ## Herkunft
 
