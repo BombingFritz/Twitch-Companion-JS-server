@@ -41,6 +41,7 @@ const MODULES_FILE = './modules.json';                     // Modul-Schalter (bd
 const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
 const STREAM_REPORTS_DIR = './stream_reports';             // je abgeschlossenem Stream eine .json und eine .txt (ADR 0019)
+const PRIVACY_FILE = './privacy_optouts.json';             // !privat: User-IDs mit Zeitpunkt (docs/DATENKATALOG.md)
 const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', topics: 'Intro-Topics' };   // per Konsole und Webkonsole schaltbare Module, Standard: an
 const MODULE_OFF_TEXT = { topics: 'Stream-Deck-Tasten werden ignoriert, das Widget blendet aus' };   // sonst: Befehle im Chat werden ignoriert
 
@@ -53,6 +54,14 @@ const TOPICS_ACTIONS = ['next', 'back', 'toggle', 'reset'];
 const SILENT_EFFECT_TYPES = new Set(['topic_active', 'topic_done', 'topics_complete']);   // in keinem Log, keine Statistik (Nutzer, 12.11.2026)
 const ADMIN_TOPICS_PATH = '/api/admin/topics';
 const DECK_PATH = '/api/deck';
+
+// !privat: Zuschauer schalten selbst um, ob sie in der Statistik mit Namen erscheinen (ADR 0022)
+const PRIVACY_COMMAND = '!privat';
+const PRIVACY_ANON_NAME = 'anonymer Schlaumeier';
+const PRIVACY_COMMAND_COOLDOWN_MS = 10 * 1000;     // je Zuschauer, gegen versehentliches Doppelt-Umschalten
+const PRIVACY_OPTOUTS_PATH = '/api/privacy/optouts';
+const PRIVACY_TEXT_ON = `Privatmodus an: In der Stream-Statistik erscheinst du ab jetzt und rückwirkend nur noch als „${PRIVACY_ANON_NAME}“. Mit ${PRIVACY_COMMAND} schaltest du ihn wieder aus.`;
+const PRIVACY_TEXT_OFF = `Privatmodus aus: In der Stream-Statistik erscheinst du ab jetzt wieder mit Namen. Frühere Einträge bleiben anonym. Mit ${PRIVACY_COMMAND} schaltest du ihn wieder ein.`;
 
 // Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
 const BOT_FILE = './bot.json';                    // nur ID und Name des Bots, keine Tokens
@@ -188,6 +197,25 @@ function saveStreamStats(data) {
   writeJsonAtomic(STREAM_STATS_FILE, data);
 }
 
+// !privat: { "<userId>": "<ISO-Zeitpunkt>" }; fehlt die Datei oder ist sie ungültig: leer
+function loadPrivacyOptouts() {
+  if (!fs.existsSync(PRIVACY_FILE)) return {};
+  try {
+    const data = JSON.parse(fs.readFileSync(PRIVACY_FILE, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch {
+    console.warn(`[Privat] ${PRIVACY_FILE} ist unlesbar – niemand gilt als privat, bis die Datei repariert ist`);
+    return {};
+  }
+}
+
+function savePrivacyOptouts(data) {
+  writeJsonAtomic(PRIVACY_FILE, data);
+}
+
+const privacyOptouts = loadPrivacyOptouts();
+const isPrivateUser = userId => Object.hasOwn(privacyOptouts, String(userId));
+
 const streamReports = createStreamReports({
   dir: STREAM_REPORTS_DIR,
   metrics: streamMetricDefs(),
@@ -209,6 +237,8 @@ const streamSession = createStreamSession({
   reconcileMinAgeMs: STREAM_RECONCILE_MIN_AGE_MS,
   maxChatters: STREAM_MAX_CHATTERS,
   topChatters: STREAM_TOP_CHATTERS,
+  isPrivate: isPrivateUser,
+  anonName: PRIVACY_ANON_NAME,
 });
 const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   // vor dem Umhüllen von console, zählt die Fehler mit
 setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
@@ -1285,6 +1315,14 @@ app.get('/api/bdu/stream', (req, res) => {
   });
 });
 
+// ── !privat: Liste für Widgets, damit sie ausgenommene Zuschauer weglassen (Issue #44). Nur lokal, wie /token ──
+app.get(PRIVACY_OPTOUTS_PATH, (req, res) => {
+  if (!isLocalWidgetRequest(req, PRIVACY_OPTOUTS_PATH)) {
+    return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  }
+  res.json({ userIds: Object.keys(privacyOptouts) });
+});
+
 // ── BdU-Chat: Antwort des Widgets ──
 app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) => {
   if (!isLocalWidgetRequest(req, '/api/bdu/answer')) {
@@ -1937,6 +1975,7 @@ function connectEventSub(reconnectUrl = null) {
           streamSession.noteChatter(msg.payload.event.chatter_user_id, msg.payload.event.chatter_user_name || msg.payload.event.chatter_user_login);
         }
         await handleChatCommand(msg.payload.event);
+        await handlePrivacyCommand(msg.payload.event);
         handleBduCommand(msg.payload.event);
         await handleUboatCommand(msg.payload.event);
         await handleWhitelistShoutout(msg.payload.event);
@@ -2491,6 +2530,53 @@ async function handleChatCommand(evt) {
 
   // Als Broadcaster (kein feature); Fehler meldet sendChatMessage selbst
   if (await sendChatMessage(getLeaderboardText())) console.log('Leaderboard auf !raidstats-Befehl gesendet');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// !PRIVAT – Zuschauer schalten um, ob sie in der Statistik mit Namen erscheinen (ADR 0022)
+// An: bisherige Einträge im laufenden Stream und in allen Berichten werden anonymisiert,
+// neue Nachrichten zählen als „anonymer Schlaumeier“. Aus: ab jetzt wieder mit Namen.
+// ═══════════════════════════════════════════════════════════════════
+
+const lastPrivacyCommandByUser = new Map();   // user_id -> Zeitpunkt
+
+async function handlePrivacyCommand(evt) {
+  const text = (evt.message?.text || '').trim().toLowerCase();
+  if (text !== PRIVACY_COMMAND) return;
+  // Shared Chat: Zuschauer anderer Kanäle erfasst der Server ohnehin nicht
+  if (evt.source_broadcaster_user_id && evt.source_broadcaster_user_id !== evt.broadcaster_user_id) return;
+  const userId = String(evt.chatter_user_id || '');
+  if (!userId) return;
+
+  const now = Date.now();
+  if (now - (lastPrivacyCommandByUser.get(userId) || 0) < PRIVACY_COMMAND_COOLDOWN_MS) {
+    console.log(`[Privat] ${PRIVACY_COMMAND} von @${evt.chatter_user_login} ignoriert – kurz zuvor schon umgeschaltet`);
+    return;
+  }
+  lastPrivacyCommandByUser.set(userId, now);
+
+  const turnOn = !isPrivateUser(userId);
+  if (turnOn) privacyOptouts[userId] = new Date(now).toISOString();
+  else delete privacyOptouts[userId];
+  try {
+    savePrivacyOptouts(privacyOptouts);
+  } catch (err) {
+    console.error(`[Privat] ${PRIVACY_FILE} konnte nicht gespeichert werden: ${err.message}`);
+  }
+
+  if (turnOn) {
+    const inStream = streamSession.anonymize(userId) ? 1 : 0;
+    let reports = 0;
+    try {
+      reports = streamReports.anonymize(userId, PRIVACY_ANON_NAME);
+    } catch (err) {
+      console.error(`[Privat] Berichte konnten nicht anonymisiert werden: ${err.message}`);
+    }
+    console.log(`[Privat] @${evt.chatter_user_login} hat den Privatmodus eingeschaltet (anonymisiert: laufender Stream ${inStream ? 'ja' : 'nein'}, Berichte ${reports})`);
+  } else {
+    console.log(`[Privat] @${evt.chatter_user_login} hat den Privatmodus ausgeschaltet`);
+  }
+  await sendChatMessage(turnOn ? PRIVACY_TEXT_ON : PRIVACY_TEXT_OFF, evt.message_id);
 }
 
 // ═══════════════════════════════════════════════════════════════════

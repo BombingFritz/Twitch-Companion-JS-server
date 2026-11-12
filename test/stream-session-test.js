@@ -238,6 +238,36 @@ old.session.ensureArchived();
 old.session.ensureArchived();
 check('B10 Älterer abgeschlossener Stand ohne Bericht wird einmal archiviert', fromOld.length === 1 && old.file.data.report_id === 'alter-stream' && fromOld[0].state.counters.follows === 2);
 
+// !privat (ADR 0022)
+{
+  const privat = new Set();
+  const p = setup({ isPrivate: id => privat.has(id), anonName: 'anonymer Schlaumeier' });
+  p.session.onOnline({ id: 's1' });
+  p.session.noteChatter('u1', 'Anna');
+  p.session.noteChatter('u1', 'Anna');
+  p.session.noteChatter('u2', 'Bert');
+  privat.add('u1');
+  const savesBefore = p.saves.length;
+  const moved = p.session.anonymize('u1');
+  let chatters = p.file.data.chatters;
+  check('P1 Anonymisieren verschiebt den Eintrag ohne ID und Namen und speichert sofort', moved === true && !('u1' in chatters) && chatters['anon-1'].name === 'anonymer Schlaumeier'
+    && chatters['anon-1'].count === 2 && p.saves.length === savesBefore + 1 && !JSON.stringify(p.file.data).includes('Anna'), JSON.stringify(chatters));
+  p.session.noteChatter('u1', 'Anna');
+  p.session.flush();
+  chatters = p.file.data.chatters;
+  check('P2 Weitere Nachrichten zählen beim selben anonymen Eintrag', chatters['anon-1'].count === 3 && !('u1' in chatters) && snap(p.session).unique_chatters === 2, JSON.stringify(chatters));
+  privat.add('u3');
+  p.session.noteChatter('u3', 'Cora');
+  p.session.flush();
+  chatters = p.file.data.chatters;
+  check('P3 Neue private Chatter bekommen einen eigenen anonymen Eintrag', chatters['anon-2'].count === 1 && !JSON.stringify(chatters).includes('Cora') && snap(p.session).unique_chatters === 3, JSON.stringify(chatters));
+  check('P4 Top-Liste zeigt den anonymen Namen', snap(p.session).top_chatters[0].name === 'anonymer Schlaumeier', JSON.stringify(snap(p.session).top_chatters));
+  check('P5 Ohne Eintrag nichts zu tun', p.session.anonymize('u9') === false && p.session.anonymize('anon-1') === false);
+  privat.delete('u1');
+  p.session.noteChatter('u1', 'Anna');
+  check('P6 Ausgeschaltet: wieder mit Namen, alte Einträge bleiben anonym', snap(p.session).unique_chatters === 4 && p.session.snapshot().top_chatters.some(c => c.name === 'Anna' && c.count === 1));
+}
+
 // Robustheit
 ({ session } = setup({ save: () => { throw new Error('Datei gesperrt'); } }));
 let threw = false;

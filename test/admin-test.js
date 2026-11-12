@@ -31,8 +31,10 @@ class FakeWS extends EventEmitter { constructor() { super(); this.readyState = 1
 FakeWS.OPEN = 1;
 const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
 const subscribed = [];
+const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
 const fakeAxios = {
   post: async (url, body) => {
+    if (url.includes('helix/chat/messages')) chatSent.push(body);
     if (url.includes('eventsub/subscriptions')) subscribed.push(body.type === 'channel.raid' ? `channel.raid:${body.condition.from_broadcaster_user_id ? 'from' : 'to'}` : body.type);
     return { data: { data: [] } };
   },
@@ -604,6 +606,67 @@ async function statistik() {
   check('S42 Nur protokolliert: Upgrade zählt nicht als Sub', (await values()).subs === subsBefore + 1, String((await values()).subs - subsBefore));
 }
 
+// !privat (ADR 0022): umschalten, anonymisieren (laufender Stream und Berichte), Liste für Widgets
+async function privat() {
+  let n = 0;
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
+  await sleep(100);
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `p${++n}` }, payload: { event } }));
+  const chat = (login, id, text = 'hallo', extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `m${n}`, message: { text }, badges: [], ...extra });
+  const stream = async () => JSON.parse((await request(STATS)).body).stream;
+  const reportsDir = path.join(workDir, 'stream_reports');
+  const optoutFile = path.join(workDir, 'privacy_optouts.json');
+  const replies = () => chatSent.filter(b => /Privatmodus/.test(b.message));
+
+  // Erster Stream mit Anna, nach dem Raid archiviert
+  send('stream.online', { id: 'st1', type: 'live', started_at: new Date(Date.now() - 60000).toISOString() });
+  await sleep(50);
+  chat('anna', 'z1'); chat('anna', 'z1'); chat('bert', 'z2');
+  await sleep(50);
+  send('channel.raid', { from_broadcaster_user_id: '4711', from_broadcaster_user_login: 'testkanal', to_broadcaster_user_id: '88', to_broadcaster_user_login: 'freund', viewers: 5 });
+  await sleep(100);
+  // Zweiter Stream läuft
+  send('stream.online', { id: 'st2', type: 'live', started_at: new Date().toISOString() });
+  await sleep(50);
+  chat('anna', 'z1');
+  await sleep(50);
+
+  chat('anna', 'z1', '!PRIVAT');
+  await sleep(150);
+  let st = await stream();
+  const reportFiles = fs.existsSync(reportsDir) ? fs.readdirSync(reportsDir) : [];
+  const reportText = reportFiles.map(f => fs.readFileSync(path.join(reportsDir, f), 'utf8')).join('\n');
+  check('V1 !privat schaltet ein, antwortet als Antwort auf die Nachricht', replies().length === 1 && /Privatmodus an/.test(replies()[0].message) && !!replies()[0].reply_parent_message_id, JSON.stringify(replies()));
+  check('V2 ID mit Zeitpunkt gespeichert', fs.existsSync(optoutFile) && !!JSON.parse(fs.readFileSync(optoutFile, 'utf8')).z1);
+  check('V3 Laufender Stream: kein Name mehr, anonym mitgezählt', !st.top_chatters.some(c => c.name === 'anna') && st.top_chatters.some(c => c.name === 'anonymer Schlaumeier' && c.count === 2), JSON.stringify(st.top_chatters));
+  check('V4 Berichte rückwirkend anonymisiert (.json und .txt)', reportFiles.length === 2 && !/anna/.test(reportText) && reportText.includes('anonymer Schlaumeier') && reportText.includes('bert'), reportFiles.join(','));
+  check('V4b stream_stats.json ohne Namen', !fs.readFileSync(path.join(workDir, 'stream_stats.json'), 'utf8').includes('anna'));
+
+  let r = await request('/api/privacy/optouts');
+  check('V5 Liste für Widgets', r.status === 200 && JSON.stringify(JSON.parse(r.body)) === '{"userIds":["z1"]}', r.body);
+  r = await request('/api/privacy/optouts', { Origin: 'null' });
+  check('V6 Widget mit Herkunft null (file:///) darf lesen', r.status === 200, String(r.status));
+  r = await request('/api/privacy/optouts', { Host: 'example.com' });
+  check('V7 Fremder Host: 403', r.status === 403, String(r.status));
+
+  chat('anna', 'z1', '!privat');
+  await sleep(100);
+  check('V8 Gleich noch einmal: ignoriert (Abklingzeit)', replies().length === 1 && !!JSON.parse(fs.readFileSync(optoutFile, 'utf8')).z1);
+  chat('gast', 'z9', '!privat', { source_broadcaster_user_id: '999' });
+  await sleep(100);
+  check('V9 Geteilter Chat aus fremdem Kanal: ignoriert', replies().length === 1 && !JSON.parse(fs.readFileSync(optoutFile, 'utf8')).z9);
+
+  await sleep(10100);
+  chat('anna', 'z1', '!privat');
+  await sleep(150);
+  chat('anna', 'z1');
+  await sleep(50);
+  st = await stream();
+  r = await request('/api/privacy/optouts');
+  check('V10 Zweites !privat schaltet aus und sagt es', replies().length === 2 && /Privatmodus aus/.test(replies()[1].message) && !JSON.parse(fs.readFileSync(optoutFile, 'utf8')).z1 && r.body === '{"userIds":[]}', r.body);
+  check('V11 Danach wieder mit Namen, frühere Einträge bleiben anonym', st.top_chatters.some(c => c.name === 'anna' && c.count === 1) && st.top_chatters.some(c => c.name === 'anonymer Schlaumeier'), JSON.stringify(st.top_chatters));
+}
+
 async function effekteAlt() {
   const r = await request(OVERVIEW);
   check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
@@ -680,6 +743,7 @@ async function ohneTokens() {
   else if (scenario === 'effekte') await effekte();
   else if (scenario === 'effekte-alt') await effekteAlt();
   else if (scenario === 'statistik') await statistik();
+  else if (scenario === 'privat') await privat();
   else await ablauf();
 
   console.log = realLog;

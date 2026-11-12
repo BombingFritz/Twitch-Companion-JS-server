@@ -50,6 +50,18 @@ fs.rmSync(path.join(dir, `${id2}.txt`));
 check('R12 Fehlt die .txt, wird der Text neu erzeugt', (reports.text(id2) || '').includes('Hinweise:'));
 check('R13 Unbekannte oder ungültige ID: kein Text', reports.text('2026-01-01_0000') === null && reports.text('../.env') === null);
 
+// !privat (ADR 0022): Anna (ID 1) wird in allen Berichten anonymisiert
+const withTop = closed(start1, 3);
+withTop.summary.top_chatters = [{ name: 'Anna', count: 7 }, { name: 'Bert', count: 3 }];
+const idTop = reports.archive(withTop);
+const changed = reports.anonymize('1', 'anonymer Schlaumeier');
+const anonReport = JSON.parse(fs.readFileSync(path.join(dir, `${idTop}.json`), 'utf8'));
+const anonText = fs.readFileSync(path.join(dir, `${idTop}.txt`), 'utf8');
+check('R19 Anonymisieren ändert alle Berichte mit der ID, ohne Name in .json und .txt', changed === 2 && !JSON.stringify(anonReport).includes('Anna') && !anonText.includes('Anna')
+  && anonReport.state.chatters['anon-1'].count === 7 && anonReport.summary.top_chatters[0].name === 'anonymer Schlaumeier' && anonText.includes('1. anonymer Schlaumeier (7)'), JSON.stringify(anonReport.state.chatters));
+check('R20 Summen und verschiedene Chatter bleiben', anonText.includes('Verschiedene Chatter: 2') && reports.totals().streams === 2, anonText);
+check('R21 Zweiter Aufruf ändert nichts mehr', reports.anonymize('1', 'anonymer Schlaumeier') === 0);
+
 fs.writeFileSync(path.join(dir, '2026-11-13_1000.json'), '{ kaputt');
 fs.writeFileSync(path.join(dir, 'fremd.json'), '{}');
 const before = warnings.length;

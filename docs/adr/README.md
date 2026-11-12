@@ -48,6 +48,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | ADR | Worum es geht |
 |---|---|
 | [0019](0019-statistik-grundgeruest.md) | Statistik in drei Bereichen, eigenes Modul, Zählen im Arbeitsspeicher, Stream-Ablauf nur einmal. |
+| [0022](0022-privat-befehl.md) | `!privat`: Zuschauer werden auf eigenen Wunsch anonymisiert mitgezählt, auch rückwirkend; Liste für Widgets. Ergänzt 0019. |
 
 ### Stream Deck und Show-Ablauf
 | ADR | Worum es geht |
@@ -58,7 +59,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 ## Herkunft
 
 - **Nachträglich festgehalten** aus vorhandenem Code und älterer Doku (Entscheidung lag schon vor, Begründung und Alternativen teils `[UNGEKLÄRT]`): 0001–0011; ausdrücklich „aus dem Code abgeleitet“ sind 0002 und 0007.
-- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0021. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
+- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0022. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
 
 ## Neues ADR anlegen
 
