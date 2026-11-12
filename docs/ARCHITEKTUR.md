@@ -52,6 +52,8 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 
 ## 3. Persistierte Dateien (Arbeitsverzeichnis)
 
+Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`.
+
 | Datei | Struktur |
 |---|---|
 | `tokens.json` | `{access_token, refresh_token, broadcaster_id, broadcaster_name, obtained_at, expires_in, expires_at}` |
