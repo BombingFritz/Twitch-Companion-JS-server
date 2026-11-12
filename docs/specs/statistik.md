@@ -121,7 +121,7 @@ Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speiche
   - `POST /api/admin/stream/close` → `{ok, stream}`; 409, wenn gerade nichts erfasst wird.
   - `GET /api/admin/overview` enthält `stream: {status, started_at, ended_at, closes_at, close_reason, report_id, report_deleted, warnings}`; `GET /api/admin/stats` enthält im Bereich `stream` zusätzlich `report_id` (und `report_deleted`).
 - Dateigröße: Ein Bericht ist einige KB groß (Chatter höchstens 1000), geschrieben wird nur einmal je Stream.
-- Geprüft mit `test/stream-reports-test.js`, `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen (auch Handybreite); am echten Stream noch nicht.
+- Geprüft mit `test/stream-reports-test.js`, `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen (auch Handybreite) und am echten Stream vom 11.11.2026 (Co-Stream mit geteiltem Chat): Abschluss nach dem Raid, Bericht gespeichert, der Stream vom 10.11. beim Start nachträglich archiviert. Gegen Twitchs Stream-Übersicht stimmten Dauer und neue Abonnements (Subs + verschenkte Subs); Abweichungen bei Follows und Chattern siehe OFFEN.md.
 
 ## Stufen
 | Stufe | Inhalt | Stand |

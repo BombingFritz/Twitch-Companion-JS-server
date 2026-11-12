@@ -581,6 +581,27 @@ async function statistik() {
   st = await stream();
   check('S38 Bericht des letzten Streams gelöscht: kein toter Link, kein neuer Bericht', r.status === 200 && ov.report_id === null && ov.report_deleted === true
     && st.report_id === null && st.report_deleted === true && !fs.existsSync(path.join(reportsDir, `${lastId}.json`)), JSON.stringify(ov));
+
+  // Protokoll der Sub-Ereignisse und nicht ausgewerteter Ankündigungen (nur Log, keine Zählung)
+  const subsBefore = (await values()).subs;
+  const logStart = logs.length;
+  send('channel.subscribe', { user_name: 'binneo_', tier: '1000', is_gift: false });
+  send('channel.subscribe', { user_name: 'Vero0', tier: '1000', is_gift: true });
+  send('channel.subscription.gift', { user_name: 'binneo_', total: 2, tier: '1000' });
+  send('channel.subscription.message', { user_name: 'ZT_303', tier: '1000', cumulative_months: 8, duration_months: 6 });
+  notice('resub', { resub: { is_gift: false, is_prime: true, sub_tier: '1000', cumulative_months: 26 } });
+  notice('gift_paid_upgrade', { gift_paid_upgrade: { gifter_is_anonymous: true } });
+  notice('raid', { raid: { viewer_count: 3 } });
+  notice('shared_chat_sub', { source_broadcaster_user_id: '999', shared_chat_sub: { is_prime: false } });
+  await sleep(100);
+  const newLogs = logs.slice(logStart);
+  const has = text => newLogs.some(l => l.includes(text));
+  check('S39 Sub-Ereignisse mit Stufe und Geschenk-Angabe', has('Sub-Event (channel.subscribe): binneo_ – Stufe 1, nicht geschenkt') && has('Sub-Event (channel.subscribe): Vero0 – Stufe 1, geschenkt')
+    && has('Sub-Event (channel.subscription.gift): binneo_ – verschenkt 2, Stufe 1') && has('Sub-Event (channel.subscription.message): ZT_303 – Stufe 1, 8 Monate insgesamt, für 6 Monate gekauft'), newLogs.join(' | '));
+  check('S40 Resub-Ankündigung nennt Prime und Monate', newLogs.some(l => /Chat-Ankündigung \(resub\): @gast\d+, Prime, 26 Monate insgesamt/.test(l)), newLogs.join(' | '));
+  check('S41 Nicht ausgewertete Ankündigung wird genannt, Raid und geteilter Chat nicht', newLogs.some(l => /Chat-Ankündigung \(gift_paid_upgrade\) von @gast\d+ – nicht ausgewertet/.test(l))
+    && !has('(raid) von') && !has('shared_chat'), newLogs.join(' | '));
+  check('S42 Nur protokolliert: Upgrade zählt nicht als Sub', (await values()).subs === subsBefore + 1, String((await values()).subs - subsBefore));
 }
 
 async function effekteAlt() {

@@ -25,6 +25,7 @@ Home Assistant ist optional. Hooks lassen sich auch unabhängig vom Server ausl�
 - Ein Gift-Bomb mit 3 Subs erzeugt genau einen Webhook mit `type: "gift"` und `meta.giftCount: 3`.
 - Die `frühen` Events `channel.subscribe`, `channel.subscription.gift` und `channel.subscription.message` erzeugen keinen Webhook.
 - Eine `sub`-Chat-Ankündigung mit `is_gift` erzeugt keinen Webhook.
+- Andere Chat-Ankündigungen des eigenen Kanals (z. B. `gift_paid_upgrade`) erzeugen keinen Webhook, erscheinen aber im Protokoll als „nicht ausgewertet“ (außer `raid`). Ankündigungen aus fremden Kanälen erscheinen nicht (ADR 0008, Nachtrag).
 - Im Modus `off` wird kein Webhook gesendet und die Queue ist danach leer.
 - Der Modus bleibt nach einem Neustart erhalten.
 - Das Webhook-Payload entspricht dem Schema in docs/ARCHITEKTUR.md.
