@@ -13,7 +13,9 @@ const CONFIRM_LOCK_MS = 500;
 const COLLAPSE_KEY = 'twitchCompanionAdmin.optionalCollapsed';
 const STATS_URL = '/api/admin/stats';
 const TWITCH_DOWN_GRACE_MS = 20000;
-const CLOSE_REASONS = { raid: 'nach dem Raid', frist: '2 Stunden nach dem letzten Offline', neustart: 'beim Serverstart' };
+const CLOSE_REASONS = { raid: 'nach dem Raid', knopf: 'per Knopf', frist: '2 Stunden nach dem letzten Offline', neustart: 'beim Serverstart' };
+const REPORTS_URL = '/api/admin/reports';
+const STREAM_CLOSE_URL = '/api/admin/stream/close';
 const WHITELIST_URL = '/api/admin/whitelist';
 const MODULES_URL = '/api/admin/modules';
 const EFFECT_MODE_URL = '/api/admin/effects/mode';
@@ -45,7 +47,12 @@ const state = {
   data: null, online: null, pid: null, pollMs: DEFAULT_POLL_MS, timer: null, noticeTimer: null,
   confirming: null, confirmTimer: null, exit: null, actions: null, actionsKey: null,
   optionalCollapsed: loadCollapsed(), optionalToggle: null,
-  statistics: { view: null, rows: null, streamRows: null, note: null, loading: false },
+  statistics: {
+    view: null, rows: null, streamRows: null, streamExtras: null, totalRows: null, reportList: null, note: null,
+    loading: false, data: null, reports: null,
+  },
+  streamClose: { confirming: false, since: 0, busy: false, message: '' },
+  reportDelete: { id: null, since: 0, message: '' },
   twitchDownSince: null,
   settings: {
     view: null, rows: {}, message: null, busy: new Set(),
@@ -360,22 +367,108 @@ function streamStatisticRows(s) {
   return items;
 }
 
+// ── Stream beenden und Berichte (Statistik, Stufe 3) ────────────────
+const reportLink = id => el('a', { href: `${REPORTS_URL}/${encodeURIComponent(id)}`, target: '_blank', rel: 'noopener', text: 'Bericht öffnen' });
+
+// Nach einer Änderung sofort neu zeichnen, ohne auf die nächste Abfrage zu warten
+function repaint() {
+  if (activeTab().id === 'statistik') paintStatistics();
+  else renderContent();
+}
+
+async function closeStreamLog() {
+  const sc = state.streamClose;
+  sc.busy = true;
+  repaint();
+  try {
+    await postJson(STREAM_CLOSE_URL, {});
+    sc.confirming = false;
+    sc.message = '';
+  } catch (err) {
+    sc.message = err.message;
+  } finally {
+    sc.busy = false;
+    await poll();
+    if (activeTab().id === 'statistik') await loadStatistics();
+  }
+}
+
+// Knopf mit Rückfrage. Die Sperre gegen Doppelklicks hängt an der Zeit, damit sie das Neuzeichnen übersteht.
+function streamCloseControls(s) {
+  const sc = state.streamClose;
+  if (!s || (s.status !== 'live' && s.status !== 'offline')) return [];
+  if (sc.confirming && Date.now() - sc.since > CONFIRM_MS) sc.confirming = false;
+  const nodes = [];
+  if (sc.confirming) {
+    const locked = Date.now() - sc.since < CONFIRM_LOCK_MS;
+    if (locked) setTimeout(repaint, CONFIRM_LOCK_MS);
+    nodes.push(
+      el('p', { class: 'question', text: 'Streamlog jetzt beenden? Danach wird für diesen Stream nicht mehr gezählt.' }),
+      actionButton('Ja, beenden', 'danger', closeStreamLog, locked || sc.busy),
+      actionButton('Abbrechen', '', () => { sc.confirming = false; repaint(); }, sc.busy));
+  } else {
+    nodes.push(actionButton('Streamlog beenden', 'danger', () => { sc.confirming = true; sc.since = Date.now(); repaint(); }, sc.busy));
+  }
+  if (sc.message) nodes.push(el('p', { class: 'error', text: sc.message }));
+  return [el('div', { class: 'actions' }, ...nodes)];
+}
+
+function warningNodes(warnings) {
+  return (warnings || []).map(w => el('p', { class: 'warn-text', text: `Hinweis: ${w}` }));
+}
+
+function streamCard(d) {
+  const s = d.stream;
+  if (!s) return null;
+  let status = el('span', { text: 'noch kein Stream erfasst' });
+  if (s.status === 'live') status = indicator('ok', `läuft seit ${clock(s.started_at)} Uhr`);
+  if (s.status === 'offline') status = indicator('warn', `offline, Erfassung bis ${clock(s.closes_at)} Uhr`);
+  if (s.status === 'closed') status = indicator('ok', `abgeschlossen um ${clock(s.ended_at)} Uhr, ${CLOSE_REASONS[s.close_reason] || s.close_reason}`);
+  const items = [row('Streamlog', status)];
+  if (s.status === 'closed') items.push(row('Bericht', s.report_id ? reportLink(s.report_id) : el('span', { text: s.report_deleted ? 'gelöscht' : 'wird gespeichert …' })));
+  return card('Stream', rows(...items), ...warningNodes(s.warnings), ...streamCloseControls(s));
+}
+
+async function deleteReport(id) {
+  const rd = state.reportDelete;
+  try {
+    await postJson(`${REPORTS_URL}/delete`, { id });
+    rd.message = '';
+  } catch (err) {
+    rd.message = err.message;
+  }
+  rd.id = null;
+  await loadStatistics();
+}
+
+function reportRow(r) {
+  const rd = state.reportDelete;
+  if (rd.id === r.id && Date.now() - rd.since > CONFIRM_MS) rd.id = null;
+  let actions = [reportLink(r.id), actionButton('Löschen', '', () => { rd.id = r.id; rd.since = Date.now(); repaint(); }, false)];
+  if (rd.id === r.id) {
+    const locked = Date.now() - rd.since < CONFIRM_LOCK_MS;
+    if (locked) setTimeout(repaint, CONFIRM_LOCK_MS);
+    actions = [
+      actionButton('Ja, löschen', 'danger', () => deleteReport(r.id), locked),
+      actionButton('Abbrechen', '', () => { rd.id = null; repaint(); }, false),
+    ];
+  }
+  const text = `${dateTime(r.started_at)} · ${duration(r.duration_seconds)} · ${CLOSE_REASONS[r.close_reason] || r.close_reason}`;
+  return el('li', { class: 'wl-row' },
+    el('div', { class: 'wl-name' }, el('span', { text }), ...warningNodes(r.warnings)),
+    el('div', { class: 'wl-actions' }, ...actions));
+}
+
 async function loadStatistics() {
   const statistics = state.statistics;
   if (statistics.loading) return;
   statistics.loading = true;
   try {
-    const response = await fetch(STATS_URL, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    const { started_at: started, metrics } = data.instance;
-    statistics.rows.replaceChildren(
-      row('Läuft', el('span', { text: `${uptime(started)}, Start ${dateTime(started)}` })),
-      ...metrics.map(metricRow));
-    statistics.streamRows.replaceChildren(...streamStatisticRows(data.stream));
-    statistics.note.textContent = data.enabled
-      ? 'Der Broadcaster und genutzte Chat-Bots zählen nicht bei den Chatnachrichten. Die Gesamtstatistik folgt.'
-      : 'Die Statistik ist abgeschaltet.';
+    const [statsResponse, reportsResponse] = await Promise.all([fetch(STATS_URL, { cache: 'no-store' }), fetch(REPORTS_URL, { cache: 'no-store' })]);
+    if (!statsResponse.ok || !reportsResponse.ok) throw new Error('HTTP');
+    statistics.data = await statsResponse.json();
+    statistics.reports = await reportsResponse.json();
+    paintStatistics();
   } catch {
     statistics.note.textContent = 'Die Statistik konnte nicht geladen werden.';
   } finally {
@@ -383,14 +476,47 @@ async function loadStatistics() {
   }
 }
 
+function paintStatistics() {
+  const statistics = state.statistics;
+  const data = statistics.data;
+  const reports = statistics.reports;
+  if (!data || !reports || !statistics.view) return;
+  const { started_at: started, metrics } = data.instance;
+  statistics.rows.replaceChildren(
+    row('Läuft', el('span', { text: `${uptime(started)}, Start ${dateTime(started)}` })),
+    ...metrics.map(metricRow));
+  statistics.streamRows.replaceChildren(...streamStatisticRows(data.stream));
+  const s = data.stream;
+  const closedExtras = s && s.status === 'closed' && s.report_id ? [el('p', { class: 'sub' }, reportLink(s.report_id))] : [];
+  statistics.streamExtras.replaceChildren(...closedExtras, ...streamCloseControls(s));
+  const { totals } = reports;
+  statistics.totalRows.replaceChildren(
+    row('Streams', el('span', { class: 'mono', text: String(totals.streams) })),
+    row('Gesamtdauer', el('span', { text: duration(totals.duration_seconds) })),
+    ...totals.metrics.map(metricRow));
+  const rd = state.reportDelete;
+  statistics.reportList.replaceChildren(...(reports.reports.length
+    ? reports.reports.map(reportRow)
+    : [el('li', { class: 'wl-empty', text: 'Noch keine Berichte.' })]),
+  ...(rd.message ? [el('li', { class: 'wl-empty error', text: rd.message })] : []));
+  statistics.note.textContent = data.enabled
+    ? 'Der Broadcaster und genutzte Chat-Bots zählen nicht bei den Chatnachrichten. „Gesamt“ summiert alle gespeicherten Berichte.'
+    : 'Die Statistik ist abgeschaltet.';
+}
+
 function statisticsView() {
   const statistics = state.statistics;
   if (statistics.view) return statistics.view;
   statistics.rows = rows();
   statistics.streamRows = rows();
+  statistics.streamExtras = el('div');
+  statistics.totalRows = rows();
+  statistics.reportList = el('ul', { class: 'wl-list' });
   statistics.note = el('p', { class: 'sub' });
   statistics.view = el('section', { class: 'settings' },
-    card('Laufender oder letzter Stream', statistics.streamRows),
+    card('Laufender oder letzter Stream', statistics.streamRows, statistics.streamExtras),
+    card('Gesamt', statistics.totalRows),
+    card('Berichte', statistics.reportList),
     card('Diese Server-Instanz', statistics.rows),
     statistics.note);
   return statistics.view;
@@ -890,7 +1016,7 @@ function optionalModules(d) {
 
 function renderOverview(content, d) {
   content.replaceChildren(
-    el('div', { class: 'grid' }, serverCard(d), twitchCard(d), botCard(d)),
+    el('div', { class: 'grid' }, serverCard(d), streamCard(d), twitchCard(d), botCard(d)),
     optionalModules(d));
 }
 

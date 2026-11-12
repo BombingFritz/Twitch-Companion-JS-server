@@ -531,6 +531,56 @@ async function statistik() {
   check('S20 Ausgehender Raid schließt ab und begrüßt niemanden', st.status === 'closed' && st.close_reason === 'raid' && logs.filter(l => l.includes('in Warteschlange eingereiht')).length === greetingsBefore, JSON.stringify(st));
   sv = await streamValues();
   check('S21 Ausgehender Raid zählt nicht als Raid', sv.raids === 1, JSON.stringify(sv));
+
+  // Stufe 3: Archiv, Bericht, Knopf
+  const reportsDir = path.join(workDir, 'stream_reports');
+  const files = fs.existsSync(reportsDir) ? fs.readdirSync(reportsDir) : [];
+  check('S22 Nach dem Raid liegt der Bericht als .json und .txt vor', files.filter(f => f.endsWith('.json')).length === 1 && files.filter(f => f.endsWith('.txt')).length === 1, files.join(','));
+  r = await request('/api/admin/reports');
+  let d = JSON.parse(r.body);
+  const reportId = st.report_id;
+  check('S23 Berichtsliste und Gesamt', r.status === 200 && d.reports.length === 1 && d.reports[0].id === reportId && d.totals.streams === 1 && d.totals.metrics.find(m => m.key === 'follows').value === 1, r.body.slice(0, 300));
+  check('S24 Kurzer Stream bekommt einen Hinweis', d.reports[0].warnings.some(w => w.includes('kürzer')), JSON.stringify(d.reports[0].warnings));
+  r = await request(`/api/admin/reports/${reportId}`);
+  check('S25 Bericht lesbar als Text', r.status === 200 && /text\/plain/.test(r.headers['content-type']) && r.body.includes('nach dem Raid') && r.body.includes('Follows: 1'), r.body.slice(0, 200));
+  for (const bad of ['..%2F.env', '..%2F..%2Ftokens.json', 'kaputt']) {
+    r = await request(`/api/admin/reports/${bad}`);
+    check(`S26 Ungültige Bericht-ID ${bad}: 400`, r.status === 400 && !r.body.includes('ACCESS-TOKEN'), String(r.status));
+  }
+  r = await request('/api/admin/reports/2026-01-01_0000');
+  check('S27 Unbekannter Bericht: 404', r.status === 404, String(r.status));
+  r = await request('/api/admin/reports', { Host: 'example.com' });
+  check('S28 Berichte mit fremdem Host: 403', r.status === 403, String(r.status));
+  let ov = JSON.parse((await request(OVERVIEW)).body).stream;
+  check('S29 Übersicht meldet den Abschluss mit Bericht und Hinweis', ov.status === 'closed' && ov.report_id === reportId && ov.close_reason === 'raid' && ov.warnings.length > 0, JSON.stringify(ov));
+
+  const own = { Origin: OWN[0], ...JSON_TYPE };
+  r = await request('/api/admin/stream/close', own, 'POST', '{}');
+  check('S30 Knopf ohne laufenden Stream: 409', r.status === 409, String(r.status));
+  send('stream.online', { id: 'st2', type: 'live', started_at: new Date().toISOString() });
+  await sleep(50);
+  r = await request('/api/admin/stream/close', JSON_TYPE, 'POST', '{}');
+  check('S31 Knopf ohne Herkunft: 403', r.status === 403 && (await stream()).status === 'live', String(r.status));
+  r = await request('/api/admin/stream/close', own, 'POST', '{}');
+  d = JSON.parse(r.body);
+  check('S32 Knopf schließt ab und archiviert', r.status === 200 && d.stream.status === 'closed' && d.stream.close_reason === 'knopf' && !!d.stream.report_id && d.stream.report_id !== reportId, r.body.slice(0, 300));
+  r = await request('/api/admin/reports');
+  check('S33 Zwei Berichte, Gesamt zählt beide', JSON.parse(r.body).totals.streams === 2, r.body.slice(0, 200));
+
+  r = await request('/api/admin/reports/delete', JSON_TYPE, 'POST', JSON.stringify({ id: reportId }));
+  check('S34 Löschen ohne Herkunft: 403', r.status === 403, String(r.status));
+  r = await request('/api/admin/reports/delete', own, 'POST', JSON.stringify({ id: '../tokens' }));
+  check('S35 Löschen mit ungültiger ID: 400', r.status === 400 && fs.existsSync(path.join(workDir, 'tokens.json')), String(r.status));
+  r = await request('/api/admin/reports/delete', own, 'POST', JSON.stringify({ id: reportId }));
+  check('S36 Löschen entfernt den Bericht', r.status === 200 && !fs.existsSync(path.join(reportsDir, `${reportId}.json`)) && JSON.parse((await request('/api/admin/reports')).body).reports.length === 1, r.body);
+  r = await request('/api/admin/reports/delete', own, 'POST', JSON.stringify({ id: reportId }));
+  check('S37 Nochmal löschen: 404', r.status === 404, String(r.status));
+  const lastId = d.stream.report_id;
+  r = await request('/api/admin/reports/delete', own, 'POST', JSON.stringify({ id: lastId }));
+  ov = JSON.parse((await request(OVERVIEW)).body).stream;
+  st = await stream();
+  check('S38 Bericht des letzten Streams gelöscht: kein toter Link, kein neuer Bericht', r.status === 200 && ov.report_id === null && ov.report_deleted === true
+    && st.report_id === null && st.report_deleted === true && !fs.existsSync(path.join(reportsDir, `${lastId}.json`)), JSON.stringify(ov));
 }
 
 async function effekteAlt() {

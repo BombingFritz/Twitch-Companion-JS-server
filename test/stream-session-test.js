@@ -201,6 +201,43 @@ check('C5 Abgeschlossen: Werte bleiben, nichts kommt dazu', snap(session).top_ch
 session.onOnline({ id: 's2' });
 check('C6 Nächster Stream beginnt leer', snap(session).unique_chatters === 0);
 
+// Knopf und Archiv
+const archived = [];
+({ session, clock } = setup({ onClose: c => { archived.push(c); return `bericht-${archived.length}`; } }));
+check('B1 Knopf ohne Stream: nichts zu beenden', session.closeManually() === false && archived.length === 0);
+session.onOnline({ id: 's1' });
+session.count('follows');
+clock.t += HOUR;
+check('B2 Knopf im Stream schließt ab', session.closeManually() === true && snap(session).status === 'closed' && snap(session).close_reason === 'knopf' && snap(session).ended_at === new Date(clock.t).toISOString());
+check('B3 Archiv bekommt Stand und Zusammenfassung, ID wird gemerkt', archived.length === 1 && archived[0].state.counters.follows === 1 && archived[0].summary.duration_seconds === 3600 && snap(session).report_id === 'bericht-1', JSON.stringify(archived[0] && archived[0].summary));
+check('B4 Zweiter Knopfdruck: nichts mehr zu beenden', session.closeManually() === false && archived.length === 1);
+session.onOnline({ id: 's2' });
+clock.t += HOUR;
+session.onOffline();
+const knopfOffline = new Date(clock.t).toISOString();
+clock.t += 10 * MIN;
+session.closeManually();
+check('B5 Knopf nach Offline: Ende ist das Offline', snap(session).ended_at === knopfOffline && archived.length === 2 && snap(session).report_id === 'bericht-2');
+session.onOnline({ id: 's3' });
+check('B6 Neuer Stream beginnt ohne Bericht', snap(session).report_id === null);
+session.onRaidOut();
+check('B7 Raid archiviert ebenfalls', archived.length === 3 && snap(session).report_id === 'bericht-3');
+let failNext = true;
+({ session } = setup({ onClose: () => { if (failNext) throw new Error('Platte voll'); return 'nachgeholt'; } }));
+session.onOnline({ id: 's1' });
+let thrown = false;
+try { session.onRaidOut(); } catch { thrown = true; }
+check('B8 Fehler beim Archivieren stört nicht, Stand bleibt abgeschlossen', !thrown && snap(session).status === 'closed' && snap(session).report_id === null);
+failNext = false;
+session.ensureArchived();
+check('B9 ensureArchived holt den Bericht nach', snap(session).report_id === 'nachgeholt');
+const oldFile = { data: { v: 1, status: 'closed', started_at: new Date(START).toISOString(), ended_at: new Date(START + HOUR).toISOString(), close_reason: 'raid', counters: { follows: 2 }, segments: [], stream_ids: ['alt'], categories: [], chatters: {} } };
+const fromOld = [];
+const old = setup({ onClose: c => { fromOld.push(c); return 'alter-stream'; } }, oldFile);
+old.session.ensureArchived();
+old.session.ensureArchived();
+check('B10 Älterer abgeschlossener Stand ohne Bericht wird einmal archiviert', fromOld.length === 1 && old.file.data.report_id === 'alter-stream' && fromOld[0].state.counters.follows === 2);
+
 // Robustheit
 ({ session } = setup({ save: () => { throw new Error('Datei gesperrt'); } }));
 let threw = false;
