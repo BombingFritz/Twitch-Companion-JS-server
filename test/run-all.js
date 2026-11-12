@@ -48,6 +48,8 @@ const runs = [
   ['admin-test.js', ['effekte-alt']],
   ['admin-test.js', ['statistik']],
   ['stats-test.js', []],
+  ['topics-lib-test.js', []],
+  ['topics-test.js', []],
   ['stream-session-test.js', []],
   ['stream-reports-test.js', []],
   ['admin-format-test.js', []],

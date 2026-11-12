@@ -11,6 +11,7 @@ const { createUboatCrew } = require('./lib/uboat-crew');
 const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats');
 const { createStreamSession } = require('./lib/stream-session');
 const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
+const { createTopics } = require('./lib/topics');
 require('dotenv').config();
 
 const app = express();
@@ -40,7 +41,18 @@ const MODULES_FILE = './modules.json';                     // Modul-Schalter (bd
 const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
 const STREAM_REPORTS_DIR = './stream_reports';             // je abgeschlossenem Stream eine .json und eine .txt (ADR 0019)
-const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch' };   // per Konsole und Webkonsole schaltbare Chat-Module, Standard: an
+const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', topics: 'Intro-Topics' };   // per Konsole und Webkonsole schaltbare Module, Standard: an
+const MODULE_OFF_TEXT = { topics: 'Stream-Deck-Tasten werden ignoriert, das Widget blendet aus' };   // sonst: Befehle im Chat werden ignoriert
+
+// Intro-Topics (ADR 0021, docs/specs/intro-topics.md) und Stream-Deck-Anbindung (ADR 0020, docs/specs/stream-deck.md)
+const TOPICS_FILE = './topics.json';              // Themenliste und Anzeige-Einstellungen; Fortschritt nur im Arbeitsspeicher
+const TOPICS_AUTO_HIDE_MS = 5000;                 // so lange bleibt die fertige Liste stehen
+const TOPICS_SSE_PING_MS = 30 * 1000;             // Lebenszeichen auf der Events-Verbindung der Widgets und des Plugins
+const TOPICS_JSON_LIMIT = '4kb';                  // Liste mit bis zu 10 Themen à 60 Zeichen
+const TOPICS_ACTIONS = ['next', 'back', 'toggle', 'reset'];
+const SILENT_EFFECT_TYPES = new Set(['topic_active', 'topic_done', 'topics_complete']);   // in keinem Log, keine Statistik (Nutzer, 12.11.2026)
+const ADMIN_TOPICS_PATH = '/api/admin/topics';
+const DECK_PATH = '/api/deck';
 
 // Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
 const BOT_FILE = './bot.json';                    // nur ID und Name des Bots, keine Tokens
@@ -319,6 +331,8 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
     if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH, ADMIN_REPORTS_PATH].includes(req.path) && res.statusCode === 200) return;
+    // Intro-Topics: Tastendrücke und Widget-Verbindungen nur im Testmodus protokollieren (topics debug on)
+    if (isTopicsPath(req.path) && res.statusCode < 400 && !topicsDebug) return;
     const durationMs = Date.now() - startedAt;
     // OAuth-Code und state aus /callback nicht ins Protokoll schreiben
     const url = req.originalUrl.replace(/([?&](?:code|state)=)[^&]*/g, '$1…');
@@ -770,6 +784,60 @@ function saveModuleSwitches(switches) {
 
 let moduleSwitches = loadModuleSwitches();
 
+// ═══════════════════════════════════════════════════════════════════
+// INTRO-TOPICS (ADR 0021) – Zustand in lib/topics.js, hier nur Datei, Ereignisse und Effekte
+// ═══════════════════════════════════════════════════════════════════
+
+let topicsDebug = false;                 // Testschalter "topics debug on": Topic-Effekte und Tastendrücke erscheinen im Log
+const topicsClients = [];                // offene Events-Verbindungen (Widgets, Stream-Deck-Plugin)
+
+function isTopicsPath(p) {
+  const lower = p.toLowerCase();
+  return lower === '/api/topics' || lower.startsWith('/api/topics/') || lower === ADMIN_TOPICS_PATH || lower.startsWith(`${ADMIN_TOPICS_PATH}/`) || lower === DECK_PATH;
+}
+
+function topicsDebugLog(message) {
+  if (topicsDebug) console.log(`[Topics] ${message}`);
+}
+
+function loadTopicsFile() {
+  if (!fs.existsSync(TOPICS_FILE)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(TOPICS_FILE, 'utf8'));
+  } catch {
+    console.warn('[Topics] topics.json ist defekt – Standardliste wird verwendet');
+    return null;
+  }
+}
+
+function saveTopicsFile(data) {
+  fs.writeFileSync(TOPICS_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function broadcastTopics(state) {
+  const frame = `event: state\ndata: ${JSON.stringify(state)}\n\n`;
+  for (const client of topicsClients) client.res.write(frame);
+}
+
+const topics = createTopics({
+  load: loadTopicsFile,
+  save: saveTopicsFile,
+  isEnabled: () => moduleSwitches.topics,
+  autoHideMs: TOPICS_AUTO_HIDE_MS,
+  warn: message => console.warn(message),
+  onChange: state => {
+    broadcastTopics(state);
+    topicsDebugLog(`Stand ${state.step}/${2 * state.total}, ${state.visible ? 'sichtbar' : `ausgeblendet${state.hide_reason ? ` (${state.hide_reason})` : ''}`}, Revision ${state.revision}`);
+  },
+  onEffect: (type, meta) => {
+    try {
+      scheduleEffect(type, meta);
+    } catch (err) {
+      logIfChanged('topics-effect-error', `[Topics] Effekt konnte nicht eingereiht werden: ${err.message}`, 'error');
+    }
+  },
+});
+
 function moduleStateLabel(key) {
   return moduleSwitches[key] ? 'aktiviert' : `deaktiviert ("${key} activate" schaltet ein)`;
 }
@@ -783,7 +851,7 @@ function setModuleSwitch(key, on) {
   }
   moduleSwitches = { ...moduleSwitches, [key]: on };
   saveModuleSwitches(moduleSwitches);
-  console.log(`${name} ${on ? 'aktiviert' : 'deaktiviert – Befehle im Chat werden ignoriert'} (gespeichert, gilt auch nach Neustart)`);
+  console.log(`${name} ${on ? 'aktiviert' : `deaktiviert – ${MODULE_OFF_TEXT[key] || 'Befehle im Chat werden ignoriert'}`} (gespeichert, gilt auch nach Neustart)`);
   return true;
 }
 
@@ -795,6 +863,7 @@ function switchModule(key, on) {
     for (const [id, p] of bduPending) { clearTimeout(p.timer); bduPending.delete(id); }
     console.log('[BdU] Offene Anfragen verworfen');
   }
+  if (key === 'topics' && changed) topics.notifyEnabledChanged();
   if (key === 'uboat' && on && !uboatCrew) {
     console.log('[UBOAT] Hinweis: UBOAT_SAVES_DIR ist nicht gesetzt – das Soldbuch antwortet erst, wenn der Ordner in der .env steht (Neustart nötig)');
   }
@@ -835,9 +904,14 @@ function scheduleEffect(type, meta) {
   }, EFFECT_BURST_WINDOW_MS);
 }
 
+// Stille Effekte (Intro-Topics): kein Log, kein Event-Log, keine Statistik; mit "topics debug on" im Log sichtbar.
+function isSilentEffect(type) {
+  return SILENT_EFFECT_TYPES.has(type);
+}
+
 function enqueueEffect(type, count, meta) {
   effectQueue.push({ type, count, meta, queuedAt: Date.now() });
-  console.log(`Effekt eingereiht: ${type} (${count}x) - Queue-Länge jetzt: ${effectQueue.length}`);
+  if (!isSilentEffect(type) || topicsDebug) console.log(`Effekt eingereiht: ${type} (${count}x) - Queue-Länge jetzt: ${effectQueue.length}`);
   processEffectQueue();
 }
 
@@ -845,21 +919,28 @@ function describeEffect(type, meta, count) {
   if (type === 'follow') return count > 1 ? `${count} neue Follower, zuletzt @${meta.userName}` : `@${meta.userName}`;
   if (type === 'sub')    return count > 1 ? `${count} neue Subs, zuletzt @${meta.userName}` : `@${meta.userName}`;
   if (type === 'gift')   return `@${meta.userName} verschenkt ${meta.giftCount || 1} Sub(s)`;
+  if (type === 'topic_active' || type === 'topic_done') return `Thema ${meta.index + 1}/${meta.total} „${meta.title}“`;
+  if (type === 'topics_complete') return `alle ${meta.total} Themen erledigt`;
   return JSON.stringify(meta);
 }
 
 async function triggerEffect(job) {
   const { type, count, meta } = job;
-  console.log(`Effekt ausgelöst: ${type}${count > 1 ? ` (${count}x gebündelt)` : ''} – ${describeEffect(type, meta, count)}`);
-  stats.count('effects');
-
-  appendEvent(type, { ...meta, count });
+  const silent = isSilentEffect(type);
+  if (!silent || topicsDebug) console.log(`Effekt ausgelöst: ${type}${count > 1 ? ` (${count}x gebündelt)` : ''} – ${describeEffect(type, meta, count)}`);
+  if (!silent) {
+    stats.count('effects');
+    appendEvent(type, { ...meta, count });
+  }
 
   if (HA_WEBHOOK_URL) {
     try {
       await axios.post(HA_WEBHOOK_URL, { type, count, meta, timestamp: new Date().toISOString() });
     } catch (err) {
-      console.error('Fehler beim Senden an Home Assistant Webhook:', err.response?.data || err.message);
+      const detail = err.response?.data || err.message;
+      // Stille Effekte: ein kaputter Webhook soll auffallen, aber nicht bei jedem Tastendruck erneut
+      if (silent) logIfChanged('topics-ha-error', `Fehler beim Senden an Home Assistant Webhook (Intro-Topics): ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`, 'error');
+      else console.error('Fehler beim Senden an Home Assistant Webhook:', detail);
     }
   }
 }
@@ -1341,6 +1422,62 @@ app.get('/api/effects/mode', (req, res) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// INTRO-TOPICS UND STREAM DECK (ADR 0020, ADR 0021) – nur vom eigenen Rechner
+// ═══════════════════════════════════════════════════════════════════
+
+// Lesen und Events: Widgets (Herkunft null) und Plugin (ohne Herkunft); fremde Herkünfte lehnt die CORS-Prüfung vorher ab.
+app.get('/api/topics', (req, res) => {
+  if (!isLocalWidgetRequest(req, '/api/topics')) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  res.json(topics.getState());
+});
+
+app.get('/api/topics/stream', (req, res) => {
+  if (!isLocalWidgetRequest(req, '/api/topics/stream')) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Connection': 'keep-alive'
+  });
+  res.write('retry: 5000\n\n');
+  res.write(`event: state\ndata: ${JSON.stringify(topics.getState())}\n\n`);
+  const client = { res, origin: req.headers.origin || '-' };
+  client.ping = setInterval(() => res.write(': ping\n\n'), TOPICS_SSE_PING_MS);
+  topicsClients.push(client);
+  topicsDebugLog(`Widget/Plugin verbunden (Herkunft: ${client.origin}, verbunden: ${topicsClients.length})`);
+  req.on('close', () => {
+    clearInterval(client.ping);
+    const i = topicsClients.indexOf(client);
+    if (i >= 0) topicsClients.splice(i, 1);
+    topicsDebugLog(`Widget/Plugin getrennt (verbunden: ${topicsClients.length})`);
+  });
+});
+
+// Stream-Deck-Tasten: POST mit JSON (Body darf {} sein), nur lokal, Modul muss an sein.
+app.post('/api/topics/:action', express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  const action = String(req.params.action).toLowerCase();
+  if (!isLocalWidgetRequest(req, '/api/topics/…')) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  if (!TOPICS_ACTIONS.includes(action)) return res.status(404).json({ ok: false, error: `Unbekannte Aktion. Erlaubt: ${TOPICS_ACTIONS.join(', ')}` });
+  if (!req.is('application/json')) return res.status(415).json({ ok: false, error: 'Content-Type: application/json erwartet (Body darf {} sein)' });
+  if (!moduleSwitches.topics) return res.status(503).json({ ok: false, error: 'Intro-Topics ist ausgeschaltet' });
+  const state = topics[action]();
+  topicsDebugLog(`Taste ${action}: ${topicsSummary(state)}`);
+  res.json({ ok: true, state });
+});
+
+// Übersicht für das Stream-Deck-Plugin (docs/specs/stream-deck.md)
+app.get(DECK_PATH, (req, res) => {
+  if (!isLocalWidgetRequest(req, DECK_PATH)) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  res.json({
+    server: 'twitch-companion-js-server',
+    version: APP_VERSION,
+    actions: {
+      topics: { enabled: Boolean(moduleSwitches.topics) },
+      clip: { enabled: false, stream_live: streamSession.snapshot().status === 'live' },   // folgt mit Fahrplan-Schritt 7
+    },
+  });
+});
+
 // UBOAT-Crew aus dem letzten Spielstand (ADR 0016), z. B. für ein späteres Widget „Heute an Bord“
 app.get('/api/uboat/crew', (req, res) => {
   if (!uboatCrew) return res.json({ enabled: false, active: false, category: currentCategory, crew: [] });
@@ -1456,7 +1593,8 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
       skipped: Boolean(e.skippedManualTimeout),
       timestamp: e.timestamp
     })),
-    subgoal: { current, target, title, status, lastUpdated }
+    subgoal: { current, target, title, status, lastUpdated },
+    topics: (({ visible, step, total, complete, current }) => ({ visible, step, total, complete, current, clients: topicsClients.length }))(topics.getState())
   });
 });
 
@@ -1589,6 +1727,35 @@ app.post(ADMIN_MODULES_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled muss true oder false sein' });
   const changed = switchModule(key, enabled);
   res.json({ ok: true, changed, modules: { ...moduleSwitches } });
+});
+
+app.get(ADMIN_TOPICS_PATH, (req, res) => {
+  res.json({ ...topics.getConfig(), state: topics.getState(), debug: topicsDebug, clients: topicsClients.length });
+});
+
+// Liste und/oder Anzeige-Einstellungen speichern
+app.post(ADMIN_TOPICS_PATH, requireAdminWrite, express.json({ limit: TOPICS_JSON_LIMIT }), (req, res) => {
+  const { items, display } = req.body || {};
+  if (items === undefined && display === undefined) return res.status(400).json({ error: 'items oder display angeben' });
+  if (items !== undefined) {
+    const result = topics.setItems(items);
+    if (result.error) return res.status(400).json({ error: result.error });
+    console.log(`[Webkonsole] Intro-Topics: neue Liste mit ${result.state.total} Themen gespeichert`);
+  }
+  if (display !== undefined) {
+    const result = topics.setDisplay(display);
+    if (result.error) return res.status(400).json({ error: result.error });
+    console.log('[Webkonsole] Intro-Topics: Anzeige-Einstellungen gespeichert');
+  }
+  res.json({ ok: true, ...topics.getConfig(), state: topics.getState() });
+});
+
+// Bedienen aus der Webkonsole (wie die Stream-Deck-Tasten)
+app.post(`${ADMIN_TOPICS_PATH}/action`, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  const action = req.body && req.body.action;
+  if (!TOPICS_ACTIONS.includes(action)) return res.status(400).json({ error: `Unbekannte Aktion. Erlaubt: ${TOPICS_ACTIONS.join(', ')}` });
+  if (!moduleSwitches.topics) return res.status(409).json({ error: 'Intro-Topics ist ausgeschaltet' });
+  res.json({ ok: true, state: topics[action]() });
 });
 
 app.post(ADMIN_EFFECT_MODE_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
@@ -1790,7 +1957,15 @@ function connectEventSub(reconnectUrl = null) {
 
       if (subType === 'stream.online') {
         const onlineEvent = msg.payload.event;
-        if (!onlineEvent.type || onlineEvent.type === 'live') streamSession.onOnline({ id: onlineEvent.id, startedAt: onlineEvent.started_at });
+        if (!onlineEvent.type || onlineEvent.type === 'live') {
+          const startedBefore = streamSession.snapshot().started_at;
+          streamSession.onOnline({ id: onlineEvent.id, startedAt: onlineEvent.started_at });
+          // Neue Stream-Session (nicht Wiederaufnahme nach Unterbrechung): Intro-Topics von vorn
+          if (streamSession.snapshot().started_at !== startedBefore) {
+            topics.reset();
+            console.log('[Topics] Neuer Stream – Intro-Topics zurückgesetzt');
+          }
+        }
         shoutedOutThisSession.clear();
         console.log('Stream gestartet – Whitelist-Shoutout-Tracking für diese Session zurückgesetzt');
         if (bduSilenceUntil === Infinity) {
@@ -2862,6 +3037,19 @@ function printUboatStatus() {
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
+function topicsSummary(state) {
+  const current = state.current === null ? 'noch keins' : `${state.current + 1}/${state.total} „${state.items[state.current].title}“ (${state.items[state.current].status})`;
+  return `Thema ${current}, ${state.visible ? 'sichtbar' : 'ausgeblendet'}${state.complete ? ', alle erledigt' : ''}`;
+}
+
+function printTopicsStatus() {
+  const state = topics.getState();
+  console.log(`[Topics] Modul: ${moduleStateLabel('topics')}, Testmodus: ${topicsDebug ? 'an' : 'aus'}, verbundene Widgets/Plugins: ${topicsClients.length}`);
+  console.log(`[Topics] ${topicsSummary(state)}`);
+  state.items.forEach((item, i) => console.log(`  ${i + 1}. [${item.status === 'erledigt' ? 'x' : item.status === 'aktiv' ? '>' : ' '}] ${item.title}`));
+  console.log(`[Topics] Überschrift: „${state.display.title}“, Design: ${state.display.theme}, Hintergrund horizontal: ${state.display.background.horizontal}, vertikal: ${state.display.background.vertikal}`);
+}
+
 function printConsoleHelp() {
   console.log('');
   console.log('Verfügbare Konsolenbefehle:');
@@ -2884,6 +3072,10 @@ function printConsoleHelp() {
   console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
   console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
   console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
+  console.log(' topics show                - Intro-Topics: Liste, Stand, Sichtbarkeit, verbundene Widgets');
+  console.log(' topics next|back|toggle|reset - Intro-Topics bedienen (wie die Stream-Deck-Tasten)');
+  console.log(' topics debug on|off        - Intro-Topics: Testmodus, zeigt Effekte und Tastendrücke im Log (bis Neustart)');
+  console.log(' topics activate|deactivate - Intro-Topics ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler');
   console.log(' bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)');
   console.log(' help                      - Diese Hilfe anzeigen');
@@ -3024,6 +3216,34 @@ rl.on('line', async (input) => {
     }
 
     console.log('Nutzung: effects mode <auto|off> | effects show');
+    return;
+  }
+
+  if (cmd === 'topics') {
+    const sub = (parts[1] || '').toLowerCase();
+    if (sub === 'show') {
+      printTopicsStatus();
+      return;
+    }
+    if (TOPICS_ACTIONS.includes(sub)) {
+      if (!moduleSwitches.topics) {
+        console.log('Intro-Topics ist deaktiviert ("topics activate" schaltet ein)');
+        return;
+      }
+      const state = topics[sub]();
+      console.log(`[Topics] ${sub}: ${topicsSummary(state)}`);
+      return;
+    }
+    if (sub === 'debug' && ['on', 'off'].includes((parts[2] || '').toLowerCase())) {
+      topicsDebug = parts[2].toLowerCase() === 'on';
+      console.log(`[Topics] Testmodus ${topicsDebug ? 'an – Topic-Effekte und Tastendrücke erscheinen im Log (bis "topics debug off" oder Neustart)' : 'aus'}`);
+      return;
+    }
+    if (sub === 'activate' || sub === 'deactivate') {
+      switchModule('topics', sub === 'activate');
+      return;
+    }
+    console.log('Nutzung: topics show | topics next|back|toggle|reset | topics debug on|off | topics activate|deactivate');
     return;
   }
 
