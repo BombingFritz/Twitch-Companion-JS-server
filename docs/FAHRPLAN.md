@@ -25,7 +25,7 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 | # | Schritt | Repository | Hängt ab von | Stand |
 |---|---|---|---|---|
 | 0 | Specs, ADRs und dieser Fahrplan | Server | – | in Arbeit (Branch `docs/intro-topics-stream-deck`) |
-| 1 | Widget 0.1 mit Demo-Modus: Liste, Zustände, Animationen, ohne Server testbar | Widget | 0 | Entwurf liegt vor; Feinschliff nach Screenshots der Intro-Szene (Nutzer liefert nach) |
+| 1 | Widget 0.1 mit Demo-Modus: Liste, Zustände, Animationen, ohne Server testbar | Widget | 0 | Entwurf liegt vor, Design nach Screenshots abgestimmt (Theme `panel`, 12.11.2026); Abnahme in OBS offen |
 | 2 | Server: `lib/topics.js` (Zustand, Liste), Endpoints und Events nach Spec, Tests | Server | 0; keine parallele Arbeit an `server.js` | offen |
 | 3 | Widget 0.2: Anbindung an den Server, Test in OBS (2K horizontal, vertikal per Dualstream-Plugin) | Widget | 1, 2 | offen |
 | 4 | Stream Deck vorläufig: Tasten über ein fertiges HTTP-Plugin (z. B. „API Request“) | – (Einrichtung) | 2 | offen |
@@ -48,6 +48,7 @@ Nach der Projektvorgabe „Lizenz- und Entwicklungskontext“ (12.11.2026; Ablag
 - Lizenz: siehe „Lizenzbereiche“.
 - Ausgabe: OBS in 2K; vertikal über ein Dualstream-Plugin im selben OBS. Ein Design, zwei Browserquellen.
 - Erledigte Themen: abgehakt und ausgegraut, **nicht** durchgestrichen.
+- Design: Theme `panel` passend zur Programm-Tafel der Intro-Szene; vertikal im unteren schwarzen Bereich statt Dreh-Logo und Untertitel.
 - Topic-Effekte erscheinen standardmäßig in keinem Log; nur ein Testschalter macht sie sichtbar (Spec, Abschnitt „Effekte“).
 
 ## Entscheidungen, die noch ausstehen
