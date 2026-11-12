@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Effekt-Modus `manual` samt Bestätigung. Es bleiben `auto` und `off`; ein gespeichertes `manual` gilt beim Start als `auto`. `/api/effects/mode` und `/api/admin/overview` liefern kein Feld zur wartenden Bestätigung mehr (ADR 0010).
 
 ### Changed
+- Genaueres Protokoll der Subs: Sub-Ereignisse nennen Stufe, „geschenkt“ bzw. „nicht geschenkt“, Monate und gekaufte Dauer; Sub- und Resub-Ankündigungen nennen Prime bzw. Stufe und Monate. Andere Chat-Ankündigungen des eigenen Kanals (z. B. `gift_paid_upgrade`) erscheinen als „nicht ausgewertet“. Effekte und Zählung bleiben unverändert (ADR 0008, Nachtrag).
 - `BOT_LOGIN_STATE_TTL_MS` heißt jetzt `LOGIN_STATE_TTL_MS` und gilt für beide Logins.
 - Raid-Begrüßung und `!raidstats` senden über `sendChatMessage` (Kürzung auf 500 Zeichen, Prüfung von `is_sent`). Der Raid-Shoutout folgt nur, wenn Twitch die Begrüßung angenommen hat.
 - Aufgeräumt nach der Code-Prüfung: `BDU_CHAT_MAX_CHARS` entfernt (gleich `CHAT_MAX_CHARS`), `formatDateDe` in `lib/uboat-crew.js` heißt `formatIsoDateDe`, die UBOAT-Module exportieren nur noch, was `server.js` nutzt, das BdU-Nutzerlimit löscht abgelaufene Einträge.

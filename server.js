@@ -65,6 +65,10 @@ const EVENT_MESSAGE_ID_TTL_MS = 10 * 60 * 1000;   // Twitch-Wiederzustellungen d
 const SUB_DEDUPE_WINDOW_MS = 60 * 1000;           // Sicherheitsnetz: derselbe Nutzer nicht mehrfach als Sub-Effekt
 const FOLLOW_DEDUPE_WINDOW_MS = 60 * 1000;        // Follow/Unfollow/Follow desselben Nutzers
 
+// Protokoll der Sub-Ereignisse: Stufen lesbar, Ankündigungen, die anderswo ausgewertet werden, nicht als „nicht ausgewertet“ melden
+const SUB_TIER_LABELS = { 1000: 'Stufe 1', 2000: 'Stufe 2', 3000: 'Stufe 3' };
+const CHAT_NOTICES_HANDLED_ELSEWHERE = ['raid'];   // eingehende Raids kommen über channel.raid
+
 // EventSub-WebSocket
 const EVENTSUB_WS_URL = 'wss://eventsub.wss.twitch.tv/ws';
 const EVENTSUB_RECONNECT_DELAY_MS = 5000;         // Neuaufbau nach unerwartetem Verbindungsende
@@ -1817,7 +1821,7 @@ function connectEventSub(reconnectUrl = null) {
         subType === 'channel.subscription.message'
       ) {
         const evt = msg.payload.event;
-        console.log(`Sub-Event (${subType}): ${evt.user_name || evt.user_login || 'anonym'}`);
+        console.log(`Sub-Event (${subType}): ${evt.user_name || evt.user_login || 'anonym'}${describeSubEvent(subType, evt)}`);
         await refreshSubGoalCache();
 
         // Diese Events treffen oft Sekunden VOR der Chat-Ankündigung ein. Sie aktualisieren
@@ -2103,7 +2107,7 @@ function handleChatNotification(evt) {
       console.log(`Sub-Effekt für @${userName} übersprungen – innerhalb von ${SUB_DEDUPE_WINDOW_MS / 1000}s bereits ausgelöst`);
       return;
     }
-    console.log(`Chat-Ankündigung (${noticeType}): @${userName}`);
+    console.log(`Chat-Ankündigung (${noticeType}): @${userName}${describeSubNotice(evt[noticeType])}`);
     stats.count('subs');
     scheduleEffect('sub', { userName });
     return;
@@ -2127,6 +2131,35 @@ function handleChatNotification(evt) {
     scheduleEffect('gift', { userName, giftCount: 1 });
     return;
   }
+
+  // Nur protokollieren, damit sichtbar wird, was Twitch sonst noch meldet (z. B. gift_paid_upgrade)
+  if (!CHAT_NOTICES_HANDLED_ELSEWHERE.includes(noticeType)) {
+    console.log(`Chat-Ankündigung (${noticeType}) von @${userName} – nicht ausgewertet`);
+  }
+}
+
+const subTierLabel = tier => SUB_TIER_LABELS[tier] || (tier ? `Stufe ${tier}` : null);
+
+// Zusatzangaben für das Protokoll der EventSub-Sub-Ereignisse, z. B. „ – Stufe 1, nicht geschenkt“
+function describeSubEvent(subType, evt) {
+  const parts = [subTierLabel(evt.tier)];
+  if (subType === 'channel.subscribe') parts.push(evt.is_gift ? 'geschenkt' : 'nicht geschenkt');
+  if (subType === 'channel.subscription.gift') parts.unshift(`verschenkt ${evt.total || 1}`);
+  if (subType === 'channel.subscription.message') {
+    if (evt.cumulative_months) parts.push(`${evt.cumulative_months} Monate insgesamt`);
+    if (evt.duration_months > 1) parts.push(`für ${evt.duration_months} Monate gekauft`);
+  }
+  const text = parts.filter(Boolean).join(', ');
+  return text ? ` – ${text}` : '';
+}
+
+// Zusatzangaben aus der Chat-Ankündigung sub/resub, z. B. „, Prime“ oder „, Stufe 1, 8 Monate insgesamt“
+function describeSubNotice(info) {
+  if (!info) return '';
+  const parts = [info.is_prime ? 'Prime' : subTierLabel(info.sub_tier)];
+  if (info.cumulative_months) parts.push(`${info.cumulative_months} Monate insgesamt`);
+  const text = parts.filter(Boolean).join(', ');
+  return text ? `, ${text}` : '';
 }
 
 async function subscribeToFollows(sessionId) {
