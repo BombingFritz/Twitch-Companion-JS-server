@@ -133,6 +133,9 @@ const ADMIN_REPORTS_PATH = '/api/admin/reports';
 const ADMIN_STREAM_CLOSE_PATH = '/api/admin/stream/close';
 const STREAM_TOP_CHATTERS = 5;                    // so viele aktivste Chatter werden angezeigt
 const STREAM_RECONCILE_MIN_AGE_MS = 5 * 60 * 1000; // jünger: „nicht live“ von Twitch ist vermutlich noch die alte Antwort
+const STREAM_VIEWERS_POLL_MS = 30 * 1000;         // Zuschauerzahl so oft bei Twitch abfragen, nur während der Stream läuft (ADR 0023)
+const STREAM_VIEWERS_MAX_MINUTES = 48 * 60;       // Obergrenze des Minutenverlaufs je Stream
+const STREAM_VIEWERS_PATH = '/api/twitch/stream'; // letzter bekannter Stand für Widgets, ohne eigene Twitch-Abfrage (ADR 0023)
 const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
@@ -239,6 +242,7 @@ const streamSession = createStreamSession({
   topChatters: STREAM_TOP_CHATTERS,
   isPrivate: isPrivateUser,
   anonName: PRIVACY_ANON_NAME,
+  maxViewerMinutes: STREAM_VIEWERS_MAX_MINUTES,
 });
 const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   // vor dem Umhüllen von console, zählt die Fehler mit
 setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
@@ -1412,6 +1416,35 @@ app.get('/api/twitch/prediction/current', async (req, res) => {
   }
 });
 
+// ── Zuschauerzahl (ADR 0023): Der Server fragt Twitch im festen Takt, Widgets bekommen nur den letzten Stand ──
+const streamViewers = { live: false, viewers: null, updatedAt: null };
+
+async function pollStreamViewers() {
+  // Nur während der Erfassung live fragen; ohne Statistik immer, damit Widgets trotzdem eine Zahl bekommen
+  if (STATS_ENABLED && streamSession.snapshot().status !== 'live') {
+    if (streamViewers.live) Object.assign(streamViewers, { live: false, viewers: null, updatedAt: new Date().toISOString() });
+    return;
+  }
+  try {
+    const accessToken = await getValidAccessToken();
+    const tokens = loadTokens();
+    const res = await axios.get(`https://api.twitch.tv/helix/streams?user_id=${tokens.broadcaster_id}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } });
+    const live = res.data?.data?.[0];
+    const isLive = Boolean(live && live.type === 'live');
+    Object.assign(streamViewers, { live: isLive, viewers: isLive ? live.viewer_count : null, updatedAt: new Date().toISOString() });
+    if (isLive) streamSession.noteViewers(live.viewer_count);
+    logIfChanged('stream-viewers', '[Zuschauer] Abfrage bei Twitch läuft');
+  } catch (err) {
+    logIfChanged('stream-viewers', `[Zuschauer] Abfrage bei Twitch gescheitert, letzter Stand bleibt: ${err.response?.data?.message || err.message}`, 'warn');
+  }
+}
+setInterval(pollStreamViewers, STREAM_VIEWERS_POLL_MS).unref();
+
+app.get(STREAM_VIEWERS_PATH, (req, res) => {
+  res.json({ live: streamViewers.live, viewers: streamViewers.viewers, updatedAt: streamViewers.updatedAt });
+});
+
 app.get('/api/twitch/subcounter', async (req, res) => {
   try {
     let cache = loadSubGoalCache();
@@ -1681,6 +1714,7 @@ function overviewStream() {
     report_id: s.report_id,
     report_deleted: Boolean(s.report_deleted),
     warnings: s.status === 'closed' ? reportWarnings(s, STREAM_REPORT_SHORT_SECONDS) : [],
+    viewers: { current: streamViewers.live ? streamViewers.viewers : null, updated_at: streamViewers.updatedAt, peak: s.viewers.peak, average: s.viewers.average },
   };
 }
 
@@ -1999,6 +2033,7 @@ function connectEventSub(reconnectUrl = null) {
         if (!onlineEvent.type || onlineEvent.type === 'live') {
           const startedBefore = streamSession.snapshot().started_at;
           streamSession.onOnline({ id: onlineEvent.id, startedAt: onlineEvent.started_at });
+          pollStreamViewers();   // erster Wert gleich zu Beginn, danach im festen Takt
           // Neue Stream-Session (nicht Wiederaufnahme nach Unterbrechung): Intro-Topics von vorn
           if (streamSession.snapshot().started_at !== startedBefore) {
             topics.reset();

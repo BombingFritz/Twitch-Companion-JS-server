@@ -19,6 +19,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0003](0003-widgets-nur-ueber-server-endpoints.md) | Widgets holen Token und Daten beim Server, nie mit eigenen Secrets. |
 | [0013](0013-zugriffsschutz-token-und-herkunft.md) | `/token` und Login nur vom eigenen Rechner, Browser-Herkünfte per Liste. Präzisiert 0003; Nachträge: OBS-Test, Login nur lokal. |
 | [0018](0018-webkonsole-nur-lokal-mit-reitern.md) | Webkonsole unter `/TwitchCompanionAdmin`, nur am Streaming-PC, mit Reitern. Ergänzt 0013, Nachträge in 0006 und 0010. |
+| [0023](0023-nur-der-server-fragt-twitch.md) | Nur der Server fragt Twitch; Widget-Endpunkte geben den letzten Stand mit Zeitstempel aus. Erstes Beispiel: Zuschauerzahl mit Minutenverlauf. Präzisiert 0003. |
 
 ### Effekte und Home Assistant
 | ADR | Worum es geht |
@@ -59,7 +60,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 ## Herkunft
 
 - **Nachträglich festgehalten** aus vorhandenem Code und älterer Doku (Entscheidung lag schon vor, Begründung und Alternativen teils `[UNGEKLÄRT]`): 0001–0011; ausdrücklich „aus dem Code abgeleitet“ sind 0002 und 0007.
-- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0022. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
+- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0023. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
 
 ## Neues ADR anlegen
 

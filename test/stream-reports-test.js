@@ -74,6 +74,19 @@ check('R17a Vorhanden-Prüfung', reports.exists(id2) && !reports.exists(id) && !
 fs.rmSync(path.join(dir, `${id2}.json`));
 check('R17b Von Hand gelöschter Bericht fällt aus der Liste', reports.list().length === 0 && reports.totals().streams === 0);
 
+// Zuschauer im Bericht (ADR 0023)
+const start3 = new Date(2026, 10, 14, 20, 0).toISOString();
+const withViewers = closed(start3, 2, { viewers: { peak: 60, average: 40, minutes: 3 } });
+withViewers.state.viewers = [[0, 20], [14, 40], [16, 60]];
+const idViewers = reports.archive(withViewers);
+const viewerText = reports.text(idViewers);
+check('R22 Bericht nennt Höchstwert, Schnitt und Verlauf je Viertelstunde', viewerText.includes('Zuschauer: höchstens 60, im Schnitt 40 (3 Minuten erfasst)')
+  && viewerText.includes('Verlauf je Viertelstunde (Höchstwert): 20:00 40 · 20:15 60'), viewerText);
+reports.remove(idViewers);
+const idOld = reports.archive(closed(start3, 1));
+check('R23 Bericht ohne Zuschauerwerte (ältere Streams): keine Zeile', !reports.text(idOld).includes('Zuschauer:'), reports.text(idOld));
+reports.remove(idOld);
+
 check('R18 Hinweise je Fall', reportWarnings({ duration_seconds: 7200 }, 3600).length === 0 && reportWarnings({ duration_seconds: 100, aborted: true }, 3600).length === 2);
 
 for (const x of results) console.log(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : '  -> ' + x.info}`);

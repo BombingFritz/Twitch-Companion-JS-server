@@ -573,6 +573,9 @@ function streamStatisticRows(s) {
   ];
   if (s.interruptions) items.push(row('Unterbrechungen', el('span', { text: `${s.interruptions}, zusammen ${duration(s.interruption_seconds)}` })));
   for (const c of s.categories) items.push(row(c.name, el('span', { text: duration(c.seconds) })));
+  if (s.viewers && s.viewers.minutes) {
+    items.push(row('Zuschauer', el('span', { text: `höchstens ${s.viewers.peak}, im Schnitt ${s.viewers.average} (${s.viewers.minutes} Min. erfasst)` })));
+  }
   items.push(...s.metrics.map(metricRow), row('Verschiedene Chatter', el('span', { class: 'mono', text: String(s.unique_chatters) })));
   if (s.top_chatters.length) {
     items.push(row('Aktivste Chatter', el('span', { text: s.top_chatters.map(c => `${c.name} (${c.count})`).join(', ') })));
@@ -638,6 +641,11 @@ function streamCard(d) {
   if (s.status === 'offline') status = indicator('warn', `offline, Erfassung bis ${clock(s.closes_at)} Uhr`);
   if (s.status === 'closed') status = indicator('ok', `abgeschlossen um ${clock(s.ended_at)} Uhr, ${CLOSE_REASONS[s.close_reason] || s.close_reason}`);
   const items = [row('Streamlog', status)];
+  const v = s.viewers;
+  if (s.status === 'live' && v && v.current !== null && v.current !== undefined) {
+    const extra = v.peak !== null && v.peak !== undefined ? `, höchstens ${v.peak}, im Schnitt ${v.average}` : '';
+    items.push(row('Zuschauer', el('span', { text: `${v.current} (Stand ${clock(v.updated_at)} Uhr${extra})` })));
+  }
   if (s.status === 'closed') items.push(row('Bericht', s.report_id ? reportLink(s.report_id) : el('span', { text: s.report_deleted ? 'gelöscht' : 'wird gespeichert …' })));
   return card('Stream', rows(...items), ...warningNodes(s.warnings), ...streamCloseControls(s));
 }

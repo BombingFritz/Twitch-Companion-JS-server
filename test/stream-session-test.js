@@ -268,6 +268,31 @@ check('B10 Älterer abgeschlossener Stand ohne Bericht wird einmal archiviert', 
   check('P6 Ausgeschaltet: wieder mit Namen, alte Einträge bleiben anonym', snap(p.session).unique_chatters === 4 && p.session.snapshot().top_chatters.some(c => c.name === 'Anna' && c.count === 1));
 }
 
+// Zuschauer je Minute (ADR 0023)
+{
+  const z = setup({ maxViewerMinutes: 3 });
+  z.session.noteViewers(50);
+  check('Z1 Ohne laufenden Stream keine Werte', snap(z.session).viewers.minutes === 0 && snap(z.session).viewers.peak === null);
+  z.session.onOnline({ id: 's1' });
+  z.session.noteViewers(10);
+  z.clock.t += 30 * 1000;
+  z.session.noteViewers(14);
+  z.session.noteViewers(12);
+  z.clock.t += 60 * 1000;
+  z.session.noteViewers(20);
+  z.session.flush();
+  check('Z2 Je Minute der höchste Wert, Minuten seit Start', JSON.stringify(z.file.data.viewers) === '[[0,14],[1,20]]', JSON.stringify(z.file.data.viewers));
+  check('Z3 Höchstwert und Durchschnitt', JSON.stringify(snap(z.session).viewers) === '{"peak":20,"average":17,"minutes":2}', JSON.stringify(snap(z.session).viewers));
+  z.session.noteViewers(-1); z.session.noteViewers(NaN); z.session.noteViewers('x');
+  z.clock.t += 60 * 1000; z.session.noteViewers(5);
+  z.clock.t += 60 * 1000; z.session.noteViewers(6);
+  z.session.flush();
+  check('Z4 Ungültige Werte ignoriert, Obergrenze der Minuten', z.file.data.viewers.length === 3 && z.file.data.viewers[2][1] === 5, JSON.stringify(z.file.data.viewers));
+  z.session.onOffline();
+  z.clock.t += 60 * 1000; z.session.noteViewers(99);
+  check('Z5 Offline: keine neuen Werte', snap(z.session).viewers.peak === 20);
+}
+
 // Robustheit
 ({ session } = setup({ save: () => { throw new Error('Datei gesperrt'); } }));
 let threw = false;

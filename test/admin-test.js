@@ -32,6 +32,7 @@ FakeWS.OPEN = 1;
 const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
 const subscribed = [];
 const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
+let fakeStream = null, fakeStreamRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
 const fakeAxios = {
   post: async (url, body) => {
     if (url.includes('helix/chat/messages')) chatSent.push(body);
@@ -39,6 +40,10 @@ const fakeAxios = {
     return { data: { data: [] } };
   },
   get: async url => {
+    if (url.includes('helix/streams')) {
+      fakeStreamRequests += 1;
+      if (fakeStream) return { data: { data: [fakeStream] } };
+    }
     if (url.includes('login=twitchfehler')) throw new Error('Twitch nicht erreichbar');
     const key = Object.keys(WHITELIST_USERS).find(k => url.endsWith(`?${k}`));
     return { data: { data: url.includes('helix/users') && key ? [WHITELIST_USERS[key]] : [] } };
@@ -667,6 +672,48 @@ async function privat() {
   check('V11 Danach wieder mit Namen, frühere Einträge bleiben anonym', st.top_chatters.some(c => c.name === 'anna' && c.count === 1) && st.top_chatters.some(c => c.name === 'anonymer Schlaumeier'), JSON.stringify(st.top_chatters));
 }
 
+// Zuschauerzahl (ADR 0023): Der Server fragt Twitch, Widgets bekommen nur den letzten Stand
+async function zuschauer() {
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
+  await sleep(100);
+  const send = (subType, event, id) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
+  const VIEWERS = '/api/twitch/stream';
+
+  let r = await request(VIEWERS);
+  check('Z-A1 Vor dem Stream: nicht live, keine Zahl', r.status === 200 && r.body === '{"live":false,"viewers":null,"updatedAt":null}', r.body);
+
+  const startedAt = new Date().toISOString();
+  fakeStream = { id: 'st1', type: 'live', viewer_count: 42, started_at: startedAt };
+  send('stream.online', { id: 'st1', type: 'live', started_at: startedAt }, 'z1');
+  await sleep(150);
+  r = await request(VIEWERS);
+  let d = JSON.parse(r.body);
+  check('Z-A2 Streamstart: erste Abfrage sofort', d.live === true && d.viewers === 42 && !Number.isNaN(Date.parse(d.updatedAt)), r.body);
+
+  const before = fakeStreamRequests;
+  for (let i = 0; i < 5; i++) await request(VIEWERS);
+  check('Z-A3 Widget-Abrufe fragen Twitch nicht erneut', fakeStreamRequests === before, `${fakeStreamRequests - before} zusätzliche Anfragen`);
+
+  r = await request(VIEWERS, { Origin: 'null' });
+  check('Z-A4 Widget per file:/// (Herkunft null) darf lesen', r.status === 200, String(r.status));
+  r = await request(VIEWERS, { Origin: 'https://fremd.example' });
+  check('Z-A5 Fremde Herkunft: 403', r.status === 403, String(r.status));
+
+  const ov = JSON.parse((await request(OVERVIEW)).body).stream;
+  check('Z-A6 Übersicht: aktuelle Zahl, Höchstwert, Schnitt', ov.viewers.current === 42 && ov.viewers.peak === 42 && ov.viewers.average === 42, JSON.stringify(ov.viewers));
+  const st = JSON.parse((await request(STATS)).body).stream;
+  check('Z-A7 Statistik: Minutenwerte', JSON.stringify(st.viewers) === '{"peak":42,"average":42,"minutes":1}', JSON.stringify(st.viewers));
+  check('Z-A8 Keine Zeile je Abfrage in der Konsole', logs.filter(l => l.includes('[Zuschauer]')).length <= 1, logs.filter(l => l.includes('[Zuschauer]')).join(' | '));
+
+  send('channel.raid', { from_broadcaster_user_id: '4711', from_broadcaster_user_login: 'testkanal', to_broadcaster_user_id: '88', to_broadcaster_user_login: 'freund', viewers: 5 }, 'z2');
+  await sleep(150);
+  const reportsDir = path.join(workDir, 'stream_reports');
+  const txt = fs.readdirSync(reportsDir).filter(f => f.endsWith('.txt')).map(f => fs.readFileSync(path.join(reportsDir, f), 'utf8')).join('\n');
+  check('Z-A9 Bericht nennt die Zuschauer', txt.includes('Zuschauer: höchstens 42, im Schnitt 42 (1 Minute erfasst)'), txt);
+  const json = fs.readdirSync(reportsDir).filter(f => f.endsWith('.json')).map(f => JSON.parse(fs.readFileSync(path.join(reportsDir, f), 'utf8')))[0];
+  check('Z-A10 Minutenverlauf im Bericht (.json)', JSON.stringify(json.state.viewers) === '[[0,42]]', JSON.stringify(json.state.viewers));
+}
+
 async function effekteAlt() {
   const r = await request(OVERVIEW);
   check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
@@ -744,6 +791,7 @@ async function ohneTokens() {
   else if (scenario === 'effekte-alt') await effekteAlt();
   else if (scenario === 'statistik') await statistik();
   else if (scenario === 'privat') await privat();
+  else if (scenario === 'zuschauer') await zuschauer();
   else await ablauf();
 
   console.log = realLog;
