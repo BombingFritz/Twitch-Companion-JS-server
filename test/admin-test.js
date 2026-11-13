@@ -138,6 +138,15 @@ async function ablauf() {
   check('A16 Erfolgreiche Abfragen fluten die Konsole nicht', !logs.some(l => /\[HTTP\] GET \/api\/admin\/overview -> 200/.test(l)));
   check('A17 Abgelehnte Abfragen stehen in der Konsole', logs.some(l => /\[HTTP\] GET \/api\/admin\/overview -> 403/.test(l)));
   check('A18 Startanzeige nennt die Webkonsole', logs.some(l => l.includes(`Webkonsole: http://localhost:${PORT}${PAGE}`)));
+
+  // ADR 0024: /token nennt den Ablauf, die Übersicht die Anfragen an Twitch
+  r = await request('/token', { Host: `localhost:${PORT}` });
+  const tok = JSON.parse(r.body);
+  const fileExpires = JSON.parse(fs.readFileSync(path.join(workDir, 'tokens.json'), 'utf8')).expires_at;
+  check('A19 /token liefert expires_at (ISO) zusätzlich zu den bisherigen Feldern', r.status === 200 && tok.access_token && tok.broadcaster_id === '4711' && tok.client_id
+    && Date.parse(tok.expires_at) === fileExpires, r.body.replace(SECRETS[1], '<TOKEN>'));
+  const api = JSON.parse((await request(OVERVIEW)).body).twitch_api;
+  check('A20 Übersicht: Anfragen an Twitch mit Grenzen', api && api.per_minute === 200 && api.per_second === 3 && api.burst === 20 && Number.isInteger(api.last_minute), JSON.stringify(api));
 }
 
 async function alleHerkuenfte() {

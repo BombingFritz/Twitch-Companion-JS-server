@@ -30,7 +30,7 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 | Datei | Felder mit Personenbezug | Zweck | Kat. | Heute | Vorschlag |
 |---|---|---|---|---|---|
 | `.env` | `CLIENT_SECRET`, `HA_WEBHOOK_URL` (keine Zuschauerdaten) | Anmeldung, Effekte | E | dauerhaft | unverändert; nie ins Repo |
-| `tokens.json` | `access_token`, `refresh_token`, `broadcaster_id`, `broadcaster_name` | Zugriff auf Twitch | E | bis überschrieben | löschen, wenn die Freigabe widerrufen wird (Twitch VI F) [UNGEKLÄRT: Erkennung Widerruf vs. Verbindungsfehler] |
+| `tokens.json` | `access_token`, `refresh_token`, `broadcaster_id`, `broadcaster_name` | Zugriff auf Twitch | E | bis überschrieben; seit ADR 0024 nur beim Start gelesen, danach im Arbeitsspeicher, atomar geschrieben | löschen, wenn die Freigabe widerrufen wird (Twitch VI F) [UNGEKLÄRT: Erkennung Widerruf vs. Verbindungsfehler] |
 | `bot.json` | `bot_id`, `bot_login`, `bot_name` | Senden als DerBdu | E | bis `bot remove` | unverändert |
 | `whitelist.json` | ID und Name ausgewählter Streamer | Whitelist-Shoutouts | V (vom Streamer gepflegt) | bis Entfernen | unverändert; Entfernen auf Wunsch |
 | `whitelist_checks.json` | `userId`, `userName`, `result`, `lastActiveAt`, `lastLiveAt`, `game`, `timestamp`; max. 500 | Diagnose der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht | D/V | 500 Einträge, ohne Zeitgrenze | Frist 30 Tage; nach der Testphase abschaltbar |

@@ -33,6 +33,7 @@ const axios = {
 const orig = Module._load;
 Module._load = function (r, ...a) { if (r === 'ws') return WS; if (r === 'axios') return axios; if (r === 'readline') return { createInterface: () => (global.__rl = new EventEmitter()) }; return orig.call(this, r, ...a); };
 const logs = []; const real = console.log; console.log = console.warn = console.error = (...a) => logs.push(a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '));
+process.env.TWITCH_COMPANION_NO_THROTTLE = '1';   // viele Anfragen in kurzer Zeit; die Drosselung prüft twitch-api-test.js
 require(serverPath);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;

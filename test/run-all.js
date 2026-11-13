@@ -54,6 +54,7 @@ const runs = [
   ['topics-test.js', []],
   ['stream-session-test.js', []],
   ['stream-reports-test.js', []],
+  ['twitch-api-test.js', []],
   ['admin-format-test.js', []],
   ['authserver-test.js', []],
   ['prediction-test.js', []],

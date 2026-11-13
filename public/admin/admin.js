@@ -1122,7 +1122,16 @@ function twitchCard(d) {
     row('Token', token),
     row('EventSub', d.eventsub_connected ? indicator('ok', 'verbunden') : indicator('bad', 'getrennt')),
     row('Kategorie', el('span', { text: d.category || 'unbekannt' })),
+    ...(d.twitch_api ? [row('API-Anfragen', twitchApiStatus(d.twitch_api))] : []),
   ));
+}
+
+// Anfragen des Servers in der letzten Minute gegen die eigene Grenze, dazu das Kontingent laut Twitch (ADR 0024)
+function twitchApiStatus(a) {
+  const level = a.last_minute >= a.per_minute * 0.9 ? 'warn' : 'ok';
+  const twitch = a.twitch ? `, Twitch-Kontingent ${a.twitch.remaining}/${a.twitch.limit}` : '';
+  const waiting = a.queued ? `, ${a.queued} warten` : '';
+  return indicator(level, `${a.last_minute}/${a.per_minute} pro Minute${waiting}${twitch}`);
 }
 
 function effectsCard(d) {
