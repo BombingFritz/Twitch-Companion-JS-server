@@ -43,6 +43,8 @@ console.log = console.warn = console.error = (...a) => logs.push(a.map(x => type
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Wartet, bis cond() wahr ist, höchstens timeoutMs: robust gegen langsamere Rechner (CI), ohne die Prüfung aufzuweichen
+const waitFor = async (cond, timeoutMs, stepMs = 250) => { const end = Date.now() + timeoutMs; while (Date.now() < end) { if (await cond()) return true; await sleep(stepMs); } return cond(); };
 let n = 0;
 const send = (message_type, subType, payload) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type, subscription_type: subType, message_id: `m${++n}` }, payload }));
 const chat = (login, display, text = '!soldbuch') => send('notification', 'channel.chat.message', { event: {
@@ -160,12 +162,11 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     await sleep(1000);
     api = await getJson('/api/uboat/crew');
     check('N1 neuer Spielstand nicht vor Ablauf der Ruhezeit gelesen', api.source === 'Versenkung.save');
-    await sleep(6500);
-    api = await getJson('/api/uboat/crew');
+    await waitFor(async () => (api = await getJson('/api/uboat/crew')).source === 'Autosave_1.save', 20000);
     const kob = api.crew.find(c => c.name === 'Kobold');
     check('N2 neuer Spielstand nach Ruhezeit eingelesen', api.source === 'Autosave_1.save' && kob.level === 1 && kob.experiencePoints === 30, JSON.stringify({ source: api.source, kob }));
     fs.writeFileSync(path.join(savesDir, 'Kaputt.save'), Buffer.from('kein deflate'));
-    await sleep(7500);
+    await waitFor(() => has(/„Kaputt.save“ nicht lesbar/), 20000);
     api = await getJson('/api/uboat/crew');
     check('N3 defekter Spielstand: letzter gültiger Stand bleibt, Hinweis', api.source === 'Autosave_1.save' && api.crew.length === 9 && has(/„Kaputt.save“ nicht lesbar/), api.source);
     check('N4 Saves-Ordner unverändert (nur gelesen)', fs.readdirSync(savesDir).sort().join(',') === 'Alt.save,Autosave_1.save,Kaputt.save,Versenkung.save');

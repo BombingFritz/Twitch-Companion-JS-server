@@ -33,6 +33,8 @@ console.log = console.warn = console.error = (...a) => logs.push(a.map(x => type
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Wartet, bis cond() wahr ist, höchstens timeoutMs: robust gegen langsamere Rechner (CI), ohne die Prüfung aufzuweichen
+const waitFor = async (cond, timeoutMs, stepMs = 100) => { const end = Date.now() + timeoutMs; while (Date.now() < end) { if (await cond()) return true; await sleep(stepMs); } return cond(); };
 let n = 0;
 const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `m${++n}` }, payload: { event } }));
 const raid = (id, login, viewers) => send('channel.raid', { from_broadcaster_user_id: id, from_broadcaster_user_login: login, to_broadcaster_user_id: '1', viewers });
@@ -52,7 +54,7 @@ const has = re => logs.some(l => re.test(l));
     shoutoutBehavior = i => i === 1 ? { status: 429, message: 'The broadcaster may not give another Shoutout to the specified streamer until the cooldown period expires.' } : {};
     raid('100', 'raider', 5); await sleep(2700);
     check('B1 Raid-Shoutout abgelehnt, kurzer Hinweis statt Fehler', has(/Twitch-Wartezeit läuft/) && !has(/Fehler beim Senden des Shoutouts/));
-    chat('100', 'raider'); await sleep(2300);
+    chat('100', 'raider'); await waitFor(() => shoutouts.length >= 2, 8000);
     check('B2 nach gescheitertem Raid-Shoutout versucht die Whitelist erneut', shoutouts.length === 2, JSON.stringify(shoutouts));
   }
   if (scenario === 'offline') {
