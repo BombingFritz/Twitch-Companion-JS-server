@@ -16,6 +16,7 @@ effect_mode.json
 whitelist_checks.json
 uboat_crew_map.json
 modules.json
+topics.json
 bot.json
 error_log.json
 error_log.json.tmp

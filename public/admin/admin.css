@@ -287,3 +287,18 @@ body.stale .module-lights { opacity: .45; }
   main { padding: 16px; }
   .grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Intro-Topics */
+.topics { display: flex; flex-direction: column; gap: 12px; max-width: 1400px; }
+.topics-controls { margin: 12px 0; }
+.topics-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.topics-field .wl-input { flex: none; width: 100%; max-width: 420px; box-sizing: border-box; }
+.topics .wl-row { flex-wrap: nowrap; }
+.topics-input { flex: 1 1 auto; }
+.topics-number { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; width: 2ch; text-align: right; }
+.topics-preview-list { list-style: none; margin: 0; padding: 0; }
+.topics-preview { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+.topics-preview .sub { margin-left: auto; }
+.topics-preview.erledigt { color: var(--muted); }
+.topics-preview.aktiv { font-weight: 600; }
+.topics-mark { width: 1.2em; flex: none; text-align: center; }

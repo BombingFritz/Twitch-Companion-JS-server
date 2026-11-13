@@ -12,6 +12,10 @@
 - Aktualität: Der Server wird parallel in mehreren Diskussionen weiterentwickelt. Vor jeder Weiterentwicklung klären, welcher Stand gilt. Ab jetzt gilt das GitHub-Repository als maßgeblicher Stand.
 - ~~EventSub-Keepalive~~ – erledigt (Nov. 2026): Stille Verbindungen werden nach Keepalive-Intervall plus 5 s getrennt und neu aufgebaut (ARCHITEKTUR.md, „Verbindungsverwaltung“). Ob stille Abbrüche in der Praxis vorkamen, ist weiter [UNGEKLÄRT]; die Konsole meldet sie jetzt.
 
+## Geplant: Intro-Topics und Stream-Deck-Plugin (Nutzer, 12.11.2026)
+- Abhakbare Themenliste fürs Intro (CheckTalk-Widget), bedient per Stream Deck, optional mit Lichteffekt; dazu eine allgemeine Stream-Deck-Schnittstelle mit eigenem Plugin und der Clip-Moment-Taste. Fahrplan und Stand: [FAHRPLAN.md](FAHRPLAN.md); Specs `intro-topics.md` und `stream-deck.md`; ADR 0020 und 0021.
+  - **Stand 12.11.2026:** Server-Teil, Reiter „Topics“ und CheckTalk-Widget 0.2.0 umgesetzt und mit Attrappen geprüft. Offen: Test am echten Server und in OBS, HA-Automation für die Topic-Effekte, Clip-Moment, eigenes Stream-Deck-Plugin.
+
 ## Abgleich mit dem Gesamtkontext (Okt. 2026)
 
 Ergebnis der Prüfung von docs/KONTEXT.md gegen den Code. Entscheidungen stehen aus.

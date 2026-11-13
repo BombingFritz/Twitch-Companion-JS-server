@@ -42,6 +42,7 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 | `stream_reports/<ID>.txt` | Top 10 Chatter mit Anzahl | lesbarer Bericht, Abschlussanzeige | V | unbegrenzt | wie die `.json` |
 | `error_log.json` | `text` kann Namen enthalten (z. B. fehlgeschlagener Shoutout); Secrets werden entfernt | Fehlersuche über Neustarts | D | 1000 Einträge, ohne Zeitgrenze | Frist 30 Tage |
 | `subgoal_cache.json`, `effect_mode.json`, `modules.json` | keine | Betrieb | E | – | unverändert |
+| `topics.json` | keine (Themen und Anzeige-Einstellungen, vom Streamer gepflegt) | Intro-Topics (ADR 0021) | E | bis überschrieben | unverändert |
 
 ## 3. Nur im Arbeitsspeicher (bis Neustart oder kürzer)
 
@@ -61,8 +62,8 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 |---|---|---|---|
 | Twitch (API, EventSub, Chat) | Anfragen, Chatnachrichten des Servers | immer | notwendig |
 | **Öffentlich im Chat** | Raid-Begrüßung mit Rang, `!raidstats`-Rangliste, Whitelist-Hinweis mit letztem Aktivdatum und Spiel, BdU-Antworten, Soldbuch-Akte | bei Auslösung | Veröffentlichung; `!privat` sollte Erwähnungen unterdrücken, wo möglich (Abschnitt 5) |
-| Home Assistant (`HA_WEBHOOK_URL`) | `meta.userName`, bei Follows `userId` | je Effekt | HA speichert in seinem Verlauf; mit Cloud-Anbindung verlässt der Name das Heimnetz. Eine Option ohne Namen würde das Payload ändern und braucht ein ADR |
-| Widgets (lokal) | `/api/homeassistant/events` (Namen), `/api/twitch/prediction/current` (`topPredictors` live von Twitch), `/api/uboat/crew` (Namen im Spiel), `/api/bdu/stream` (nur Fragetext, kein Name) | auf Abruf | nur lokal bzw. erlaubte Herkünfte (ADR 0013) |
+| Home Assistant (`HA_WEBHOOK_URL`) | `meta.userName`, bei Follows `userId`; Intro-Topics nur Thema, Nummer, Anzahl | je Effekt | HA speichert in seinem Verlauf; mit Cloud-Anbindung verlässt der Name das Heimnetz. Eine Option ohne Namen würde das Payload ändern und braucht ein ADR |
+| Widgets (lokal) | `/api/topics`, `/api/topics/stream` (nur Themen und Anzeige, keine Personendaten), `/api/homeassistant/events` (Namen), `/api/twitch/prediction/current` (`topPredictors` live von Twitch), `/api/uboat/crew` (Namen im Spiel), `/api/bdu/stream` (nur Fragetext, kein Name) | auf Abruf | nur lokal bzw. erlaubte Herkünfte (ADR 0013) |
 | KI-Dienst über das Enigma-Widget | nur der Fragetext von `!BdU` | wenn BdU-Chat an ist | Hinweis in der Widget-Dokumentation (Nutzer, 12.11.2026) |
 | OneDrive | alle Laufzeitdateien im Projektordner | laufend | bewusste Entscheidung des Nutzers; bei Weitergabe des Werkzeugs sollte der Datenordner wählbar sein |
 

@@ -22,7 +22,15 @@ const EFFECT_MODE_URL = '/api/admin/effects/mode';
 const MODULE_SETTINGS = [
   { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
   { key: 'uboat', name: 'UBOAT-Soldbuch', text: 'Beantwortet !soldbuch im Chat. Aus: Der Befehl wird still ignoriert, der Spielstand wird weiter eingelesen.' },
+  { key: 'topics', name: 'Intro-Topics', text: 'Abhakbare Themenliste fürs Intro (CheckTalk-Widget), bedient per Stream Deck. Aus: Tasten werden ignoriert, das Widget blendet aus.' },
 ];
+const TOPICS_URL = '/api/admin/topics';
+const TOPICS_MAX_ITEMS = 10;
+const TOPICS_MAX_TITLE = 60;
+const TOPICS_MAX_HEADING = 40;
+const TOPICS_THEMES = { panel: 'Programm-Tafel (Schiefer, Messing)', spargel: 'Spargel (wie SpargelPoll)', neutral: 'Neutral' };
+const TOPICS_BACKGROUNDS = { transparent: 'durchscheinend', solid: 'deckend (überdeckt die Fläche der Quelle)' };
+const TOPICS_STATUS_MARK = { offen: '○', aktiv: '▶', erledigt: '✓' };
 const LOG_STREAM_URL = '/api/admin/log/stream';
 const ERROR_LOG_URL = '/api/admin/log/errors';
 const LOG_MAX_LINES = 2000;
@@ -40,6 +48,7 @@ const TABS = [
   { id: 'log', title: 'Live-Log', ready: true, render: renderLog },
   { id: 'einstellungen', title: 'Einstellungen', ready: true, render: renderSettings },
   { id: 'whitelist', title: 'Whitelist', ready: true, render: renderWhitelist },
+  { id: 'topics', title: 'Topics', ready: true, render: renderTopics },
   { id: 'statistik', title: 'Statistik', ready: true, render: renderStatistics },
 ];
 
@@ -61,6 +70,11 @@ const state = {
   whitelist: {
     view: null, list: null, count: null, input: null, addButton: null, message: null,
     entries: [], filter: '', confirming: null, confirmTimer: null, loaded: false, loading: false, busy: false,
+  },
+  topics: {
+    view: null, data: null, key: null, loading: false, message: null, statusBox: null, previewList: null,
+    controls: [], itemsList: null, items: [], itemsDirty: false, displayDirty: false,
+    heading: null, theme: null, bgHorizontal: null, bgVertikal: null, saveItemsButton: null,
   },
   log: {
     view: null, list: null, errorList: null, status: null, toEnd: null, problems: null, modeButtons: null,
@@ -158,11 +172,18 @@ function bduLight(d) {
   return { level: 'ok', hint: 'bereit' };
 }
 
+function topicsLight(d) {
+  if (!d.modules.topics) return { level: 'off', hint: 'ausgeschaltet' };
+  if (!d.topics || !d.topics.clients) return { level: 'off', hint: 'kein Widget verbunden' };
+  return { level: 'ok', hint: 'bereit' };
+}
+
 function moduleLights(d) {
   return [
     { name: 'HA-Effekte', ...effectsLight(d) },
     { name: 'UBOAT-Soldbuch', ...soldbuchLight(d) },
     { name: 'BdU-Chat', ...bduLight(d) },
+    { name: 'Intro-Topics', ...topicsLight(d) },
     { name: 'Sub-Goal', level: null, hint: '' },
   ];
 }
@@ -336,6 +357,198 @@ function renderWhitelist(content, d) {
     loadWhitelistEntries();
   } else if (wl.loaded && d.whitelist_count !== wl.entries.length) {
     loadWhitelistEntries();   // an der Konsole geändert
+  }
+}
+
+
+// ── Intro-Topics (ADR 0021, docs/specs/intro-topics.md) ─────────────
+function showTopicsMessage(text, isError) {
+  const { message } = state.topics;
+  message.textContent = text;
+  message.className = `wl-message ${isError ? 'error' : 'ok'}`;
+}
+
+async function loadTopics() {
+  const t = state.topics;
+  if (t.loading) return;
+  t.loading = true;
+  try {
+    const response = await fetch(TOPICS_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    applyTopicsData(await response.json());
+  } catch (err) {
+    showTopicsMessage(`Topics nicht geladen: ${err.message}`, true);
+  } finally {
+    t.loading = false;
+  }
+}
+
+// Eingaben, die gerade bearbeitet werden, nicht überschreiben.
+function applyTopicsData(data) {
+  const t = state.topics;
+  t.data = data;
+  if (!t.itemsDirty) {
+    t.items = data.items.map(i => i.title);
+    renderTopicsItems();
+  }
+  if (!t.displayDirty) {
+    t.heading.value = data.display.title;
+    t.theme.value = data.display.theme;
+    t.bgHorizontal.value = data.display.background.horizontal;
+    t.bgVertikal.value = data.display.background.vertikal;
+  }
+  renderTopicsStatus();
+}
+
+function renderTopicsStatus() {
+  const t = state.topics;
+  const s = t.data && t.data.state;
+  if (!s) return;
+  const current = s.current === null ? 'noch keins' : `${s.current + 1} von ${s.total} (${s.items[s.current].status})`;
+  t.statusBox.replaceChildren(rows(
+    row('Modul', s.enabled ? indicator('ok', 'an') : indicator('off', 'aus (Einstellungen)')),
+    row('Liste', s.visible ? indicator('ok', 'sichtbar') : indicator('off', s.hide_reason === 'auto' ? 'ausgeblendet (alles erledigt)' : 'ausgeblendet')),
+    row('Thema', el('span', { text: s.complete ? `alle ${s.total} erledigt` : current })),
+    row('Widgets/Plugin', el('span', { text: t.data.clients ? `${t.data.clients} verbunden` : 'keins verbunden' })),
+    row('Testmodus', el('span', { text: t.data.debug ? 'an (Konsole: topics debug off)' : 'aus' })),
+  ));
+  t.previewList.replaceChildren(...s.items.map(item => el('li', { class: `topics-preview ${item.status}` },
+    el('span', { class: 'topics-mark', 'aria-hidden': 'true', text: TOPICS_STATUS_MARK[item.status] }),
+    el('span', { text: item.title }),
+    el('span', { class: 'sub', text: item.status }))));
+  for (const button of t.controls) button.disabled = !s.enabled;
+}
+
+async function topicsAction(action) {
+  try {
+    const { state: s } = await postJson(`${TOPICS_URL}/action`, { action });
+    state.topics.data = { ...state.topics.data, state: s };
+    renderTopicsStatus();
+  } catch (err) {
+    showTopicsMessage(`Bedienen: ${err.message}`, true);
+  }
+}
+
+function markItemsDirty() {
+  const t = state.topics;
+  t.itemsDirty = true;
+  t.saveItemsButton.disabled = false;
+}
+
+function renderTopicsItems() {
+  const t = state.topics;
+  const rowsList = t.items.map((title, i) => {
+    const input = el('input', { type: 'text', class: 'wl-input topics-input', maxlength: String(TOPICS_MAX_TITLE), 'aria-label': `Thema ${i + 1}`, autocomplete: 'off' });
+    input.value = title;
+    input.addEventListener('input', () => { t.items[i] = input.value; markItemsDirty(); });
+    const move = (delta, label, text) => actionButton(text, '', () => {
+      const j = i + delta;
+      [t.items[i], t.items[j]] = [t.items[j], t.items[i]];
+      markItemsDirty();
+      renderTopicsItems();
+    }, i + delta < 0 || i + delta >= t.items.length);
+    const remove = actionButton('Entfernen', 'danger', () => { t.items.splice(i, 1); markItemsDirty(); renderTopicsItems(); }, t.items.length <= 1);
+    return el('li', { class: 'wl-row' },
+      el('span', { class: 'topics-number', text: `${i + 1}.` }), input,
+      el('span', { class: 'wl-actions' }, move(-1, 'hoch', '↑'), move(1, 'runter', '↓'), remove));
+  });
+  t.itemsList.replaceChildren(...rowsList);
+  t.addItemButton.disabled = t.items.length >= TOPICS_MAX_ITEMS;
+}
+
+async function saveTopicsItems() {
+  const t = state.topics;
+  const items = t.items.map(x => x.trim());
+  if (items.some(x => !x)) return showTopicsMessage('Jedes Thema braucht einen Titel.', true);
+  t.saveItemsButton.disabled = true;
+  try {
+    const data = await postJson(TOPICS_URL, { items });
+    t.itemsDirty = false;
+    applyTopicsData({ ...t.data, ...data });
+    showTopicsMessage(`Liste mit ${items.length} Themen gespeichert. Der Fortschritt beginnt von vorn.`, false);
+  } catch (err) {
+    t.saveItemsButton.disabled = false;
+    showTopicsMessage(`Liste: ${err.message}`, true);
+  }
+}
+
+async function saveTopicsDisplay() {
+  const t = state.topics;
+  const display = {
+    title: t.heading.value,
+    theme: t.theme.value,
+    background: { horizontal: t.bgHorizontal.value, vertikal: t.bgVertikal.value },
+  };
+  try {
+    const data = await postJson(TOPICS_URL, { display });
+    t.displayDirty = false;
+    applyTopicsData({ ...t.data, ...data });
+    showTopicsMessage('Anzeige gespeichert. Die Widgets übernehmen sie sofort.', false);
+  } catch (err) {
+    showTopicsMessage(`Anzeige: ${err.message}`, true);
+  }
+}
+
+function selectField(label, options) {
+  const select = el('select', { class: 'wl-input', 'aria-label': label });
+  for (const [value, text] of Object.entries(options)) select.append(el('option', { value, text }));
+  select.addEventListener('change', () => { state.topics.displayDirty = true; });
+  return select;
+}
+
+function field(label, control) {
+  return el('label', { class: 'topics-field' }, el('span', { class: 'setting-name', text: label }), control);
+}
+
+function topicsView() {
+  const t = state.topics;
+  if (t.view) return t.view;
+  t.message = el('p', { class: 'wl-message', role: 'status' });
+  t.statusBox = el('div');
+  t.previewList = el('ul', { class: 'topics-preview-list' });
+  t.controls = [
+    actionButton('◀ Zurück', '', () => topicsAction('back'), true),
+    actionButton('Weiter ▶', '', () => topicsAction('next'), true),
+    actionButton('Ein/Aus', '', () => topicsAction('toggle'), true),
+    actionButton('Zurücksetzen', 'danger', () => topicsAction('reset'), true),
+  ];
+  t.itemsList = el('ul', { class: 'wl-list' });
+  t.addItemButton = actionButton('Thema hinzufügen', '', () => { t.items.push(''); markItemsDirty(); renderTopicsItems(); t.itemsList.lastChild.querySelector('input').focus(); }, false);
+  t.saveItemsButton = actionButton('Liste speichern', '', saveTopicsItems, true);
+  t.heading = el('input', { type: 'text', class: 'wl-input', maxlength: String(TOPICS_MAX_HEADING), 'aria-label': 'Überschrift', autocomplete: 'off' });
+  t.heading.addEventListener('input', () => { t.displayDirty = true; });
+  t.theme = selectField('Design', TOPICS_THEMES);
+  t.bgHorizontal = selectField('Hintergrund horizontal', TOPICS_BACKGROUNDS);
+  t.bgVertikal = selectField('Hintergrund vertikal', TOPICS_BACKGROUNDS);
+  t.view = el('section', { class: 'wl topics' },
+    t.message,
+    el('div', { class: 'grid' },
+      card('Bedienung', t.statusBox, el('div', { class: 'log-toolbar topics-controls' }, ...t.controls), t.previewList),
+      card('Anzeige',
+        field('Überschrift (leer = keine)', t.heading),
+        field('Design', t.theme),
+        field('Hintergrund horizontal', t.bgHorizontal),
+        field('Hintergrund vertikal', t.bgVertikal),
+        el('div', { class: 'log-toolbar' }, actionButton('Anzeige speichern', '', saveTopicsDisplay, false)),
+        el('p', { class: 'sub', text: 'Deckend: Die ganze Browserquelle wird beim Einblenden gefüllt und überdeckt, was darunter liegt (z. B. Untertitel). Die Ausgabe wählt jede Quelle per ?output=horizontal oder ?output=vertikal.' }))),
+    card(`Themen (1 bis ${TOPICS_MAX_ITEMS}, je höchstens ${TOPICS_MAX_TITLE} Zeichen)`,
+      t.itemsList,
+      el('div', { class: 'log-toolbar' }, t.addItemButton, t.saveItemsButton),
+      el('p', { class: 'sub', text: 'Speichern setzt den Fortschritt zurück. Empfehlung: höchstens 7 Themen, sonst wird die Liste im Stream schwer lesbar.' })));
+  return t.view;
+}
+
+function renderTopics(content, d) {
+  const t = state.topics;
+  const view = topicsView();
+  const key = JSON.stringify(d.topics || null) + String(d.modules.topics);
+  if (content.firstChild !== view) {
+    content.replaceChildren(view);
+    t.key = key;
+    loadTopics();
+  } else if (key !== t.key) {
+    t.key = key;
+    loadTopics();   // per Stream Deck, Konsole oder Streamstart geändert
   }
 }
 
@@ -965,6 +1178,16 @@ function uboatCard(d) {
   ));
 }
 
+function topicsCard(d) {
+  const t = d.topics || { total: 0, step: 0, clients: 0 };
+  return card('Intro-Topics', rows(
+    switchRow(d.modules.topics),
+    row('Widgets/Plugin', t.clients ? indicator('ok', `${t.clients} verbunden`) : indicator('off', 'nicht verbunden')),
+    row('Stand', el('span', { text: t.complete ? `alle ${t.total} erledigt` : `${Math.ceil(t.step / 2)} von ${t.total}` })),
+    row('Liste', el('span', { text: t.visible ? 'sichtbar' : 'ausgeblendet' })),
+  ));
+}
+
 function subgoalCard(d) {
   const goal = d.subgoal;
   if (goal.current === null || goal.current === undefined) {
@@ -1011,7 +1234,7 @@ function moduleLightList(d) {
 function optionalModules(d) {
   return el('section', { class: 'group' }, optionalToggle(), state.optionalCollapsed
     ? moduleLightList(d)
-    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), subgoalCard(d)));
+    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), topicsCard(d), subgoalCard(d)));
 }
 
 function renderOverview(content, d) {
