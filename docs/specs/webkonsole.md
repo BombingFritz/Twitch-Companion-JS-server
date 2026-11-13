@@ -112,6 +112,9 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - `POST /api/admin/whitelist/remove` mit `{id}`: `{ok:true, id}`. 400 bei ungültiger ID, 404 wenn sie nicht gelistet ist.
 - Für beide POST gelten eigene Herkunft und JSON wie in Stufe 2 (403, 415), Inhalt höchstens `ADMIN_JSON_LIMIT` (1 KB, sonst 413). Die Konsolenbefehle bleiben unverändert.
 
+## Geplant: gemeinsamer Reiter für Modul- und Plugin-Einstellungen (Nutzer, 13.11.2026)
+Die Einstellungen aller Module und Plugins kommen in einen gemeinsamen Reiter. Der Reiter „Topics“ (Stufe 7) ist ein Übergang: Bedienung und Einstellungen der Intro-Topics werden dorthin umziehen. Aufbau und Umsetzung macht der Nutzer bzw. eine andere Session [UNGEKLÄRT, wie der Reiter heißt und gegliedert ist]. Neue Einstellungen gehören in diesen Reiter; vor jeder Änderung den aktuellen Stand prüfen (AGENTS.md).
+
 ## Verhalten Stufe 7: Topics (ADR 0021)
 - **Bedienung:** Modul, Sichtbarkeit, aktuelles Thema, verbundene Widgets/Plugins, Testmodus; Knöpfe „Zurück“, „Weiter“, „Ein/Aus“, „Zurücksetzen“ (`POST /api/admin/topics/action`); Vorschau der Liste mit Status.
 - **Anzeige:** Überschrift, Design, Hintergrund horizontal und vertikal; „Anzeige speichern“ (`POST /api/admin/topics` mit `display`). Die Widgets übernehmen die Änderung sofort.

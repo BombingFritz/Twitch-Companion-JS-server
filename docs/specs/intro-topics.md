@@ -43,9 +43,9 @@ Alle erledigt: `step = 2 × Anzahl`.
 - Webkonsole, Reiter „Topics“: Themen hinzufügen, umbenennen, verschieben, löschen; speichern schreibt `topics.json` und setzt `step = 0`. Fehlt `topics.json`, gilt die Standardliste „Begrüßung, Neuigkeiten, Streamplan“.
 
 ### Anzeige-Einstellungen (Nutzer, 12.11.2026)
-- Webkonsole, Reiter „Topics“, Karte „Anzeige“; gespeichert in `topics.json`, an die Widgets im Zustand (`display`):
+- Webkonsole, Reiter „Topics“, Karte „Anzeige“ (zieht später in den gemeinsamen Reiter für Modul- und Plugin-Einstellungen um, siehe `webkonsole.md`); gespeichert in `topics.json`, an die Widgets im Zustand (`display`):
   - **Überschrift:** Standard „Tagesthemen“, höchstens 40 Zeichen, leer = keine Überschrift.
-  - **Design:** `panel` (Programm-Tafel, Standard), `spargel`, `neutral`.
+  - **Design:** `panel` (Programm-Tafel, Standard), `clean` (nur Text, weiße Schrift mit dunkler Kontur, für gleichmäßigen hellen wie dunklen Hintergrund; Tafel standardmäßig ganz durchsichtig, Deckkraft per Widget-Parameter `plate`), `spargel`, `neutral`.
   - **Hintergrund je Ausgabe:** `transparent` (durchscheinende Tafel) oder `solid` (deckend: beim Einblenden füllt das Widget die ganze Browserquelle und überdeckt darunterliegende Quellen). Standard: horizontal `transparent`, vertikal `solid`.
 - Jede Browserquelle sagt per `?output=horizontal|vertikal`, welcher Hintergrund für sie gilt. URL-Parameter `theme`, `background`, `title` überschreiben nur für diese Quelle.
 - Speichern der Anzeige setzt den Fortschritt nicht zurück.

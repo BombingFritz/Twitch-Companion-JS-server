@@ -108,6 +108,8 @@ r = t.topics.setDisplay({ title: 'Themen heute', theme: 'spargel', background: {
 check('T26 Anzeige teilweise ändern, Rest bleibt', r.state && r.state.display.title === 'Themen heute' && r.state.display.theme === 'spargel' && r.state.display.background.vertikal === 'transparent' && r.state.display.background.horizontal === 'transparent' && t.saved[t.saved.length - 1].display.theme === 'spargel', JSON.stringify(r));
 r = t.topics.setDisplay({ title: '' });
 check('T27 Leere Überschrift erlaubt (keine Überschrift)', r.state && r.state.display.title === '');
+r = t.topics.setDisplay({ theme: 'clean' });
+check('T27b Design clean erlaubt', r.state && r.state.display.theme === 'clean');
 for (const bad of [{ theme: 'pink' }, { background: { quer: 'solid' } }, { background: { horizontal: 'rot' } }, { title: 'x'.repeat(41) }, null, []]) {
   r = t.topics.setDisplay(bad);
   check(`T28 Ungültige Anzeige abgelehnt: ${JSON.stringify(bad)}`, Boolean(r.error), JSON.stringify(r));

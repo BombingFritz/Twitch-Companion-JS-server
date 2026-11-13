@@ -14,6 +14,7 @@
 
 ## Geplant: Intro-Topics und Stream-Deck-Plugin (Nutzer, 12.11.2026)
 - Abhakbare Themenliste fürs Intro (CheckTalk-Widget), bedient per Stream Deck, optional mit Lichteffekt; dazu eine allgemeine Stream-Deck-Schnittstelle mit eigenem Plugin und der Clip-Moment-Taste. Fahrplan und Stand: [FAHRPLAN.md](FAHRPLAN.md); Specs `intro-topics.md` und `stream-deck.md`; ADR 0020 und 0021.
+  - **Stand 13.11.2026:** Funktioniert in OBS (Nutzer). Design-Feinschliff folgt später; zusätzlich Theme `clean` (nur Text) als Testdesign, Widget 0.3.0. Die Einstellungen ziehen später in einen gemeinsamen Reiter für alle Module und Plugins (Nutzer; AGENTS.md, `webkonsole.md`).
   - **Stand 12.11.2026:** Server-Teil, Reiter „Topics“ und CheckTalk-Widget 0.2.0 umgesetzt und mit Attrappen geprüft. Offen: Test am echten Server und in OBS, HA-Automation für die Topic-Effekte, Clip-Moment, eigenes Stream-Deck-Plugin.
 
 ## Abgleich mit dem Gesamtkontext (Okt. 2026)
