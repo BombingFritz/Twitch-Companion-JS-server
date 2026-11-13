@@ -123,6 +123,14 @@ Abgebrochene Streams werden immer gespeichert, mit allem bis zum letzten Speiche
 - Dateigröße: Ein Bericht ist einige KB groß (Chatter höchstens 1000), geschrieben wird nur einmal je Stream.
 - Geprüft mit `test/stream-reports-test.js`, `test/stream-session-test.js` und dem Szenario `statistik`, im Browser mit Attrappen (auch Handybreite) und am echten Stream vom 11.11.2026 (Co-Stream mit geteiltem Chat): Abschluss nach dem Raid, Bericht gespeichert, der Stream vom 10.11. beim Start nachträglich archiviert. Gegen Twitchs Stream-Übersicht stimmten Dauer und neue Abonnements (Subs + verschenkte Subs); Abweichungen bei Follows und Chattern siehe OFFEN.md.
 
+## Zuschauerzahl (13.11.2026, ADR 0023)
+- Der Server fragt `GET /helix/streams` alle 30 s (`STREAM_VIEWERS_POLL_MS`), solange der Stream live erfasst wird, und sofort bei `stream.online`. Ohne Statistik (`STATS_ENABLED = false`) fragt er immer, damit Widgets eine Zahl bekommen.
+- Verlauf: je Minute seit Start der höchste Wert, `viewers: [[Minute, Zahl], …]` in `stream_stats.json` und im Bericht, höchstens 2880 Minuten. Keine Zeile je Abfrage in Konsole oder Live-Log.
+- Kennzahlen im Snapshot: `viewers: {peak, average, minutes}` (Durchschnitt über die erfassten Minuten); `null`, solange es keine Werte gibt. Nicht Teil der Gesamtsumme (lässt sich nicht addieren).
+- Anzeige: Übersicht, Karte „Stream“ (aktuelle Zahl mit Stand, Höchstwert, Schnitt); Reiter „Statistik“, Karte „Laufender oder letzter Stream“; Textbericht mit Höchstwert, Schnitt und Verlauf je Viertelstunde.
+- Widgets: `GET /api/twitch/stream` → `{live, viewers, updatedAt}`, letzter Stand ohne eigene Twitch-Anfrage.
+- Geprüft mit `test/stream-session-test.js` (Z1–Z5), `test/stream-reports-test.js` (R22, R23) und dem Szenario `zuschauer`; am echten Stream noch nicht.
+
 ## Stufen
 | Stufe | Inhalt | Stand |
 |---|---|---|

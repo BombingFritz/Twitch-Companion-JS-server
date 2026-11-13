@@ -11,7 +11,7 @@
 - Neuer EventSub-Typ: eigene `subscribeToXYZ(sessionId)`, Aufruf im `session_welcome`-Block.
 - Neuer Chat-Befehl: eigene Handler-Funktion, Cooldown-Konstante, Mod-Check (Muster `handleChatCommand`).
 - Neue persistente Daten: eigene JSON-Datei mit `load…()`/`save…()`-Paar.
-- Neuer Widget-Endpoint: GET nach Muster `/api/twitch/prediction/current`, Token über `getValidAccessToken()`.
+- Nur der Server fragt Twitch (ADR 0023): per EventSub oder im festen Takt, Token über `getValidAccessToken()`. Ein neuer Widget- oder Plugin-Endpoint ist ein GET, der den letzten bekannten Stand des Servers mit Zeitstempel ausgibt und dabei Twitch nicht selbst fragt (Muster `/api/twitch/stream`). `/api/twitch/prediction/current` fragt noch je Abruf und wird später umgebaut.
 - Home-Assistant-Effekte nur über `scheduleEffect(type, meta)`, nie direkt `axios.post` an `HA_WEBHOOK_URL`.
 - Neuer Konsolenbefehl: `if (cmd === '…')`-Block im `rl.on('line')`-Handler plus Zeile in `printConsoleHelp()`.
 - Webkonsole: Die Einstellungen aller Module und Plugins (Widgets, Stream-Deck-Plugin) wandern in einen gemeinsamen Reiter (Nutzer, 13.11.2026); eigene Reiter je Modul wie „Topics“ sind ein Übergang. Vor jeder Änderung an Einstellungen oder Reitern den aktuellen Aufbau der Webkonsole auf GitHub prüfen und neue Einstellungen dort einordnen, statt einen weiteren Reiter anzulegen.
