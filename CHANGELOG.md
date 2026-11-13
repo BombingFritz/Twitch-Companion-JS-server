@@ -44,6 +44,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Aufgeräumt nach der Code-Prüfung: `BDU_CHAT_MAX_CHARS` entfernt (gleich `CHAT_MAX_CHARS`), `formatDateDe` in `lib/uboat-crew.js` heißt `formatIsoDateDe`, die UBOAT-Module exportieren nur noch, was `server.js` nutzt, das BdU-Nutzerlimit löscht abgelaufene Einträge.
 
 ### Tests
+- GitHub Actions: `.github/workflows/test.yml` führt bei jedem Pull Request und jedem Push auf `main` `npm ci`, `node --check server.js` und `npm test` aus (Ubuntu, Node 24, Zeitzone Europe/Berlin, nur Leserechte, keine Secrets). Der Test von `AuthServer.cmd` läuft dort nicht, er braucht Windows. Lokal laufen vor jedem Commit nur noch `node --check` und die Tests der geänderten Bereiche; die volle Testreihe läuft in der CI, gemergt wird nur bei grünem Lauf (AGENTS.md).
 - Neuer Test `test/admin-test.js` (Zugriffsschutz, Herkunft, keine Secrets, Pfade außerhalb von `public/admin`, `/status` unverändert).
 - Neuer Test `test/admin-format-test.js` (Zeitangabe in der Effektliste, auch über Mitternacht; Lichter der optionalen Module).
 - `test/admin-test.js`: Szenarien `server-beenden` und `server-neustart` (abgelehnte Aufrufe, Exit-Code, zweiter Auftrag).

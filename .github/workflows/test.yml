@@ -1,0 +1,27 @@
+# Führt die vorhandene Testreihe bei jedem Pull Request und jedem Push auf main aus.
+# Keine Secrets: Alle Tests ersetzen ws, axios und readline durch Attrappen und arbeiten in temporären Ordnern.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Europe/Berlin   # Datums-Tests (Quartal/Jahr, Bericht-IDs) erwarten dieselbe Ortszeit wie am Streaming-PC
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --check server.js
+      - run: npm test
