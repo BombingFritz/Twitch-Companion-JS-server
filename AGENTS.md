@@ -75,7 +75,7 @@
 | Was ausgeliefert wurde | CHANGELOG.md, Releases |
 
 ## Pflicht-Checks
-- `node --check server.js` und `npm test` (Ergebnis: 0 FAIL) vor jeder Auslieferung von Code.
+- `node --check server.js` und `npm test` (Ergebnis: 0 FAIL) vor jeder Auslieferung von Code. GitHub Actions führt beides zusätzlich bei jedem Pull Request unter Linux aus (`.github/workflows/test.yml`); ein roter Lauf blockiert den Merge, bis er geklärt ist.
 - Nur beabsichtigte Stellen ändern; Diff gegen die Vorversion prüfen.
 - HA-Payload `{type, count, meta, timestamp}` unverändert lassen (siehe docs/ARCHITEKTUR.md).
 - Betroffene Doku (ARCHITEKTUR, Spec, CHANGELOG) im selben Pull Request aktualisieren.

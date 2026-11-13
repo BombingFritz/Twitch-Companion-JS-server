@@ -37,6 +37,6 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - [docs/adr/](docs/adr/) – Architekturentscheidungen, nach Themen geordnet in [docs/adr/README.md](docs/adr/README.md)
 - [docs/specs/](docs/specs/) – Feature-Specs
 - [docs/BUGS.md](docs/BUGS.md) – Fehlerhistorie
-- [test/](test/) – Tests mit Attrappen, Start mit `npm test`
+- [test/](test/) – Tests mit Attrappen, Start mit `npm test`; laufen auch automatisch bei jedem Pull Request (GitHub Actions)
 - [docs/OFFEN.md](docs/OFFEN.md) – offene Punkte
 - [CHANGELOG.md](CHANGELOG.md)
