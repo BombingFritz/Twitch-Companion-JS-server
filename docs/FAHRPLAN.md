@@ -14,11 +14,12 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 
 ## Spielregeln für die Koordination
 
-1. **Schnittstellen nur hier ändern.** Endpoints, Ereignisse und Datenformate stehen in den Specs dieses Repositories. Widget und Plugin setzen sie um; brauchen sie etwas Neues, wird zuerst die Spec hier geändert.
+1. **Schnittstellen nur hier ändern.** Endpoints, Ereignisse und Datenformate stehen in den Specs dieses Repositories. Widget und Plugin setzen sie um; brauchen sie etwas Neues, legen sie hier ein Issue an (Vorlage „Serveranforderung“). Die Server-Session präzisiert und ändert die Spec; Widget- und Plugin-Sessions ändern keine Serverdateien.
 2. **`server.js` nur in einer Session zur Zeit.** Server-Schritte beginnen erst, wenn keine andere Session an `server.js` arbeitet. Der Topics-Code liegt deshalb in `lib/topics.js`; `server.js` bekommt nur die Verdrahtung.
 3. **ADR-Nummern 0020 und 0021 sind vergeben.** Andere Sessions nehmen ab 0022.
-4. **Gemeinsame Doku-Dateien zuletzt.** `OFFEN.md`, `KONTEXT.md`, `ARCHITEKTUR.md`, `CHANGELOG.md` und `adr/README.md` werden in einem eigenen, letzten Commit je Schritt angepasst, direkt vor dem Merge und auf dem aktuellen `main`.
+4. **Gemeinsame Doku im selben Pull Request.** `OFFEN.md`, `KONTEXT.md`, `ARCHITEKTUR.md`, `CHANGELOG.md` und `adr/README.md` werden im selben Pull Request wie Code und Tests angepasst (eigene Commits erlaubt) und vor dem Pull Request gegen den aktuellen `main` geprüft.
 5. **Stand pflegen:** Wer einen Schritt abschließt, setzt hier die Spalte „Stand“ und verlinkt den Pull Request.
+6. **Änderungen an diesem Fahrplan nur nach Bestätigung.** Vor jeder Änderung, auch am Stand (Regel 5), gibt die Session dem Nutzer die genaue Änderung wieder und ändert erst nach seiner Bestätigung (Nutzer, 13.11.2026).
 
 ## Schritte
 
