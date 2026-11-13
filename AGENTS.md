@@ -14,6 +14,7 @@
 - Neuer Widget-Endpoint: GET nach Muster `/api/twitch/prediction/current`, Token über `getValidAccessToken()`.
 - Home-Assistant-Effekte nur über `scheduleEffect(type, meta)`, nie direkt `axios.post` an `HA_WEBHOOK_URL`.
 - Neuer Konsolenbefehl: `if (cmd === '…')`-Block im `rl.on('line')`-Handler plus Zeile in `printConsoleHelp()`.
+- Webkonsole: Die Einstellungen aller Module und Plugins (Widgets, Stream-Deck-Plugin) wandern in einen gemeinsamen Reiter (Nutzer, 13.11.2026); eigene Reiter je Modul wie „Topics“ sind ein Übergang. Vor jeder Änderung an Einstellungen oder Reitern den aktuellen Aufbau der Webkonsole auf GitHub prüfen und neue Einstellungen dort einordnen, statt einen weiteren Reiter anzulegen.
 - Konstanten oben in `server.js` definieren, nicht inline.
 - Wiederholte Log-Zeilen über `logIfChanged()` ausgeben.
 - Widgets erhalten nie Client-Secrets.

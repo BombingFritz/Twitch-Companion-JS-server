@@ -27,9 +27,9 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 | 0 | Specs, ADRs und dieser Fahrplan | Server | – | erledigt (12.11.2026), mit Schritt 2 im Branch `feature/intro-topics` |
 | 1 | Widget 0.1 mit Demo-Modus: Liste, Zustände, Animationen, ohne Server testbar | Widget | 0 | Entwurf liegt vor, Design nach Screenshots abgestimmt (Theme `panel`, 12.11.2026); Abnahme in OBS offen |
 | 2 | Server: `lib/topics.js` (Zustand, Liste), Endpoints und Events nach Spec, Tests | Server | 0; keine parallele Arbeit an `server.js` | erledigt (12.11.2026), Branch `feature/intro-topics`; dazu Anzeige-Einstellungen |
-| 3 | Widget 0.2: Anbindung an den Server, Test in OBS (2K horizontal, vertikal per Dualstream-Plugin) | Widget | 1, 2 | Widget 0.2.0 fertig und gegen den Server im Browser geprüft; Test in OBS durch den Nutzer offen |
+| 3 | Widget 0.2: Anbindung an den Server, Test in OBS (2K horizontal, vertikal per Dualstream-Plugin) | Widget | 1, 2 | läuft in OBS (Nutzer, 13.11.2026); Design-Feinschliff offen; Widget 0.3.0 mit Testdesign `clean` |
 | 4 | Stream Deck vorläufig: Tasten über ein fertiges HTTP-Plugin (z. B. „API Request“) | – (Einrichtung) | 2 | offen |
-| 5 | Webkonsole: Reiter „Topics“ zum Bearbeiten der Liste, Reset-Knopf | Server | 2 | erledigt (12.11.2026), mit Anzeige-Einstellungen |
+| 5 | Webkonsole: Reiter „Topics“ zum Bearbeiten der Liste, Reset-Knopf | Server | 2 | erledigt (12.11.2026), mit Anzeige-Einstellungen; zieht später in den gemeinsamen Einstellungs-Reiter um (Nutzer, 13.11.2026) |
 | 6 | Effekte `topic_active`, `topic_done`, `topics_complete` über `scheduleEffect`; Lichtlogik in Home Assistant | Server (+ HA, außerhalb) | 2 | Server erledigt (still, Testmodus `topics debug on`); Automation in Home Assistant offen |
 | 7 | Clip-Moment: `POST /api/clip/mark` (Statistik Stufe 6, Stream-Bericht 1e) | Server | 0 | offen |
 | 8 | Stream-Deck-Plugin 0.1: Aktionen „Topics weiter“, „Topics zurück“, „Topics ein/aus“, „Clip-Moment“; Live-Anzeige auf den Tasten | Plugin | 2, 7 | offen |
