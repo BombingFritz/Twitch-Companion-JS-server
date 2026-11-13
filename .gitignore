@@ -23,6 +23,8 @@ error_log.json.tmp
 stream_stats.json
 stream_stats.json.tmp
 stream_reports/
+privacy_optouts.json
+privacy_optouts.json.tmp
 # Spielstände (Zuschauernamen, mehrere MB) gehören nicht ins Repository; Tests erzeugen eigene
 *.save
 # Sicherungskopien von Tokens (z. B. BACKUPtokens.json)

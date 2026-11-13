@@ -2,12 +2,12 @@
 
 Welche Daten der Server speichert, im Arbeitsspeicher hält oder weitergibt, wozu, und was wir als Speichererlaubnis und Speicherdauer empfehlen.
 
-**Status:** Entwurf zur Diskussion (12.11.2026). Grundlage für die Felddiskussion, die Aufbewahrungs-Einstellungen und `!privat`. Noch nichts davon ist entschieden oder umgesetzt.
+**Status:** Entwurf zur Diskussion (12.11.2026). Grundlage für die Felddiskussion und die Aufbewahrungs-Einstellungen; Fristen sind noch nicht entschieden. Umgesetzt: `!privat` (13.11.2026, ADR 0022).
 
 **Vorgaben des Nutzers (12.11.2026):**
 - Fristen und Aufbewahrungsregeln werden **in den Einstellungen konfigurierbar**, nicht im Code festgelegt. Was erlaubt ist, hängt auch vom Wohnort des Streamers ab. Die Empfehlungen unten sind Vorschläge für Standardwerte.
 - Namen bleiben vorerst gespeichert. Erst werden alle Felder diskutiert, dann wird entschieden. Eine Top 10 mit Namen je Stream festzuhalten und beim Streamabschluss zu zeigen, hält der Nutzer für zulässig.
-- `!privat` wird gebaut (siehe Issue #44 und Abschnitt 5). `!datenschutz` vorerst nicht; Hinweise laufen über Chathinweise und später frei konfigurierbare Chatbefehle.
+- `!privat` wird gebaut (siehe Issue #44 und Abschnitt 5; umgesetzt 13.11.2026). Raid-Begrüßungen dürfen Raider und Rang nennen, Raider sind öffentliche Streamer (Nutzer, 13.11.2026). Einschränkungen werden nicht vorsorglich eingebaut, sondern je Feld gemeinsam entschieden. `!datenschutz` vorerst nicht; Hinweise laufen über Chathinweise und später frei konfigurierbare Chatbefehle.
 - Keine Daten aus fremden Kanälen (Partnerchat im Co-Stream). Das ist bereits so.
 - BdU-Chat: An die KI geht nur der Fragetext, nicht der Name; er wurde bewusst geschickt. Der Hinweis, wohin das Enigma-Widget Daten liefert, gehört in dessen Dokumentation.
 
@@ -37,9 +37,10 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 | `raids.json` | je Zeitraum Raider-ID, Name, Anzahl, mitgebrachte Zuschauer | Begrüßung (Wiederkehrer, Rang), `!raidstats` öffentlich | V | unbegrenzt, je Quartal/Jahr | laufender und vorheriger Zeitraum mit Namen; ältere Zeiträume einstellbar (behalten / nur Summen); Löschen je Kanal auf Wunsch |
 | `events.json` | `userName`, bei Follows `userId`, `giftCount`; max. 200 | „Letzte Effekte“ in der Webkonsole, `/api/homeassistant/events` | V | 200 Einträge, ohne Zeitgrenze | Frist 7 Tage |
 | `uboat_crew_map.json` | Twitch-Login → Name im Spiel | UBOAT-Soldbuch | V (vom Streamer gepflegt) | bis `uboat unmap` | unverändert; `!privat` entfernt bzw. ignoriert die Zuordnung [zu entscheiden] |
-| `stream_stats.json` | `chatters` {ID: Name, Anzahl} (max. 1000), `stream_ids`; sonst Summen | laufender Stream: verschiedene Chatter, aktivste Chatter | F | bis zum nächsten Streambeginn | unverändert (wird ohnehin überschrieben) |
+| `stream_stats.json` | `chatters` {ID: Name, Anzahl} (max. 1000; bei `!privat` unter `anon-N` ohne ID und Namen), `stream_ids`; sonst Summen | laufender Stream: verschiedene Chatter, aktivste Chatter | F | bis zum nächsten Streambeginn | unverändert (wird ohnehin überschrieben) |
 | `stream_reports/<ID>.json` | `state.chatters` {ID: Name, Anzahl} (bis 1000), dazu Summen | Bericht je Stream, Gesamtsumme | V + S | unbegrenzt | Summen unbegrenzt. Chatter mit Namen: Optionen für die Diskussion in Abschnitt 6 |
 | `stream_reports/<ID>.txt` | Top 10 Chatter mit Anzahl | lesbarer Bericht, Abschlussanzeige | V | unbegrenzt | wie die `.json` |
+| `privacy_optouts.json` | User-ID → Zeitpunkt des `!privat` | Zuschauer anonymisiert zählen, Widgets informieren (ADR 0022) | V | bis zum Ausschalten per `!privat` | unverändert (die Liste muss bestehen, solange der Wunsch gilt) |
 | `error_log.json` | `text` kann Namen enthalten (z. B. fehlgeschlagener Shoutout); Secrets werden entfernt | Fehlersuche über Neustarts | D | 1000 Einträge, ohne Zeitgrenze | Frist 30 Tage |
 | `subgoal_cache.json`, `effect_mode.json`, `modules.json` | keine | Betrieb | E | – | unverändert |
 | `topics.json` | keine (Themen und Anzeige-Einstellungen, vom Streamer gepflegt) | Intro-Topics (ADR 0021) | E | bis überschrieben | unverändert |
@@ -63,26 +64,29 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 | Twitch (API, EventSub, Chat) | Anfragen, Chatnachrichten des Servers | immer | notwendig |
 | **Öffentlich im Chat** | Raid-Begrüßung mit Rang, `!raidstats`-Rangliste, Whitelist-Hinweis mit letztem Aktivdatum und Spiel, BdU-Antworten, Soldbuch-Akte | bei Auslösung | Veröffentlichung; `!privat` sollte Erwähnungen unterdrücken, wo möglich (Abschnitt 5) |
 | Home Assistant (`HA_WEBHOOK_URL`) | `meta.userName`, bei Follows `userId`; Intro-Topics nur Thema, Nummer, Anzahl | je Effekt | HA speichert in seinem Verlauf; mit Cloud-Anbindung verlässt der Name das Heimnetz. Eine Option ohne Namen würde das Payload ändern und braucht ein ADR |
-| Widgets (lokal) | `/api/topics`, `/api/topics/stream` (nur Themen und Anzeige, keine Personendaten), `/api/homeassistant/events` (Namen), `/api/twitch/prediction/current` (`topPredictors` live von Twitch), `/api/uboat/crew` (Namen im Spiel), `/api/bdu/stream` (nur Fragetext, kein Name) | auf Abruf | nur lokal bzw. erlaubte Herkünfte (ADR 0013) |
+| Widgets (lokal) | `/api/privacy/optouts` (User-IDs mit `!privat`, nur lokal), `/api/topics`, `/api/topics/stream` (nur Themen und Anzeige, keine Personendaten), `/api/homeassistant/events` (Namen), `/api/twitch/prediction/current` (`topPredictors` live von Twitch), `/api/uboat/crew` (Namen im Spiel), `/api/bdu/stream` (nur Fragetext, kein Name) | auf Abruf | nur lokal bzw. erlaubte Herkünfte (ADR 0013) |
 | KI-Dienst über das Enigma-Widget | nur der Fragetext von `!BdU` | wenn BdU-Chat an ist | Hinweis in der Widget-Dokumentation (Nutzer, 12.11.2026) |
 | OneDrive | alle Laufzeitdateien im Projektordner | laufend | bewusste Entscheidung des Nutzers; bei Weitergabe des Werkzeugs sollte der Datenordner wählbar sein |
 
-## 5. `!privat` (geplant, eigener Schritt)
+## 5. `!privat` (umgesetzt 13.11.2026, ADR 0022)
 
-Ziel laut Issue #44: Wer `!privat` schreibt, wird nicht mehr getrackt und nicht mehr erwähnt. Zu entscheiden bzw. zu prüfen:
+Entschieden vom Nutzer (13.11.2026):
+- **Statistik:** Wer `!privat` schreibt, wird als „anonymer Schlaumeier“ anonymisiert mitgezählt, ohne ID und Namen. Summen und „verschiedene Chatter“ bleiben richtig.
+- **Rückwirkend:** Frühere Einträge im laufenden Stream und in allen Berichten werden anonymisiert.
+- **Widerruf:** derselbe Befehl. Die Antwort im Chat sagt jeweils, ob der Modus an- oder ausgeschaltet wurde. Frühere Einträge bleiben anonym.
+- **Widgets:** `GET /api/privacy/optouts` → `{userIds: [...]}`, nur lokal. Widgets lassen die Zuschauer selbst weg.
+- **Raid-Begrüßung** nennt Raider und Rang weiterhin.
 
-- **Speicherung der Liste:** User-ID und Zeitpunkt, bis zum Widerruf (z. B. `!privat aus`). Die Liste ist selbst personenbezogen; Zugriff nur lokal.
-- **Statistik:** Nachrichten anonym in den Summen mitzählen oder gar nicht? Name und ID nicht in `chatters`, nicht in Top-Listen, Berichten und Abschlussanzeige. Bereits gespeicherte Einträge löschen?
-- **Widgets:** Endpunkt mit der Liste der IDs (Vorschlag aus Issue #44: `GET /api/privacy/optouts`), Zugriffsschutz wie die übrigen Endpunkte.
-- **Glückspilz des Abends** (Issue #44) und künftige Ranglisten beachten die Liste.
-- **Öffentliche Erwähnungen:** Raid-Begrüßung (Name des Raiders nennen, aber ohne Rang?), `!raidstats`, Whitelist-Hinweis, Soldbuch.
-- **Was nicht geht:** Twitch-eigene Anzeigen (Sub-Ankündigungen, Ranglisten von Twitch) bleiben unberührt.
+Noch offen (Felddiskussion):
+- **Glückspilz des Abends** (Issue #44) und künftige Ranglisten oder Endscreen-Anzeigen müssen die Liste beachten, sobald es sie gibt.
+- Andere Dateien und Weitergaben (`events.json`, Home Assistant, `whitelist_checks.json`, Soldbuch-Zuordnung): ob `!privat` dort etwas bewirkt.
+- **Was nicht geht:** Twitch-eigene Anzeigen (Sub-Ankündigungen, Ranglisten von Twitch) und bereits gesendete Chatnachrichten bleiben unberührt.
 
 ## 6. Offene Punkte für die Felddiskussion
 
 1. **Chatter je Bericht:** volle Liste mit IDs (heute), nur Top 10 mit Namen, oder volle Liste für eine einstellbare Zeit und danach nur Top 10 bzw. nur Summen?
-2. **IDs in Berichten:** werden sie nach dem Stream noch gebraucht (z. B. für `!privat` rückwirkend)? Ohne IDs sind Namensänderungen nicht mehr zuzuordnen.
-3. **Raids:** wie lange Namen je Zeitraum, und ob `!raidstats` ausgenommene Kanäle weglässt.
+2. **IDs in Berichten:** Sie werden für `!privat` rückwirkend gebraucht (ADR 0022). Ohne IDs ließen sich frühere Einträge nicht mehr anonymisieren.
+3. **Raids:** wie lange Namen je Zeitraum. Raider und Rang in Begrüßungen bleiben (Nutzer, 13.11.2026).
 4. **Fristen als Einstellungen:** je Datei eine Frist (Tage, „unbegrenzt“, „aus“), Standardwerte aus Abschnitt 2; Aufräumen beim Start und einmal täglich.
 5. **Home Assistant:** Namen im Payload optional (neues ADR, da Payload-Änderung).
 6. **Chathinweis:** Wortlaut und Ort (Panel, wiederkehrender Hinweis, Endscreen-Zeile).
