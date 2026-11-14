@@ -63,15 +63,11 @@ const realExit = process.exit.bind(process), exits = [];
 if (scenario.startsWith('server-')) process.exit = code => { exits.push(code); };
 if (scenario === 'server-neustart') process.env.TWITCH_COMPANION_SUPERVISED = '1';
 else delete process.env.TWITCH_COMPANION_SUPERVISED;
-// Nach dem Verbindungsaufbau (über 20 Anfragen) ist der Burst-Vorrat leer, jede Anfrage wartet dann etwa 1/3 s.
-// Die Szenarien prüfen Abläufe, nicht die Drosselung; die prüft twitch-api-test.js.
-process.env.TWITCH_COMPANION_NO_THROTTLE = '1';
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// EventSub-Verbindung aufbauen und warten, bis alle Abos und Abfragen danach durch sind.
-// Mehr als 20 Anfragen laufen in die Drosselung (ADR 0024); feste Wartezeiten reichen dann nicht.
-// Letzter Schritt nach session_welcome ist der Stream-Abgleich über helix/streams.
+// EventSub-Verbindung aufbauen und warten, bis alle Abos und Abfragen danach durch sind; mit echter Drosselung
+// (ADR 0024) ist eine feste Wartezeit unzuverlässig. Letzter Schritt nach session_welcome ist der Stream-Abgleich über helix/streams.
 async function welcome() {
   const before = fakeStreamRequests;
   sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
@@ -165,7 +161,7 @@ async function ablauf() {
   check('A19 /token liefert expires_at (ISO) zusätzlich zu den bisherigen Feldern', r.status === 200 && tok.access_token && tok.broadcaster_id === '4711' && tok.client_id
     && Date.parse(tok.expires_at) === fileExpires, r.body.replace(SECRETS[1], '<TOKEN>'));
   const api = JSON.parse((await request(OVERVIEW)).body).twitch_api;
-  check('A20 Übersicht: Anfragen an Twitch mit Grenzen', api && api.per_minute === 200 && api.per_second === 3 && api.burst === 20 && Number.isInteger(api.last_minute), JSON.stringify(api));
+  check('A20 Übersicht: Anfragen an Twitch mit Grenzen', api && api.per_minute === 200 && api.per_second === 3 && api.burst === 20 && api.startup_free === 300 && Number.isInteger(api.startup_used) && Number.isInteger(api.last_minute), JSON.stringify(api));
 }
 
 async function alleHerkuenfte() {

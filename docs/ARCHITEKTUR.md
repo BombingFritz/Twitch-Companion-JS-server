@@ -208,7 +208,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | Name | Wert | Bedeutung |
 |---|---|---|
 | `SERVER_HOST` / `SERVER_HOST_V6` | `127.0.0.1` / `::1` | Der Server ist nur auf diesem PC erreichbar; fehlt IPv6, nur Hinweis in der Konsole (ADR 0013, Nachtrag) |
-| `TWITCH_API_PER_SECOND` / `TWITCH_API_BURST` / `TWITCH_API_PER_MINUTE` | 3 / 20 / 200 | Drosselung aller Helix-Anfragen: im Schnitt 3 je Sekunde, Spitze 20 auf einmal, hart 200 je gleitender Minute (ADR 0024). Umgebungsvariable `TWITCH_COMPANION_NO_THROTTLE=1` schaltet sie ab, nur für Tests |
+| `TWITCH_API_PER_SECOND` / `TWITCH_API_BURST` / `TWITCH_API_PER_MINUTE` | 3 / 20 / 200 | Drosselung aller Helix-Anfragen: im Schnitt 3 je Sekunde, Spitze 20 auf einmal, hart 200 je gleitender Minute (ADR 0024). Gilt auch in allen Tests |
+| `TWITCH_API_STARTUP_FREE` | 300 | So viele Anfragen nach dem Start des Servers laufen ohne Zeitgrenze (einmal je Prozess), danach die Grenzen oben; Übergang bis zur automatischen Drosselung (ADR 0024, Nachtrag) |
 | `TWITCH_API_MAX_RETRY_WAIT_MS` | 60000 | bei 429 höchstens so lange auf den Reset warten, dann einmal neu versuchen |
 | `TOKEN_REFRESH_BUFFER_MS` / `TOKEN_PROACTIVE_REFRESH_MS` / `TOKEN_PROACTIVE_RETRY_MS` / `TOKEN_CHECK_INTERVAL_MS` | 5 min / 10 min / 10 min / 60 s | Anfrage erneuert selbst ab 5 min vor Ablauf; der Server erneuert von sich aus ab 10 min vor Ablauf, nach einem Fehlschlag erst 10 min später wieder; Prüftakt |
 | `RAIDSTATS_COOLDOWN_MS` | 30000 | Abstand zwischen `!raidstats` |

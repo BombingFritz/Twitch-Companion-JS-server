@@ -77,6 +77,7 @@ const APP_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;   // App-Access-Token so lang
 const TWITCH_API_PER_SECOND = 3;                      // im Schnitt
 const TWITCH_API_BURST = 20;                           // kurze Spitze, z. B. die EventSub-Abos binnen 10 s nach dem Welcome
 const TWITCH_API_PER_MINUTE = 200;                     // hart, in jedem gleitenden 60-s-Fenster
+const TWITCH_API_STARTUP_FREE = 300;                   // so viele Anfragen nach dem Start ohne Zeitgrenze (Token, Abos, Ausgangsstände); danach die Grenzen oben
 const TWITCH_API_MAX_RETRY_WAIT_MS = 60 * 1000;        // bei 429 höchstens so lange auf den Reset warten
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;         // so kurz vor Ablauf erneuert eine Anfrage den Token selbst
 const TOKEN_PROACTIVE_REFRESH_MS = 10 * 60 * 1000;     // so lange vor Ablauf erneuert der Server den Token von sich aus
@@ -535,7 +536,7 @@ const twitchApi = createTwitchApi({
   getAppToken: getAppAccessToken,
   limiter: createRateLimiter({
     perSecond: TWITCH_API_PER_SECOND, perMinute: TWITCH_API_PER_MINUTE, burst: TWITCH_API_BURST,
-    enabled: process.env.TWITCH_COMPANION_NO_THROTTLE !== '1',   // nur Tests setzen das
+    startupFree: TWITCH_API_STARTUP_FREE,
   }),
   maxRetryWaitMs: TWITCH_API_MAX_RETRY_WAIT_MS,
   log: (message, level = 'log') => logIfChanged(`twitch-api:${message}`, message, level),

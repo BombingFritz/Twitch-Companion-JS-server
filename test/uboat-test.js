@@ -44,7 +44,6 @@ const orig = Module._load;
 Module._load = function (r, ...a) { if (r === 'ws') return FakeWS; if (r === 'axios') return fakeAxios; if (r === 'readline') return { createInterface: () => rl }; return orig.call(this, r, ...a); };
 const realLog = console.log, logs = [];
 console.log = console.warn = console.error = (...a) => logs.push(a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '));
-process.env.TWITCH_COMPANION_NO_THROTTLE = '1';   // nach dem Verbindungsaufbau wartet sonst jede Chat-Antwort; die Drosselung prüft twitch-api-test.js
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -63,7 +62,7 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
 (async () => {
   await sleep(500);
   send('session_welcome', null, { session: { id: 's1', keepalive_timeout_seconds: 600 } });
-  // Verbindungsaufbau abwarten: Mehr als 20 Anfragen laufen in die Drosselung (ADR 0024), Chat-Antworten stünden sonst dahinter
+  // Verbindungsaufbau abwarten (echte Drosselung, ADR 0024): Chat-Antworten stünden sonst hinter den Abos
   await waitFor(() => streamChecks > 0, 15000, 50);
   await sleep(100);
 
