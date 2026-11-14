@@ -32,7 +32,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLastError` |
 | Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `getPeriodWord`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
-| Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` |
+| Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` (Ausgangsstand), `handleGoalEvent` (Stand aus `channel.goal.*`, Issue #60), `subscribeToGoals` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
 | Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode` |
 | Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch`, `switchModule` (Konsole `bdu`/`uboat activate\|deactivate` und Webkonsole), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
@@ -174,14 +174,15 @@ Alle Subscriptions werden beim `session_welcome` einer frischen Verbindung angel
 | `channel.poll.end` | 1 | `broadcaster_user_id` | `recordPollEnd` (Statistik) |
 | `channel.prediction.end` | 1 | `broadcaster_user_id` | `recordPredictionEnd` (Statistik) |
 | `channel.shoutout.create` | 1 | `broadcaster_user_id`, `moderator_user_id` (Broadcaster) | zählt `shoutouts` |
-| `channel.subscribe` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
-| `channel.subscription.gift` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
-| `channel.subscription.message` | 1 | `broadcaster_user_id` | nur `refreshSubGoalCache` |
+| `channel.subscribe` | 1 | `broadcaster_user_id` | nur Protokoll (Stufe, geschenkt); Sub-Goal kommt seit Issue #60 aus `channel.goal.*` |
+| `channel.subscription.gift` | 1 | `broadcaster_user_id` | nur Protokoll |
+| `channel.subscription.message` | 1 | `broadcaster_user_id` | nur Protokoll |
 | `channel.chat.notification` | 1 | `broadcaster_user_id`, `user_id` (je Broadcaster) | `handleChatNotification` |
 | `channel.follow` | 2 | `broadcaster_user_id`, `moderator_user_id` (Broadcaster) | `scheduleEffect('follow')` |
 | `channel.update` | 2 | `broadcaster_user_id` | `setCurrentCategory(category_name)`; kein Scope nötig |
+| `channel.goal.begin`, `channel.goal.progress`, `channel.goal.end` | 1 | `broadcaster_user_id` | `handleGoalEvent` (Sub-Goal, nur Typen in `SUB_GOAL_TYPES`); Scope `channel:read:goals` (Issue #60) |
 
-Nach den Subscriptions holt `refreshChannelCategory()` die aktuelle Kategorie per `GET /helix/channels`, danach gleicht `syncStreamWithTwitch()` den Stream-Ablauf per `GET /helix/streams` ab (ADR 0019).
+Nach den Subscriptions holt `refreshSubGoalCache()` einmal den Ausgangsstand des Sub-Goals, `refreshChannelCategory()` die aktuelle Kategorie per `GET /helix/channels`, danach gleicht `syncStreamWithTwitch()` den Stream-Ablauf per `GET /helix/streams` ab (ADR 0019).
 Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` wird ignoriert.
 
 ### Verbindungsverwaltung
@@ -224,6 +225,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `EFFECT_MIN_GAP_MS` | 4000 | Abstand zwischen zwei Effekten |
 | `EVENT_MESSAGE_ID_TTL_MS` | 600000 | Merkdauer von `message_id` |
 | `SUB_DEDUPE_WINDOW_MS` | 60000 | Sub-Effekt pro Nutzer |
+| `SUB_GOAL_TYPES` | `['subscription', 'subscription_count']` | Goal-Typen, die als Sub-Goal gelten (Abfrage und Goal-Ereignisse) |
 | `SUB_TIER_LABELS` / `CHAT_NOTICES_HANDLED_ELSEWHERE` | `{1000: 'Stufe 1', …}` / `['raid']` | Protokoll der Sub-Ereignisse; Ankündigungen, die nicht als „nicht ausgewertet“ gemeldet werden |
 | `FOLLOW_DEDUPE_WINDOW_MS` | 60000 | Follow-Effekt pro Nutzer |
 | `EVENTSUB_WS_URL` | `wss://eventsub.wss.twitch.tv/ws` | Standard-URL für frische EventSub-Verbindungen |

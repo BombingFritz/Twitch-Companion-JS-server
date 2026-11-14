@@ -32,7 +32,7 @@ FakeWS.OPEN = 1;
 const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
 const subscribed = [];
 const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
-let fakeStream = null, fakeStreamRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
+let fakeStream = null, fakeStreamRequests = 0, fakeGoalRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
 const fakeAxios = {
   post: async (url, body) => {
     if (url.includes('helix/chat/messages')) chatSent.push(body);
@@ -40,6 +40,7 @@ const fakeAxios = {
     return { data: { data: [] } };
   },
   get: async url => {
+    if (url.includes('helix/goals')) fakeGoalRequests += 1;
     if (url.includes('helix/streams')) {
       fakeStreamRequests += 1;
       if (fakeStream) return { data: { data: [fakeStream] } };
@@ -57,10 +58,23 @@ const realExit = process.exit.bind(process), exits = [];
 if (scenario.startsWith('server-')) process.exit = code => { exits.push(code); };
 if (scenario === 'server-neustart') process.env.TWITCH_COMPANION_SUPERVISED = '1';
 else delete process.env.TWITCH_COMPANION_SUPERVISED;
+// Nach dem Verbindungsaufbau (über 20 Anfragen) ist der Burst-Vorrat leer, jede Anfrage wartet dann etwa 1/3 s.
+// Die Szenarien prüfen Abläufe, nicht die Drosselung; die prüft twitch-api-test.js.
+process.env.TWITCH_COMPANION_NO_THROTTLE = '1';
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const request = (p, headers = {}, method = 'GET', body) => new Promise((res, rej) => {
+// EventSub-Verbindung aufbauen und warten, bis alle Abos und Abfragen danach durch sind.
+// Mehr als 20 Anfragen laufen in die Drosselung (ADR 0024); feste Wartezeiten reichen dann nicht.
+// Letzter Schritt nach session_welcome ist der Stream-Abgleich über helix/streams.
+async function welcome() {
+  const before = fakeStreamRequests;
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
+  const end = Date.now() + 15000;
+  while (fakeStreamRequests === before && Date.now() < end) await sleep(50);
+  await sleep(50);
+}
+const request =(p, headers = {}, method = 'GET', body) => new Promise((res, rej) => {
   http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, r => {
     let d = ''; r.on('data', c => d += c); r.on('end', () => res({ status: r.statusCode, headers: r.headers, body: d }));
   }).on('error', rej).end(body);
@@ -444,8 +458,7 @@ async function effekte() {
 
 async function statistik() {
   let n = 0;
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(100);
+  await welcome();
   const send = (subType, event, id = `s${++n}`) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
   const chat = (login, id, extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `c${n}`, message: { text: 'hallo' }, badges: [], ...extra });
   const notice = (notice_type, extra) => send('channel.chat.notification', { notice_type, broadcaster_user_id: '4711', chatter_user_id: `u${n}`, chatter_user_login: `gast${n}`, chatter_user_name: `gast${n}`, ...extra });
@@ -623,8 +636,7 @@ async function statistik() {
 // !privat (ADR 0022): umschalten, anonymisieren (laufender Stream und Berichte), Liste für Widgets
 async function privat() {
   let n = 0;
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(100);
+  await welcome();
   const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `p${++n}` }, payload: { event } }));
   const chat = (login, id, text = 'hallo', extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `m${n}`, message: { text }, badges: [], ...extra });
   const stream = async () => JSON.parse((await request(STATS)).body).stream;
@@ -683,8 +695,7 @@ async function privat() {
 
 // Zuschauerzahl (ADR 0023): Der Server fragt Twitch, Widgets bekommen nur den letzten Stand
 async function zuschauer() {
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(100);
+  await welcome();
   const send = (subType, event, id) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
   const VIEWERS = '/api/twitch/stream';
 
@@ -721,6 +732,40 @@ async function zuschauer() {
   check('Z-A9 Bericht nennt die Zuschauer', txt.includes('Zuschauer: höchstens 42, im Schnitt 42 (1 Minute erfasst)'), txt);
   const json = fs.readdirSync(reportsDir).filter(f => f.endsWith('.json')).map(f => JSON.parse(fs.readFileSync(path.join(reportsDir, f), 'utf8')))[0];
   check('Z-A10 Minutenverlauf im Bericht (.json)', JSON.stringify(json.state.viewers) === '[[0,42]]', JSON.stringify(json.state.viewers));
+}
+
+// Sub-Goal über EventSub (Issue #60): Stand aus channel.goal.*, keine Abfrage je Sub
+async function subgoal() {
+  await welcome();
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `g${++n}` }, payload: { event } }));
+  const counter = async () => JSON.parse((await request('/api/twitch/subcounter')).body);
+
+  check('G1 Abos für channel.goal.begin, .progress und .end', ['channel.goal.begin', 'channel.goal.progress', 'channel.goal.end'].every(t => subscribed.includes(t)), subscribed.join(','));
+  check('G2 Ausgangsstand einmal je Verbindung abgefragt', fakeGoalRequests === 1, String(fakeGoalRequests));
+
+  send('channel.subscribe', { user_name: 'Anna', tier: '1000', is_gift: false });
+  send('channel.subscription.gift', { user_name: 'Bert', total: 5, tier: '1000' });
+  send('channel.subscription.message', { user_name: 'Cora', tier: '1000', cumulative_months: 3 });
+  await sleep(100);
+  check('G3 Sub-Ereignisse fragen das Sub-Goal nicht mehr ab', fakeGoalRequests === 1, String(fakeGoalRequests));
+
+  send('channel.goal.progress', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 8, target_amount: 10 });
+  await sleep(50);
+  let c = await counter();
+  check('G4 Fortschritt aus dem Ereignis', c.current === 8 && c.target === 10 && c.title === 'Spargel' && c.goalId === 'g1' && c.status === 'active', JSON.stringify(c));
+
+  send('channel.goal.begin', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 0, target_amount: 10 });
+  send('channel.goal.progress', { id: 'f1', type: 'follow', current_amount: 500, target_amount: 600 });
+  await sleep(50);
+  c = await counter();
+  check('G5 Verspätetes Begin desselben Ziels und Follow-Ziele ändern nichts', c.current === 8 && c.goalId === 'g1', JSON.stringify(c));
+
+  send('channel.goal.end', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 10, target_amount: 10, is_achieved: true });
+  await sleep(50);
+  c = await counter();
+  check('G6 Ende: Stand und „erreicht“', c.current === 10 && c.status === 'achieved', JSON.stringify(c));
+  check('G7 Insgesamt keine weitere Abfrage', fakeGoalRequests === 1, String(fakeGoalRequests));
 }
 
 async function effekteAlt() {
@@ -801,6 +846,7 @@ async function ohneTokens() {
   else if (scenario === 'statistik') await statistik();
   else if (scenario === 'privat') await privat();
   else if (scenario === 'zuschauer') await zuschauer();
+  else if (scenario === 'subgoal') await subgoal();
   else await ablauf();
 
   console.log = realLog;

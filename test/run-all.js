@@ -50,6 +50,7 @@ const runs = [
   ['admin-test.js', ['statistik']],
   ['admin-test.js', ['privat']],
   ['admin-test.js', ['zuschauer']],
+  ['admin-test.js', ['subgoal']],
   ['stats-test.js', []],
   ['topics-lib-test.js', []],
   ['topics-test.js', []],
