@@ -32,7 +32,7 @@ FakeWS.OPEN = 1;
 const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_streamer' }, 'login=12345': { id: '777', login: '12345' }, 'id=444': { id: '444', login: 'per_id' }, 'login=zeta': { id: '111', login: 'zeta' } };
 const subscribed = [];
 const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
-let fakeStream = null, fakeStreamRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
+let fakeStream = null, fakeStreamRequests = 0, fakeGoalRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
 const fakeAxios = {
   post: async (url, body) => {
     if (url.includes('helix/chat/messages')) chatSent.push(body);
@@ -40,6 +40,7 @@ const fakeAxios = {
     return { data: { data: [] } };
   },
   get: async url => {
+    if (url.includes('helix/goals')) fakeGoalRequests += 1;
     if (url.includes('helix/streams')) {
       fakeStreamRequests += 1;
       if (fakeStream) return { data: { data: [fakeStream] } };
@@ -723,6 +724,41 @@ async function zuschauer() {
   check('Z-A10 Minutenverlauf im Bericht (.json)', JSON.stringify(json.state.viewers) === '[[0,42]]', JSON.stringify(json.state.viewers));
 }
 
+// Sub-Goal über EventSub (Issue #60): Stand aus channel.goal.*, keine Abfrage je Sub
+async function subgoal() {
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
+  await sleep(150);
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `g${++n}` }, payload: { event } }));
+  const counter = async () => JSON.parse((await request('/api/twitch/subcounter')).body);
+
+  check('G1 Abos für channel.goal.begin, .progress und .end', ['channel.goal.begin', 'channel.goal.progress', 'channel.goal.end'].every(t => subscribed.includes(t)), subscribed.join(','));
+  check('G2 Ausgangsstand einmal je Verbindung abgefragt', fakeGoalRequests === 1, String(fakeGoalRequests));
+
+  send('channel.subscribe', { user_name: 'Anna', tier: '1000', is_gift: false });
+  send('channel.subscription.gift', { user_name: 'Bert', total: 5, tier: '1000' });
+  send('channel.subscription.message', { user_name: 'Cora', tier: '1000', cumulative_months: 3 });
+  await sleep(100);
+  check('G3 Sub-Ereignisse fragen das Sub-Goal nicht mehr ab', fakeGoalRequests === 1, String(fakeGoalRequests));
+
+  send('channel.goal.progress', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 8, target_amount: 10 });
+  await sleep(50);
+  let c = await counter();
+  check('G4 Fortschritt aus dem Ereignis', c.current === 8 && c.target === 10 && c.title === 'Spargel' && c.goalId === 'g1' && c.status === 'active', JSON.stringify(c));
+
+  send('channel.goal.begin', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 0, target_amount: 10 });
+  send('channel.goal.progress', { id: 'f1', type: 'follow', current_amount: 500, target_amount: 600 });
+  await sleep(50);
+  c = await counter();
+  check('G5 Verspätetes Begin desselben Ziels und Follow-Ziele ändern nichts', c.current === 8 && c.goalId === 'g1', JSON.stringify(c));
+
+  send('channel.goal.end', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 10, target_amount: 10, is_achieved: true });
+  await sleep(50);
+  c = await counter();
+  check('G6 Ende: Stand und „erreicht“', c.current === 10 && c.status === 'achieved', JSON.stringify(c));
+  check('G7 Insgesamt keine weitere Abfrage', fakeGoalRequests === 1, String(fakeGoalRequests));
+}
+
 async function effekteAlt() {
   const r = await request(OVERVIEW);
   check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
@@ -801,6 +837,7 @@ async function ohneTokens() {
   else if (scenario === 'statistik') await statistik();
   else if (scenario === 'privat') await privat();
   else if (scenario === 'zuschauer') await zuschauer();
+  else if (scenario === 'subgoal') await subgoal();
   else await ablauf();
 
   console.log = realLog;

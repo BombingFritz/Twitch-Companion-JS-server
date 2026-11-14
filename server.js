@@ -106,6 +106,7 @@ const FOLLOW_DEDUPE_WINDOW_MS = 60 * 1000;        // Follow/Unfollow/Follow dess
 
 // Protokoll der Sub-Ereignisse: Stufen lesbar, Ankündigungen, die anderswo ausgewertet werden, nicht als „nicht ausgewertet“ melden
 const SUB_TIER_LABELS = { 1000: 'Stufe 1', 2000: 'Stufe 2', 3000: 'Stufe 3' };
+const SUB_GOAL_TYPES = ['subscription', 'subscription_count'];   // Goal-Typen, die als Sub-Goal gelten (wie bisher bei der Abfrage)
 const CHAT_NOTICES_HANDLED_ELSEWHERE = ['raid'];   // eingehende Raids kommen über channel.raid
 
 // EventSub-WebSocket
@@ -738,14 +739,33 @@ function saveSubGoalCache(data) {
   fs.writeFileSync(SUBGOAL_FILE, JSON.stringify(data, null, 2), 'utf8');
 }
 
+// Sub-Goal aus den EventSub-Ereignissen channel.goal.begin/progress/end (Issue #60, ADR 0023): keine Abfrage je Sub mehr.
+// Twitch kann Begin nach Progress schicken; ein Begin zu einem Ziel, das schon bekannt ist, ändert deshalb nichts.
+function handleGoalEvent(subType, evt) {
+  if (!SUB_GOAL_TYPES.includes(evt.type)) return;
+  const cached = loadSubGoalCache();
+  if (subType === 'channel.goal.begin' && cached.goalId === evt.id) return;
+  const status = subType === 'channel.goal.end' ? (evt.is_achieved ? 'achieved' : 'ended') : 'active';
+  const cache = {
+    current: evt.current_amount,
+    target: evt.target_amount,
+    title: evt.description || evt.type,
+    goalId: evt.id,
+    status,
+    lastUpdated: new Date().toISOString(),
+  };
+  saveSubGoalCache(cache);
+  logIfChanged('subgoal', `Sub-Goal aktualisiert (${subType.replace('channel.goal.', '')}): ${cache.current}/${cache.target} (${cache.title})${status === 'active' ? '' : `, ${status === 'achieved' ? 'erreicht' : 'beendet'}`}`);
+}
+
 async function refreshSubGoalCache() {
   try {
     await getValidAccessToken();
     const tokens = loadTokens();
     const res = await twitchApi.get(`/goals?broadcaster_id=${tokens.broadcaster_id}`);
     const goals = res.data.data || [];
-    const goal = goals.find(g => (g.type === 'subscription' || g.type === 'subscription_count') && g.status === 'active')
-              || goals.find(g => g.type === 'subscription' || g.type === 'subscription_count')
+    const goal = goals.find(g => SUB_GOAL_TYPES.includes(g.type) && g.status === 'active')
+              || goals.find(g => SUB_GOAL_TYPES.includes(g.type))
               || null;
 
     if (goal) {
@@ -1984,6 +2004,8 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToChatNotifications(sessionId);
       await subscribeToFollows(sessionId);
       await subscribeToChannelUpdate(sessionId);
+      await subscribeToGoals(sessionId);
+      await refreshSubGoalCache();   // Ausgangsstand einmal je Verbindung, danach aus den Goal-Ereignissen
       await refreshChannelCategory();
       await syncStreamWithTwitch();
     }
@@ -2021,6 +2043,10 @@ function connectEventSub(reconnectUrl = null) {
 
       if (subType === 'channel.update') {
         setCurrentCategory(msg.payload.event.category_name || null, 'channel.update');
+      }
+
+      if (subType === 'channel.goal.begin' || subType === 'channel.goal.progress' || subType === 'channel.goal.end') {
+        handleGoalEvent(subType, msg.payload.event);
       }
 
       if (subType === 'channel.poll.end') recordPollEnd(msg.payload.event);
@@ -2075,11 +2101,10 @@ function connectEventSub(reconnectUrl = null) {
       ) {
         const evt = msg.payload.event;
         console.log(`Sub-Event (${subType}): ${evt.user_name || evt.user_login || 'anonym'}${describeSubEvent(subType, evt)}`);
-        await refreshSubGoalCache();
 
-        // Diese Events treffen oft Sekunden VOR der Chat-Ankündigung ein. Sie aktualisieren
-        // daher nur noch den Sub-Goal-Cache; die Effekte werden erst durch die
-        // Chat-Ankündigung (channel.chat.notification, siehe handleChatNotification) ausgelöst.
+        // Diese Events treffen oft Sekunden VOR der Chat-Ankündigung ein. Sie werden nur protokolliert;
+        // die Effekte löst die Chat-Ankündigung aus (channel.chat.notification, handleChatNotification),
+        // den Sub-Goal-Stand liefern die Goal-Ereignisse (handleGoalEvent).
       }
     }
 
@@ -2962,6 +2987,20 @@ async function refreshChannelCategory() {
     setCurrentCategory(res.data?.data?.[0]?.game_name || null, 'Abruf');
   } catch (err) {
     console.warn('[Kategorie] Abruf der Twitch-Kategorie gescheitert:', err.response?.data || err.message);
+  }
+}
+
+// Sub-Goal über EventSub (Issue #60); Scope channel:read:goals
+async function subscribeToGoals(sessionId) {
+  try {
+    await getValidAccessToken();
+    const tokens = loadTokens();
+    for (const type of ['channel.goal.begin', 'channel.goal.progress', 'channel.goal.end']) {
+      await createEventSubSubscription(sessionId, type, '1', { broadcaster_user_id: tokens.broadcaster_id });
+    }
+    console.log('Goal-Subscriptions aktiv (Sub-Goal ohne Abfrage je Sub)');
+  } catch (err) {
+    console.error('Fehler beim Abonnieren der Goal-Ereignisse:', err.response?.data || err.message);
   }
 }
 
