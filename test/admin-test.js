@@ -863,6 +863,76 @@ async function abstimmung() {
   check('V9 Nur Statuswechsel im Log', logs.filter(l => l.includes('[Abstimmung]')).length <= 5, logs.filter(l => l.includes('[Abstimmung]')).join(' | '));
 }
 
+// Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b)
+async function ergebnis() {
+  // Ausgangsstand: eine schon aufgelöste Wette (z. B. vor dem Neustart) darf nichts auslösen
+  fakePrediction = { id: 'alt', title: 'Alte Wette', status: 'RESOLVED', winning_outcome_id: 'a', prediction_window: 60, created_at: '2026-11-14T18:00:00Z', locked_at: '2026-11-14T18:01:00Z', ended_at: '2026-11-14T18:05:00Z',
+    outcomes: [{ id: 'a', title: 'Ja', users: 1, channel_points: 100, color: 'BLUE', top_predictors: [{ user_id: '5', user_login: 'x', user_name: 'X', channel_points_used: 100, channel_points_won: 100 }] }] };
+  await welcome();
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `e${++n}` }, payload: { event } }));
+  const chat = (login, id, text) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `m${n}`, message: { text }, badges: [] });
+  const RESULTS = '/api/admin/chat/results';
+  const set = (body, headers = { Origin: OWN[0], ...JSON_TYPE }) => request(RESULTS, headers, 'POST', JSON.stringify(body));
+  const lines = re => chatSent.filter(b => re.test(b.message));
+  const wette = id => {
+    const base = { id, broadcaster_user_id: '4711', title: 'Versenkt er den Tanker?', started_at: '2026-11-14T20:00:00Z' };
+    const outs = won => [
+      { id: 'ja', title: 'Ja', color: 'blue', users: 2, channel_points: 42000, top_predictors: [{ user_id: '7', user_login: 'kaleun_kalle', user_name: 'Kaleun_Kalle', channel_points_used: 10000, channel_points_won: won }] },
+      { id: 'nein', title: 'Nein', color: 'pink', users: 3, channel_points: 71000, top_predictors: null },
+    ];
+    return {
+      begin: () => send('channel.prediction.begin', { ...base, outcomes: [{ id: 'ja', title: 'Ja', color: 'blue' }, { id: 'nein', title: 'Nein', color: 'pink' }], locks_at: '2026-11-14T20:01:00Z' }),
+      lock: () => send('channel.prediction.lock', { ...base, outcomes: outs(null), locked_at: '2026-11-14T20:01:00Z' }),
+      end: (status = 'resolved') => send('channel.prediction.end', { ...base, outcomes: outs(status === 'resolved' ? 26905 : 0), status, winning_outcome_id: status === 'resolved' ? 'ja' : null, ended_at: '2026-11-14T20:05:00Z' }),
+    };
+  };
+  const TEXT = 'Die Vorhersage ist beendet! »Ja« gewinnt mit einer Quote von 2,69. Als größter Gewinner räumt Kaleun_Kalle 26.905 Kanalpunkte ab.';
+
+  let ov = JSON.parse((await request(OVERVIEW)).body);
+  check('E1 Übersicht: Ergebniszeilen anfangs aus, Absender in der Liste', JSON.stringify(ov.chat_results.map(x => [x.line, x.enabled])) === '[["prediction",false],["poll",false]]'
+    && ov.chat_senders.some(x => x.feature === 'prediction' && x.sender === 'broadcaster') && ov.chat_senders.some(x => x.feature === 'poll'), JSON.stringify(ov.chat_results));
+  check('E2 Aufgelöste Wette aus dem Ausgangsstand: keine Zeile, kein Log-Eintrag', !logs.some(l => /Ergebniszeile (nicht )?gesendet/.test(l)) && lines(/Vorhersage/).length === 0);
+
+  let w = wette('w1'); w.begin(); w.lock(); w.end(); await sleep(100);
+  check('E3 Schalter aus: nichts im Chat, Text im Log', lines(/Vorhersage/).length === 0 && logs.some(l => l === `[Wette] Ergebniszeile nicht gesendet, Schalter aus (results prediction on): ${TEXT}`), logs.filter(l => l.includes('Ergebniszeile')).join(' | '));
+
+  let r = await set({ line: 'prediction', enabled: true });
+  check('E4 Einschalten per Webkonsole: gespeichert', r.status === 200 && JSON.parse(r.body).changed === true && JSON.parse(fs.readFileSync(path.join(workDir, 'chat_results.json'), 'utf8')).prediction === true, r.body);
+  const bad = [await set({ line: 'gibtsnicht', enabled: true }), await set({ line: '__proto__', enabled: true }), await set({ line: 'poll', enabled: 'ja' }), await set({ line: 'poll', enabled: true }, { Origin: 'https://fremd.example', ...JSON_TYPE })];
+  check('E5 Falsche Zeile oder Wert: 400; fremde Herkunft: 403', bad.slice(0, 3).every(x => x.status === 400) && bad[3].status === 403, bad.map(x => x.status).join(','));
+
+  w = wette('w2'); w.begin(); w.end(); await sleep(100);
+  let got = lines(/Vorhersage/);
+  check('E6 Schalter an: Zeile wörtlich wie im Wetten-Widget, als Broadcaster', got.length === 1 && got[0].message === TEXT && got[0].sender_id === '4711', JSON.stringify(got));
+  w.end(); await sleep(100);
+  check('E7 Ende doppelt gemeldet: nur eine Zeile', lines(/Vorhersage/).length === 1);
+  w = wette('w3'); w.begin(); w.end('canceled'); await sleep(100);
+  check('E8 Abgebrochene Wette: keine Zeile', lines(/Vorhersage/).length === 1);
+
+  chat('kaleun_kalle', '7', '!privat'); await sleep(150);
+  w = wette('w4'); w.begin(); w.end(); await sleep(100);
+  got = lines(/Vorhersage/);
+  check('E9 !privat: größter Gewinner als „ein anonymer Schlaumeier“', got.length === 2 && got[1].message.includes('räumt ein anonymer Schlaumeier 26.905 Kanalpunkte ab.') && !got[1].message.includes('Kaleun'), JSON.stringify(got[1]));
+
+  // Abstimmung
+  await set({ line: 'poll', enabled: true });
+  const pbase = { id: 'v1', broadcaster_user_id: '4711', title: 'Längster Spargel?', started_at: '2026-11-14T21:00:00Z',
+    bits_voting: { is_enabled: false, amount_per_vote: 0 }, channel_points_voting: { is_enabled: false, amount_per_vote: 0 } };
+  const choices = [{ id: 'x', title: 'Weiß', votes: 5 }, { id: 'y', title: 'Grün', votes: 3 }, { id: 'z', title: 'Lila', votes: 1 }];
+  send('channel.poll.begin', { ...pbase, choices: choices.map(({ id, title }) => ({ id, title })), ends_at: '2026-11-14T21:01:00Z' });
+  send('channel.poll.end', { ...pbase, choices, status: 'completed', ended_at: '2026-11-14T21:01:00Z' });
+  send('channel.poll.end', { ...pbase, choices, status: 'archived', ended_at: '2026-11-14T21:01:00Z' });
+  await sleep(100);
+  got = lines(/Umfrage/);
+  check('E10 Abstimmung: Zeile wörtlich wie SpargelPoll, nur einmal trotz archived',
+    got.length === 1 && got[0].message === 'Die Umfrage "Längster Spargel?" wurde beendet und hier sind eure Ergebnisse. Den längsten Spargel hat "Weiß" mit 56 Prozent der Stimmen, gefolgt von "Grün" mit 33 Prozent der Stimmen.', JSON.stringify(got));
+  ov = JSON.parse((await request(OVERVIEW)).body);
+  check('E11 Übersicht zeigt beide Zeilen an', ov.chat_results.every(x => x.enabled === true), JSON.stringify(ov.chat_results));
+  r = await set({ line: 'prediction', enabled: false });
+  check('E12 Ausschalten: gespeichert, Log-Zeile', r.status === 200 && JSON.parse(fs.readFileSync(path.join(workDir, 'chat_results.json'), 'utf8')).prediction === false && logs.some(l => l === '[Chat] Webkonsole: Ergebniszeile Wett-Ergebnis aus'));
+}
+
 async function effekteAlt() {
   const r = await request(OVERVIEW);
   check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
@@ -944,6 +1014,7 @@ async function ohneTokens() {
   else if (scenario === 'subgoal') await subgoal();
   else if (scenario === 'wette') await wette();
   else if (scenario === 'abstimmung') await abstimmung();
+  else if (scenario === 'ergebnis') await ergebnis();
   else await ablauf();
 
   console.log = realLog;

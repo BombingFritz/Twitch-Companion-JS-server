@@ -233,7 +233,7 @@ function connectWidget() {
     };
 
     let s = await senders();
-    check('S1 Defekte Datei: Vorgaben (BdU und Soldbuch Bot, Rest Broadcaster)', s.bdu === 'bot' && s.uboat === 'bot' && ['raid', 'whitelist', 'raidstats', 'privacy'].every(f => s[f] === 'broadcaster'), JSON.stringify(s));
+    check('S1 Defekte Datei: Vorgaben (BdU und Soldbuch Bot, Rest Broadcaster)', s.bdu === 'bot' && s.uboat === 'bot' && ['raid', 'whitelist', 'raidstats', 'privacy', 'prediction', 'poll'].every(f => s[f] === 'broadcaster'), JSON.stringify(s));
     let r = await setSender({ feature: 'raid', sender: 'bot' });
     check('S2 Webkonsole: Raid-Begrüßung auf Bot, gespeichert', r.status === 200 && JSON.parse(r.body).changed === true && file().raid === 'bot' && has(/\[Bot\] Webkonsole: Raid-Begrüßung sendet jetzt der Bot$/), r.body);
     let posts = await raid('raider');
@@ -261,7 +261,7 @@ function connectWidget() {
     await cmd('bot sender uboat broadcaster');
     check('S9 Konsole: gleicher Wert wird gemeldet', has(/\[Bot\] UBOAT-Soldbuch sendet schon der Broadcaster/));
     await cmd('bot sender raid irgendwer');
-    check('S10 Konsole: falsche Eingabe zeigt Nutzung mit Funktionen', has(/Nutzung: bot sender <funktion> bot\|broadcaster – Funktionen: bdu, uboat, raid, whitelist, raidstats, privacy/));
+    check('S10 Konsole: falsche Eingabe zeigt Nutzung mit Funktionen', has(/Nutzung: bot sender <funktion> bot\|broadcaster – Funktionen: bdu, uboat, raid, whitelist, raidstats, privacy, prediction, poll/));
     await cmd('bot sender');
     check('S11 bot sender listet alle Funktionen', has(/\[Bot\]   raid +Raid-Begrüßung: Bot/) && has(/\[Bot\]   uboat +UBOAT-Soldbuch: Broadcaster/));
     await cmd('bot show');

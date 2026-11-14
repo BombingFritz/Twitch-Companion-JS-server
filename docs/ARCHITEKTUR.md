@@ -35,6 +35,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | Letzter Stand aus EventSub | `lib/live-state.js` (`createLiveStateTracker`: Stand nur im Arbeitsspeicher, Ausgangsstand je Verbindung, Kontrolle nach `…_RECHECK_MS` ohne Ereignis, solange offen; ein früherer Zustand ersetzt nie einen späteren derselben ID) |
 | Wette (Prediction) | `lib/prediction-state.js` (`createPredictionTracker`, Felder aus `channel.prediction.*` und Helix); in `server.js` `predictionTracker`, `subscribeToPredictions` (Spec `wetten-abstimmungen.md`, Schritt 1) |
 | Abstimmung (Poll) | `lib/poll-state.js` (`createPollTracker`, Felder aus `channel.poll.*` und Helix); in `server.js` `pollTracker`, `subscribeToPolls`; beide Abo-Gruppen über `subscribeToTypes` (Spec `wetten-abstimmungen.md`, Schritt 2) |
+| Ergebniszeilen | `lib/result-messages.js` (`predictionResultMessage`, `pollResultMessage`: Texte wie in den Widgets; `createResultAnnouncer`: einmal je ID, nur wenn vorher offen gesehen); in `server.js` `predictionAnnouncer`, `pollAnnouncer`, `announceResult`, `loadChatResults`/`saveChatResults`, `setChatResult` (Spec `wetten-abstimmungen.md`, Schritt 3b) |
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` (Ausgangsstand), `handleGoalEvent` (Stand aus `channel.goal.*`, Issue #60), `subscribeToGoals` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
 | Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode` |
@@ -75,6 +76,7 @@ Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`
 | `topics.json` | `{items: [{title}], display: {title, theme, background: {horizontal, vertikal}}, updated_at}` (Intro-Topics, ADR 0021); fehlt oder defekt: Standardwerte. Fortschritt und Sichtbarkeit nur im Arbeitsspeicher |
 | `bot.json` | `{bot_id, bot_login, bot_name, authorized_at}` (ADR 0017), keine Tokens; fehlt die Datei: kein Bot, alles als Broadcaster |
 | `chat_senders.json` | `{funktion: 'bot'|'broadcaster'}` je Chat-Funktion (Spec `bot-account.md`, „Absender je Funktion“); fehlt die Datei, ein Eintrag oder ist sie ungültig: Vorgabe (BdU und Soldbuch Bot, Rest Broadcaster) |
+| `chat_results.json` | `{prediction, poll}` je `true`/`false` (Ergebniszeilen über den Server, Spec `wetten-abstimmungen.md`, Schritt 3b); fehlt die Datei, ein Eintrag oder ist sie ungültig: aus |
 | `stream_stats.json` | Laufender oder letzter Stream (ADR 0019): `{v, status: none/live/offline/closed, started_at, ended_at, offline_at, close_reason, aborted, late_start, stream_ids, segments[{start,end}], categories[{name,seconds}], tags, counters, chatters{id:{name,count}} (höchstens 1000), viewers[[Minute seit Start, Zuschauer]] (je Minute der höchste Wert, höchstens 2880), report_id, last_saved_at}`; fehlt die Datei, ist sie ungültig oder hat eine andere Version: leer. Höchstens alle 30 s geschrieben, über `stream_stats.json.tmp` |
 | `stream_reports/<ID>.json` und `.txt` | Ein Bericht je abgeschlossenem Stream (ADR 0019), ID = Startzeit in Ortszeit, z. B. `2026-11-10_2113` (`-2` usw. bei gleicher Startminute). `.json`: `{v: 1, id, created_at, warnings, summary, state}`, `state` wie `stream_stats.json`; `.txt`: lesbarer Bericht, wird aus der `.json` neu erzeugt, falls er fehlt. Einmal je Stream geschrieben, gelöscht nur über die Webkonsole. Die Summe aller Streams wird beim Lesen gebildet. `!privat` schreibt betroffene Berichte neu (Chatter unter `anon-N` mit Name „anonymer Schlaumeier“) |
 | `privacy_optouts.json` | `{ "<userId>": "<ISO-Zeitpunkt>" }` der Zuschauer mit `!privat` (ADR 0022); fehlt die Datei oder ist sie ungültig: leer. Geschrieben über `privacy_optouts.json.tmp` |
@@ -116,6 +118,7 @@ Zugriffsschutz (ADR 0013):
 | `POST /api/admin/effects/mode` | JSON `{mode: auto/off}`; setzt den Modus, `{ok:true, mode}` | 403 und 415 wie die übrigen POST; 400 ungültiger Modus; 413 zu groß |
 | `POST /api/admin/modules` | JSON `{module: bdu/uboat, enabled: true/false}`; `{ok:true, changed, modules:{bdu, uboat}}` | 403 und 415 wie die übrigen POST; 400 unbekanntes Modul oder kein Wahrheitswert; 413 zu groß |
 | `POST /api/admin/chat/sender` | JSON `{feature, sender: bot/broadcaster}`; `{ok:true, changed, chat_senders:[{feature, name, sender}]}` (Spec `bot-account.md`) | 403 und 415 wie die übrigen POST; 400 bei unbekannter Funktion oder unbekanntem Absender |
+| `POST /api/admin/chat/results` | JSON `{line: prediction/poll, enabled: true/false}`; `{ok:true, changed, chat_results:[{line, name, enabled}]}` (Spec `wetten-abstimmungen.md`, Schritt 3b) | 403 und 415 wie die übrigen POST; 400 bei unbekannter Zeile oder wenn `enabled` kein Wahrheitswert ist |
 | `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
 | `POST /api/admin/server/restart` | wie oben, Exit-Code 75; `AuthServer.cmd` startet neu | wie oben; zusätzlich 409 ohne `AuthServer.cmd` |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id, title, channelPoints, users, color (BLUE/PINK), topPredictors[{userId, userName, userLogin, channelPointsUsed, channelPointsWon}]}], createdAt, locksAt, endsAt (= endedAt, bisheriger Name), lockedAt, endedAt, predictionWindow (s), winningOutcomeId, updatedAt}` (nicht gesetzte Zeitpunkte und Sieger `null`; Issue #38) für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED. Letzter Stand aus EventSub, fragt Twitch nicht (ADR 0023, Spec `wetten-abstimmungen.md`); `channelPointsWon` steht erst nach dem Ende, vorher 0 | keiner; ohne Stand `WAITING` |
@@ -159,6 +162,7 @@ Zugriffsschutz (ADR 0013):
 | `bot show` | Bot-Account: Name und ID, Funktionen über den Bot, letzter Sendefehler; ohne Bot Einrichtungshinweis |
 | `bot remove` | `bot.json` löschen, danach sendet wieder der Broadcaster (Freigabe bei Twitch bleibt bis zum Entzug durch das Bot-Konto) |
 | `bot sender` / `bot sender <funktion> bot\|broadcaster` | Absender je Chat-Funktion zeigen bzw. umstellen, gespeichert in `chat_senders.json`; „Bot“ wirkt nur mit eingerichtetem Bot |
+| `results show` / `results <prediction\|poll> on\|off` | Ergebniszeilen für Wette und Abstimmung zeigen bzw. ein- und ausschalten, gespeichert in `chat_results.json`; aus: Zeile nur im Log |
 | `help` | Befehlsübersicht (auch beim Start) |
 | `topics show` | Intro-Topics: Modul, Testmodus, Verbindungen, Stand, Liste, Anzeige |
 | `topics next` / `back` / `toggle` / `reset` | Intro-Topics bedienen wie die Stream-Deck-Tasten |
@@ -282,7 +286,8 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
 | `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
 | `BOT_SCOPES` | `user:bot user:write:chat` | Freigabe des Bot-Kontos über `/login-bot` (ADR 0017) |
-| `CHAT_SENDERS_FILE` / `CHAT_FEATURES` / `CHAT_SENDER_DEFAULTS` | `./chat_senders.json` / `bdu`, `uboat`, `raid`, `whitelist`, `raidstats`, `privacy` / `{bdu: 'bot', uboat: 'bot'}` | Absender je Chat-Funktion (Spec `bot-account.md`): ohne Eintrag gilt die Vorgabe, sonst Broadcaster; ersetzt `BOT_FEATURES` |
+| `CHAT_SENDERS_FILE` / `CHAT_FEATURES` / `CHAT_SENDER_DEFAULTS` | `./chat_senders.json` / `bdu`, `uboat`, `raid`, `whitelist`, `raidstats`, `privacy`, `prediction`, `poll` / `{bdu: 'bot', uboat: 'bot'}` | Absender je Chat-Funktion (Spec `bot-account.md`): ohne Eintrag gilt die Vorgabe, sonst Broadcaster; ersetzt `BOT_FEATURES` |
+| `CHAT_RESULTS_FILE` / `CHAT_RESULT_LINES` | `./chat_results.json` / `prediction`, `poll` | Ergebniszeilen für Wette und Abstimmung über den Server, je Zeile an/aus, Vorgabe aus (Spec `wetten-abstimmungen.md`, Schritt 3b) |
 | `LOGIN_STATE_TTL_MS` / `APP_TOKEN_REFRESH_MARGIN_MS` | 600000 / 300000 | Gültigkeit eines begonnenen Logins (`state`, Broadcaster und Bot); App-Token so lange vor Ablauf erneuern |
 | `UBOAT_COMMAND` | `!soldbuch` | Chat-Befehl (Groß-/Kleinschreibung egal) |
 | `UBOAT_USER_COOLDOWN_MS` | 60000 | Höchstens eine Antwort je Zuschauer |

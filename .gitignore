@@ -19,6 +19,7 @@ modules.json
 topics.json
 bot.json
 chat_senders.json
+chat_results.json
 error_log.json
 error_log.json.tmp
 stream_stats.json

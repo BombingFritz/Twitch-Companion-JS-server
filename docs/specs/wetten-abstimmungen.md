@@ -1,6 +1,6 @@
 # Spec: Wetten und Abstimmungen über den Server
 
-**Status:** Schritt 1 umgesetzt (PR #64). Schritt 2 vereinbart (Nutzer, 14.11.2026). Schritte 3 und 4 Entwurf. Bezug: Issue #50 (Abschnitt 1), Issue #44 (Glückspilz), ADR 0023.
+**Status:** Schritt 1 umgesetzt (PR #64), Schritt 2 (PR #66), Schritt 3a (PR #67). Schritt 3b vereinbart und im Branch. Schritt 4 Entwurf. Bezug: Issue #50 (Abschnitt 1), Issue #44 (Glückspilz), ADR 0023.
 
 ## Ziel
 Der Server führt den Stand von Wetten (Predictions) und Abstimmungen (Polls) über EventSub mit. Widgets holen ihn beim Server ab, statt Twitch selbst zu fragen. Der Server sendet die Ergebniszeilen in den Chat und ermittelt den Glückspilz des Abends.
@@ -93,7 +93,38 @@ Vereinbart (Nutzer, 14.11.2026: „weiter mit 2“). Was SpargelPoll braucht, wu
 - Ausgangsstand einmal je Verbindung; Kontrolle nur bei `ACTIVE`.
 - Statistik wie bisher (`recordPollEnd`, `archived` zählt nicht doppelt).
 
-## Schritt 3: Ergebniszeilen über den Server (Entwurf)
+## Schritt 3: Ergebniszeilen über den Server
+Vereinbart (Nutzer, 14.11.2026). 3a (Absender) ist umgesetzt in PR #67, 3b (Ergebniszeilen) folgt im Branch `feature/ergebniszeilen`.
+
+### Texte (wörtlich aus den Widgets, `lib/result-messages.js`)
+- **Wette** (Wetten-Widget 0.7.0, dort Spec `chat-nachricht.md` und ADR 0008):
+  - „Die Vorhersage ist beendet! »Ja« gewinnt mit einer Quote von 2,69. Als größter Gewinner räumt Kaleun_Kalle 26.905 Kanalpunkte ab.“
+  - Quote = Topf ÷ Punkte des Siegers, Format wie die Kurstafel.
+  - Größter Gewinner ist der Top-Tipper des Siegers mit dem höchsten `channelPointsWon`; ist der Wert 0, gilt Einsatz × Quote.
+  - Steht er auf der `!privat`-Liste, heißt er „ein anonymer Schlaumeier“; es rückt niemand nach.
+  - Ohne Top-Tipper entfällt der zweite Satz. Hat niemand auf den Sieger gesetzt: „… »X« gewinnt. Niemand hatte darauf gesetzt.“
+  - Bei Abbruch gibt es keine Zeile.
+  - Anders als im Widget kennt der Server nur die `!privat`-Liste, nicht die Einstellung `PRIVATE_USERS` des Widgets.
+- **Abstimmung** (SpargelPoll 0.8.2, dort Spec `chat-nachricht.md`):
+  - Normalfall mit Sieger und Zweitem, gerundete Prozent.
+  - Gleichstand nennt alle Optionen mit der Höchststimmenzahl, verbunden mit „ sowie “; 0:0 ist Gleichstand.
+  - Gesendet bei `COMPLETED`, `TERMINATED` oder `ARCHIVED`, je Abstimmung einmal.
+
+### Verhalten
+- **Wann:** einmal je Wette bzw. Abstimmung, sobald ein Endstand vorliegt (Ereignis oder Kontrolle), wenn dieser Serverprozess sie vorher offen gesehen hat (`createResultAnnouncer`).
+- **Schalter aus (Vorgabe):** Die Zeile steht nur im Log: „[Wette] Ergebniszeile nicht gesendet, Schalter aus (results prediction on): …“. So lässt sie sich mit der des Widgets vergleichen.
+- **Schalter an:** `sendChatMessage(text, null, 'prediction' | 'poll')`, Absender nach „Chat-Absender“ (Vorgabe Broadcaster).
+- **Gespeichert** in `chat_results.json` (`{prediction, poll}`, je `true`/`false`). Fehlt die Datei oder ist sie defekt, ist alles aus.
+- **Konsole:** `results show` sowie `results prediction on|off` und `results poll on|off`.
+- **Webkonsole:** Reiter „Einstellungen“, Karte „Ergebniszeilen im Chat“ mit Hinweis auf doppelte Zeilen. Dazu `POST /api/admin/chat/results` `{line, enabled}` → `{ok, changed, chat_results}`; 400 bei unbekannter Zeile oder wenn `enabled` kein Wahrheitswert ist. In der Übersicht: `chat_results` (`[{line, name, enabled}]`).
+- Von Claude festgelegt, nicht einzeln zur Wahl gestellt: Logzeile bei Schalter aus, Namen von Befehl und Datei, Platz der Karte vor „Chat-Absender“.
+
+### Akzeptanzkriterien
+- Schalter aus: kein Versand, Text im Log. Schalter an: Text wörtlich wie im Widget, genau einmal, auch wenn das Ende doppelt kommt oder `archived` folgt.
+- Eine schon beendete Wette aus dem Ausgangsstand löst nichts aus; eine abgebrochene Wette ebenfalls nicht.
+- `!privat` wirkt beim größten Gewinner.
+
+### Ursprünglicher Entwurf
 - Texte wie heute in den Widgets (Spec `chat-nachricht.md` des Wetten-Widgets bzw. von SpargelPoll). Gesendet wird bei `end`, genau einmal je Wette oder Abstimmung.
 - **Migration:** Schalter je Zeile, anfangs aus. Ein Widget, das umgestellt hat, sendet selbst nicht mehr, dann schaltet der Nutzer den Server-Versand ein. So kommt keine Zeile doppelt.
 - **Absender konfigurierbar** (Nutzer, 14.11.2026): Broadcaster (wie heute) oder Bot-Konto. Vorgabe Broadcaster. Umgesetzt als eigener Schritt **3a** für alle Chat-Funktionen (Nutzer: „Alle Chat-Funktionen“), Spec `bot-account.md`, Abschnitt „Absender je Funktion“. 3b ergänzt dort `prediction` und `poll`.
