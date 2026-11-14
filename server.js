@@ -169,6 +169,7 @@ const STREAM_VIEWERS_POLL_MS = 30 * 1000;         // Zuschauerzahl so oft bei Tw
 const STREAM_VIEWERS_MAX_MINUTES = 48 * 60;       // Obergrenze des Minutenverlaufs je Stream
 const STREAM_VIEWERS_PATH = '/api/twitch/stream'; // letzter bekannter Stand für Widgets, ohne eigene Twitch-Abfrage (ADR 0023)
 const PREDICTION_PATH = '/api/twitch/prediction/current';  // letzter Stand der Wette aus EventSub (Spec wetten-abstimmungen.md)
+const STREAM_LUCKY_PATH = '/api/stream/lucky';    // Glückspilz des Abends aus der Stream-Statistik (Spec wetten-abstimmungen.md, Schritt 4)
 const PREDICTION_RECHECK_MS = 5 * 60 * 1000;      // offene Wette ohne Ereignis so lange, dann einmal bei Twitch nachsehen
 const POLL_PATH = '/api/twitch/poll/current';     // letzter Stand der Abstimmung aus EventSub (Spec wetten-abstimmungen.md)
 const POLL_RECHECK_MS = 5 * 60 * 1000;            // laufende Abstimmung ohne Ereignis so lange, dann einmal bei Twitch nachsehen
@@ -1565,6 +1566,19 @@ app.get(STREAM_VIEWERS_PATH, (req, res) => {
   res.json({ live: streamViewers.live, viewers: streamViewers.viewers, updatedAt: streamViewers.updatedAt });
 });
 
+// Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4): Stand des erfassten Streams, ohne Twitch-Anfrage.
+// Nur Namen und Punkte, keine IDs; !privat erscheint als „anonymer Schlaumeier“.
+app.get(STREAM_LUCKY_PATH, (req, res) => {
+  const s = streamSession.snapshot();
+  res.json({
+    stream: s.status,
+    startedAt: s.started_at,
+    luckyBettors: s.lucky_bettors.map(b => ({ name: b.name, net: b.net, bets: b.bets })),
+    bettors: s.bettors,
+    predictions: (s.counters && s.counters.predictions) || 0,
+  });
+});
+
 app.get('/api/twitch/subcounter', async (req, res) => {
   try {
     let cache = loadSubGoalCache();
@@ -2352,6 +2366,7 @@ function recordPredictionEnd(evt) {
   stats.count('predictions');
   stats.count('prediction_users', outcomes.reduce((sum, o) => sum + (o.users || 0), 0));
   stats.count('channel_points', outcomes.reduce((sum, o) => sum + (o.channel_points || 0), 0));
+  streamSession.notePrediction(evt);   // Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4)
 }
 
 // Beim Verbinden: Ereignisse während einer Lücke könnten fehlen (ADR 0019).

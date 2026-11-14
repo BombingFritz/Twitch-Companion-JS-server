@@ -87,6 +87,30 @@ const idOld = reports.archive(closed(start3, 1));
 check('R23 Bericht ohne Zuschauerwerte (ältere Streams): keine Zeile', !reports.text(idOld).includes('Zuschauer:'), reports.text(idOld));
 reports.remove(idOld);
 
+// Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4)
+const start4 = new Date(2026, 10, 14, 21, 0).toISOString();
+const withBets = closed(start4, 2);
+withBets.state.bettors = { 7: { name: 'Kalle', net: 12345, won: 20000, used: 7655, bets: 3 }, 8: { name: 'Pech', net: -500, won: 0, used: 500, bets: 1 } };
+const idBets = reports.archive(withBets);
+let betText = reports.text(idBets);
+check('R24 Bericht nennt den Glückspilz mit Reingewinn und Zahl der Wetten', betText.includes('Glückspilz des Abends: Kalle mit +12.345 Kanalpunkten Reingewinn aus 3 Wetten'), betText);
+reports.anonymize('7', 'anonymer Schlaumeier');
+const betReport = JSON.parse(fs.readFileSync(path.join(dir, `${idBets}.json`), 'utf8'));
+betText = fs.readFileSync(path.join(dir, `${idBets}.txt`), 'utf8');
+check('R25 !privat: Glückspilz rückwirkend anonym in .json und .txt, Zahlen bleiben', !JSON.stringify(betReport).includes('Kalle') && betText.includes('Glückspilz des Abends: anonymer Schlaumeier mit +12.345')
+  && betReport.summary.lucky_bettors[0].name === 'anonymer Schlaumeier', betText);
+reports.remove(idBets);
+const tie = closed(start4, 2);
+tie.state.bettors = { 1: { name: 'Anna', net: 100, bets: 1 }, 2: { name: 'Bert', net: 100, bets: 2 }, 3: { name: 'Cora', net: 50, bets: 1 } };
+const idTie = reports.archive(tie);
+check('R26 Gleichstand: alle genannt mit „je“', reports.text(idTie).includes('Glückspilz des Abends: Anna und Bert mit je +100 Kanalpunkten Reingewinn'), reports.text(idTie));
+reports.remove(idTie);
+const minus = closed(start4, 2);
+minus.state.bettors = { 1: { name: 'Anna', net: -100, bets: 1 } };
+const idMinus = reports.archive(minus);
+check('R27 Niemand im Plus: „keiner“; ganz ohne Wetten: keine Zeile', reports.text(idMinus).includes('Glückspilz des Abends: keiner, unterm Strich lag niemand im Plus')
+  && !reports.text(reports.archive(closed(new Date(2026, 10, 15, 21, 0).toISOString(), 2))).includes('Glückspilz'), reports.text(idMinus));
+
 check('R18 Hinweise je Fall', reportWarnings({ duration_seconds: 7200 }, 3600).length === 0 && reportWarnings({ duration_seconds: 100, aborted: true }, 3600).length === 2);
 
 for (const x of results) console.log(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : '  -> ' + x.info}`);

@@ -589,6 +589,13 @@ function streamStatisticRows(s) {
   if (s.top_chatters.length) {
     items.push(row('Aktivste Chatter', el('span', { text: s.top_chatters.map(c => `${c.name} (${c.count})`).join(', ') })));
   }
+  // Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4): erst, wenn jemand gewettet hat
+  if (s.bettors) {
+    const lucky = s.lucky_bettors || [];
+    items.push(row('Glückspilz', el('span', { text: lucky.length
+      ? `${lucky.map(b => b.name).join(', ')}: +${lucky[0].net.toLocaleString('de-DE')} Kanalpunkte Reingewinn`
+      : 'noch keiner, niemand liegt im Plus' })));
+  }
   return items;
 }
 
