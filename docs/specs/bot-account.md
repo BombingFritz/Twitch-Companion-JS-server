@@ -42,7 +42,7 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
   - `whitelist`: Whitelist-Begrüßung
   - `raidstats`: `!raidstats`
   - `privacy`: Antwort auf `!privat`
-  - Mit Schritt 3b kommen das Wett- und das Abstimmungs-Ergebnis dazu.
+  - `prediction`: Wett-Ergebnis und `poll`: Abstimmungs-Ergebnis (seit Schritt 3b, Spec `wetten-abstimmungen.md`)
 - Vorgabe wie bisher (`CHAT_SENDER_DEFAULTS`): BdU und Soldbuch über den Bot, alles andere als Broadcaster.
 - Gespeichert in `chat_senders.json` (`{funktion: 'bot' | 'broadcaster'}`). Eine fehlende oder defekte Datei bzw. ein unbekannter Wert bedeutet: Vorgabe.
 - „Bot“ wirkt nur, wenn ein Bot eingerichtet ist; sonst sendet der Broadcaster. Rückfall bei HTTP-Fehler wie oben.
@@ -58,7 +58,7 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - Von Claude festgelegt, nicht einzeln zur Wahl gestellt:
   - Funktionsnamen und Dateiname
   - Konsolenbefehl unter `bot`
-  - Wett- und Abstimmungs-Ergebnis erst mit 3b
+  - Wett- und Abstimmungs-Ergebnis erst mit 3b (seitdem in der Liste, Vorgabe Broadcaster)
 
 ### Konsole und Status
 - `bot show`: eingerichtet ja/nein, Name und ID, welche Funktionen über den Bot laufen, letzter Sendefehler, Einrichtungshinweis.

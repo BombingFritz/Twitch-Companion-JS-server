@@ -16,6 +16,7 @@ const { createTokenStore, createRateLimiter, createTwitchApi } = require('./lib/
 const { createTopics } = require('./lib/topics');
 const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/prediction-state');
 const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
+const { predictionResultMessage, pollResultMessage, createResultAnnouncer } = require('./lib/result-messages');
 require('dotenv').config();
 
 const app = express();
@@ -72,7 +73,12 @@ const BOT_FILE = './bot.json';                    // nur ID und Name des Bots, k
 const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Konto über /login-bot
 // Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“): Bot oder Broadcaster, einstellbar per Konsole und Webkonsole
 const CHAT_SENDERS_FILE = './chat_senders.json';
-const CHAT_FEATURES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', raid: 'Raid-Begrüßung', whitelist: 'Whitelist-Begrüßung', raidstats: '!raidstats', privacy: '!privat-Antwort' };
+const CHAT_FEATURES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', raid: 'Raid-Begrüßung', whitelist: 'Whitelist-Begrüßung', raidstats: '!raidstats', privacy: '!privat-Antwort',
+  prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
+// Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): je Zeile ein Schalter, anfangs aus,
+// damit nichts doppelt im Chat steht, solange das Widget seine Zeile noch selbst sendet
+const CHAT_RESULTS_FILE = './chat_results.json';
+const CHAT_RESULT_LINES = { prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
 const CHAT_SENDER_DEFAULTS = { bdu: 'bot', uboat: 'bot' };   // alle übrigen: Broadcaster (wie vor der Einstellung)
 const CHAT_SENDER_VALUES = ['bot', 'broadcaster'];
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;        // so lange gilt ein über /login oder /login-bot begonnener Login (state)
@@ -170,6 +176,7 @@ const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // z
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
 const ADMIN_CHAT_SENDER_PATH = '/api/admin/chat/sender';   // Absender je Chat-Funktion (Spec bot-account.md)
+const ADMIN_CHAT_RESULTS_PATH = '/api/admin/chat/results'; // Ergebniszeilen an/aus (Spec wetten-abstimmungen.md, Schritt 3b)
 const ADMIN_EFFECT_MODE_PATH = '/api/admin/effects/mode';
 const EFFECT_MODES = ['auto', 'off'];
 const ADMIN_JSON_LIMIT = '1kb';                   // Webkonsole-Aktionen senden nur kurze JSON-Objekte
@@ -576,6 +583,36 @@ function setChatSender(feature, sender, source) {
   const botHint = sender === 'bot' && !loadBotConfig() ? ' (noch kein Bot eingerichtet – bis dahin sendet der Broadcaster)' : '';
   console.log(`[Bot] ${source}: ${CHAT_FEATURES[feature]} sendet jetzt ${sender === 'bot' ? 'der Bot' : 'der Broadcaster'}${botHint}`);
   return true;
+}
+
+// ── Ergebniszeilen für Wette und Abstimmung (Spec wetten-abstimmungen.md, Schritt 3b) ──
+// Fehlende oder defekte Datei, fehlender Eintrag: aus
+function loadChatResults() {
+  const switches = Object.fromEntries(Object.keys(CHAT_RESULT_LINES).map(k => [k, false]));
+  if (!fs.existsSync(CHAT_RESULTS_FILE)) return switches;
+  try {
+    const data = JSON.parse(fs.readFileSync(CHAT_RESULTS_FILE, 'utf8'));
+    for (const k of Object.keys(switches)) if (typeof data[k] === 'boolean') switches[k] = data[k];
+  } catch { /* defekte Datei: alles aus */ }
+  return switches;
+}
+
+function saveChatResults(switches) {
+  fs.writeFileSync(CHAT_RESULTS_FILE, JSON.stringify(switches, null, 2), 'utf8');
+}
+
+let chatResults = loadChatResults();
+
+function setChatResult(line, on, source) {
+  if (chatResults[line] === on) return false;
+  chatResults = { ...chatResults, [line]: on };
+  saveChatResults(chatResults);
+  console.log(`[Chat] ${source}: Ergebniszeile ${CHAT_RESULT_LINES[line]} ${on ? 'an – der Server sendet sie, das Widget sollte es nicht mehr tun' : 'aus'}`);
+  return true;
+}
+
+function chatResultList() {
+  return Object.keys(CHAT_RESULT_LINES).map(line => ({ line, name: CHAT_RESULT_LINES[line], enabled: chatResults[line] }));
 }
 
 function botFeatures() {
@@ -1435,6 +1472,28 @@ app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) =>
   res.json({ ok: true });
 });
 
+// ── Ergebniszeilen (Spec wetten-abstimmungen.md, Schritt 3b): einmal je Wette/Abstimmung, die dieser Prozess offen
+// gesehen hat, auch verspätet über die Kontrolle; gesendet nur mit eingeschaltetem Schalter, sonst nur ins Log ──
+const RESULT_LOG_PREFIX = { prediction: '[Wette]', poll: '[Abstimmung]' };
+
+async function announceResult(line, text) {
+  if (!text) return;
+  if (!chatResults[line]) {
+    console.log(`${RESULT_LOG_PREFIX[line]} Ergebniszeile nicht gesendet, Schalter aus (results ${line} on): ${text}`);
+    return;
+  }
+  if (await sendChatMessage(text, null, line)) console.log(`${RESULT_LOG_PREFIX[line]} Ergebniszeile gesendet: ${text}`);
+}
+
+const predictionAnnouncer = createResultAnnouncer({
+  idKey: 'predictionId', openStatuses: ['ACTIVE', 'LOCKED'], finalStatuses: ['RESOLVED', 'CANCELED'],
+  onFinal: s => announceResult('prediction', predictionResultMessage(s, { isPrivate: isPrivateUser })),   // bei CANCELED keine Zeile
+});
+const pollAnnouncer = createResultAnnouncer({
+  idKey: 'pollId', openStatuses: ['ACTIVE'], finalStatuses: ['COMPLETED', 'TERMINATED', 'ARCHIVED'],
+  onFinal: s => announceResult('poll', pollResultMessage(s)),
+});
+
 // ── Wette (Prediction): Stand aus EventSub, Endpunkt fragt Twitch nicht (ADR 0023, Spec wetten-abstimmungen.md) ──
 // Ausgangsstand einmal je Verbindung, Kontrolle nach PREDICTION_RECHECK_MS ohne Ereignis, solange die Wette offen ist.
 const predictionTracker = createPredictionTracker({
@@ -1444,9 +1503,12 @@ const predictionTracker = createPredictionTracker({
     return res.data?.data?.[0] || null;
   },
   recheckMs: PREDICTION_RECHECK_MS,
-  onChange: s => logIfChanged('prediction', s.status === 'WAITING'
-    ? '[Wette] keine Wette bekannt – Status: WAITING'
-    : `[Wette] „${s.title}“ – Status: ${s.status}`),
+  onChange: s => {
+    logIfChanged('prediction', s.status === 'WAITING'
+      ? '[Wette] keine Wette bekannt – Status: WAITING'
+      : `[Wette] „${s.title}“ – Status: ${s.status}`);
+    predictionAnnouncer.observe(s);
+  },
   onError: err => logIfChanged('prediction', `[Wette] Abruf bei Twitch gescheitert, letzter Stand bleibt: ${err.response?.data?.message || err.message}`, 'warn'),
 });
 
@@ -1462,9 +1524,12 @@ const pollTracker = createPollTracker({
     return res.data?.data?.[0] || null;
   },
   recheckMs: POLL_RECHECK_MS,
-  onChange: s => logIfChanged('poll', s.status === 'WAITING'
-    ? '[Abstimmung] keine Abstimmung bekannt – Status: WAITING'
-    : `[Abstimmung] „${s.title}“ – Status: ${s.status}`),
+  onChange: s => {
+    logIfChanged('poll', s.status === 'WAITING'
+      ? '[Abstimmung] keine Abstimmung bekannt – Status: WAITING'
+      : `[Abstimmung] „${s.title}“ – Status: ${s.status}`);
+    pollAnnouncer.observe(s);
+  },
   onError: err => logIfChanged('poll', `[Abstimmung] Abruf bei Twitch gescheitert, letzter Stand bleibt: ${err.response?.data?.message || err.message}`, 'warn'),
 });
 
@@ -1713,6 +1778,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     stream: overviewStream(),
     twitch_api: twitchApi.stats(),
     chat_senders: chatSenderList(),
+    chat_results: chatResultList(),
     recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
       type: e.type,
       count: e.count,
@@ -1864,6 +1930,14 @@ app.post(ADMIN_CHAT_SENDER_PATH, requireAdminWrite, express.json({ limit: ADMIN_
   if (!CHAT_SENDER_VALUES.includes(sender)) return res.status(400).json({ error: 'sender muss bot oder broadcaster sein' });
   const changed = setChatSender(feature, sender, 'Webkonsole');
   res.json({ ok: true, changed, chat_senders: chatSenderList() });
+});
+
+app.post(ADMIN_CHAT_RESULTS_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  const { line, enabled } = req.body || {};
+  if (typeof line !== 'string' || !Object.hasOwn(CHAT_RESULT_LINES, line)) return res.status(400).json({ error: 'Unbekannte Ergebniszeile' });
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled muss true oder false sein' });
+  const changed = setChatResult(line, enabled, 'Webkonsole');
+  res.json({ ok: true, changed, chat_results: chatResultList() });
 });
 
 app.get(ADMIN_TOPICS_PATH, (req, res) => {
@@ -2449,7 +2523,7 @@ function isModOrBroadcaster(evt) {
 // options.broadcasterPrefix: nur beim Versand als Broadcaster vor den Text setzen (Absenderangabe, z. B. "FT vom BdU: ").
 async function sendChatMessage(text, replyToMessageId = null, feature = null, options = {}) {
   const cut = t => (t.length > CHAT_MAX_CHARS ? t.slice(0, CHAT_MAX_CHARS - 1) + '…' : t);
-  const logPrefix = feature === 'bdu' ? '[BdU] ' : feature === 'uboat' ? '[UBOAT] ' : '';
+  const logPrefix = { bdu: '[BdU] ', uboat: '[UBOAT] ', prediction: '[Wette] ', poll: '[Abstimmung] ' }[feature] || '';
   const bot = feature && chatSenders[feature] === 'bot' ? loadBotConfig() : null;
   if (bot) {
     const result = await sendChatMessageAsBot(bot, cut(text), replyToMessageId, logPrefix);
@@ -3185,6 +3259,7 @@ function printConsoleHelp() {
   console.log(' bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler');
   console.log(' bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)');
   console.log(' bot sender [<f> bot|broadcaster] - Absender je Chat-Funktion zeigen bzw. umstellen');
+  console.log(' results show | results <prediction|poll> on|off - Ergebniszeilen für Wette/Abstimmung über den Server');
   console.log(' help                      - Diese Hilfe anzeigen');
   console.log('');
 }
@@ -3417,6 +3492,23 @@ rl.on('line', async (input) => {
       return;
     }
     console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login> | uboat activate | uboat deactivate');
+    return;
+  }
+
+  if (cmd === 'results') {
+    const line = (parts[1] || '').toLowerCase();
+    const value = (parts[2] || '').toLowerCase();
+    if (!line || line === 'show') {
+      for (const { line: key, name, enabled } of chatResultList()) {
+        console.log(`[Chat]   ${key.padEnd(10)} ${name}: ${enabled ? 'an (sendet der Server)' : 'aus'}, Absender ${chatSenders[key] === 'bot' ? 'Bot' : 'Broadcaster'}`);
+      }
+      return;
+    }
+    if (!Object.hasOwn(CHAT_RESULT_LINES, line) || !['on', 'off'].includes(value)) {
+      console.log(`Nutzung: results show | results <zeile> on|off – Zeilen: ${Object.keys(CHAT_RESULT_LINES).join(', ')}`);
+      return;
+    }
+    if (!setChatResult(line, value === 'on', 'Konsole')) console.log(`[Chat] Ergebniszeile ${CHAT_RESULT_LINES[line]} ist schon ${value === 'on' ? 'an' : 'aus'}`);
     return;
   }
 

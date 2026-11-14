@@ -102,6 +102,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Schlägt das Schalten fehl, springt der Schalter zurück und die Meldung steht darunter. Änderungen an der Konsole zeigt die Seite bei der nächsten Abfrage.
 - Ist `UBOAT_SAVES_DIR` nicht gesetzt, nennt die Zeile das; der Schalter bleibt bedienbar.
 - `POST /api/admin/modules` mit `{module: bdu|uboat, enabled: true|false}`: `{ok:true, changed, modules}`. 400 bei unbekanntem Modul oder wenn `enabled` kein Wahrheitswert ist; sonst dieselben Regeln wie die übrigen POST-Aktionen (403, 415, 413).
+- **Karte „Ergebniszeilen im Chat“** (14.11.2026, Spec `wetten-abstimmungen.md`, Schritt 3b): je ein Schalter für das Wett- und das Abstimmungs-Ergebnis, Vorgabe aus, mit Hinweis, erst einzuschalten, wenn das Widget seine Zeile nicht mehr selbst sendet. Wirkung wie `results <zeile> on|off`, gespeichert in `chat_results.json`, über `POST /api/admin/chat/results`. Steht vor „Chat-Absender“.
 - **Karte „Chat-Absender“** (14.11.2026, Spec `bot-account.md`, „Absender je Funktion“):
   - je Chat-Funktion eine Auswahl Broadcaster/Bot, Zeilen nach `chat_senders` aus der Übersicht
   - Ohne eingerichteten Bot steht dort ein Hinweis, die Auswahl bleibt bedienbar.

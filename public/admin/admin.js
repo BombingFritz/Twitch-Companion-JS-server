@@ -21,6 +21,11 @@ const MODULES_URL = '/api/admin/modules';
 const EFFECT_MODE_URL = '/api/admin/effects/mode';
 const CHAT_SENDER_URL = '/api/admin/chat/sender';
 const CHAT_SENDER_LABELS = { broadcaster: 'Broadcaster', bot: 'Bot' };
+const CHAT_RESULTS_URL = '/api/admin/chat/results';
+const CHAT_RESULT_TEXTS = {
+  prediction: 'Nach der Auflösung einer Wette: Sieger, Quote und größter Gewinner (wie im Wetten-Widget).',
+  poll: 'Nach dem Ende einer Abstimmung: Sieger und Zweitplatzierter oder Gleichstand (wie in SpargelPoll).',
+};
 const MODULE_SETTINGS = [
   { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
   { key: 'uboat', name: 'UBOAT-Soldbuch', text: 'Beantwortet !soldbuch im Chat. Aus: Der Befehl wird still ignoriert, der Spielstand wird weiter eingelesen.' },
@@ -69,6 +74,7 @@ const state = {
     view: null, rows: {}, message: null, busy: new Set(),
     effects: { input: null, state: null, hint: null, busy: false },
     senders: { list: null, hint: null, rows: {}, busy: new Set() },
+    results: { list: null, rows: {}, busy: new Set() },
   },
   whitelist: {
     view: null, list: null, count: null, input: null, addButton: null, message: null,
@@ -771,6 +777,56 @@ function updateSettings(d) {
   uboatHint.textContent = 'UBOAT_SAVES_DIR ist nicht gesetzt. Das Soldbuch antwortet erst, wenn der Ordner in der .env steht und der Server neu gestartet wurde.';
   updateEffectSettings(d);
   updateSenderSettings(d);
+  updateResultSettings(d);
+}
+
+// Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): Schalter je Zeile, anfangs aus
+function updateResultSettings(d) {
+  const r = state.settings.results;
+  for (const { line, name, enabled } of d.chat_results || []) {
+    if (!r.rows[line]) r.list.append(resultRow(line, name));
+    const row = r.rows[line];
+    if (!r.busy.has(line)) row.input.checked = enabled;
+    row.state.textContent = row.input.checked ? 'an' : 'aus';
+  }
+}
+
+function resultRow(line, name) {
+  const r = state.settings.results;
+  const input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': name });
+  input.addEventListener('change', () => toggleResult(line, name, input));
+  const stateText = el('span', { class: 'setting-state' });
+  r.rows[line] = { input, state: stateText };
+  return el('div', { class: 'setting' },
+    el('div', { class: 'setting-text' }, el('div', { class: 'setting-name', text: name }), el('div', { class: 'sub', text: CHAT_RESULT_TEXTS[line] || '' })),
+    el('div', { class: 'setting-control' }, stateText, el('label', { class: 'switch' }, input, el('span', { class: 'track' }))));
+}
+
+async function toggleResult(line, name, input) {
+  const r = state.settings.results;
+  const enabled = input.checked;
+  r.busy.add(line);
+  input.disabled = true;
+  try {
+    const { chat_results } = await postJson(CHAT_RESULTS_URL, { line, enabled });
+    state.data.chat_results = chat_results;
+    showSettingsMessage(`${name}: ${enabled ? 'sendet jetzt der Server' : 'aus'}.`, false);
+  } catch (err) {
+    input.checked = !enabled;
+    showSettingsMessage(`${name}: ${err.message}`, true);
+  } finally {
+    r.busy.delete(line);
+    input.disabled = false;
+    updateResultSettings(state.data);
+  }
+}
+
+function resultCard() {
+  const r = state.settings.results;
+  r.list = el('div', { class: 'setting-list' });
+  return card('Ergebniszeilen im Chat',
+    el('p', { class: 'sub', text: 'Erst einschalten, wenn das Widget seine Zeile nicht mehr selbst sendet, sonst steht sie doppelt im Chat. Wer sendet, steht unter „Chat-Absender“.' }),
+    r.list);
 }
 
 // Absender je Chat-Funktion (Spec bot-account.md): Zeilen nach der Liste des Servers, Auswahl Broadcaster/Bot
@@ -904,6 +960,7 @@ function settingsView() {
   settings.view = el('section', { class: 'settings' },
     effectCard(),
     card('Modul-Schalter', ...MODULE_SETTINGS.map(settingRow)),
+    resultCard(),
     senderCard(),
     settings.message);
   return settings.view;

@@ -54,6 +54,7 @@ const runs = [
   ['admin-test.js', ['subgoal']],
   ['admin-test.js', ['wette']],
   ['admin-test.js', ['abstimmung']],
+  ['admin-test.js', ['ergebnis']],
   ['stats-test.js', []],
   ['topics-lib-test.js', []],
   ['topics-test.js', []],
@@ -64,6 +65,7 @@ const runs = [
   ['authserver-test.js', []],
   ['prediction-test.js', []],
   ['poll-test.js', []],
+  ['result-messages-test.js', []],
 ];
 
 let ok = 0, fail = 0;
