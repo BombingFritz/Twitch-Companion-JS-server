@@ -34,6 +34,7 @@ const runs = [
   ['bot-test.js', ['ablauf']],
   ['bot-test.js', ['eingerichtet']],
   ['bot-test.js', ['ohne-bot']],
+  ['bot-test.js', ['absender']],
   ['login-test.js', []],
   ['admin-test.js', ['ablauf']],
   ['admin-test.js', ['alle-herkuenfte']],

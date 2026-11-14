@@ -19,6 +19,8 @@ const STREAM_CLOSE_URL = '/api/admin/stream/close';
 const WHITELIST_URL = '/api/admin/whitelist';
 const MODULES_URL = '/api/admin/modules';
 const EFFECT_MODE_URL = '/api/admin/effects/mode';
+const CHAT_SENDER_URL = '/api/admin/chat/sender';
+const CHAT_SENDER_LABELS = { broadcaster: 'Broadcaster', bot: 'Bot' };
 const MODULE_SETTINGS = [
   { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
   { key: 'uboat', name: 'UBOAT-Soldbuch', text: 'Beantwortet !soldbuch im Chat. Aus: Der Befehl wird still ignoriert, der Spielstand wird weiter eingelesen.' },
@@ -66,6 +68,7 @@ const state = {
   settings: {
     view: null, rows: {}, message: null, busy: new Set(),
     effects: { input: null, state: null, hint: null, busy: false },
+    senders: { list: null, hint: null, rows: {}, busy: new Set() },
   },
   whitelist: {
     view: null, list: null, count: null, input: null, addButton: null, message: null,
@@ -767,6 +770,57 @@ function updateSettings(d) {
   uboatHint.hidden = d.uboat_enabled;
   uboatHint.textContent = 'UBOAT_SAVES_DIR ist nicht gesetzt. Das Soldbuch antwortet erst, wenn der Ordner in der .env steht und der Server neu gestartet wurde.';
   updateEffectSettings(d);
+  updateSenderSettings(d);
+}
+
+// Absender je Chat-Funktion (Spec bot-account.md): Zeilen nach der Liste des Servers, Auswahl Broadcaster/Bot
+function updateSenderSettings(d) {
+  const s = state.settings.senders;
+  s.hint.hidden = d.bot_configured;
+  s.hint.textContent = 'Kein Bot eingerichtet: Bis dahin sendet bei allen Funktionen der Broadcaster. Einrichten über /login-bot.';
+  for (const { feature, name, sender } of d.chat_senders || []) {
+    if (!s.rows[feature]) s.list.append(senderRow(feature, name));
+    if (!s.busy.has(feature)) s.rows[feature].value = sender;
+  }
+}
+
+function senderRow(feature, name) {
+  const s = state.settings.senders;
+  const select = el('select', { class: 'wl-input', 'aria-label': `Absender ${name}` });
+  for (const [value, text] of Object.entries(CHAT_SENDER_LABELS)) select.append(el('option', { value, text }));
+  select.addEventListener('change', () => changeSender(feature, name, select));
+  s.rows[feature] = select;
+  return el('div', { class: 'setting' },
+    el('div', { class: 'setting-text' }, el('div', { class: 'setting-name', text: name })),
+    el('div', { class: 'setting-control' }, select));
+}
+
+async function changeSender(feature, name, select) {
+  const s = state.settings.senders;
+  const sender = select.value;
+  s.busy.add(feature);
+  select.disabled = true;
+  try {
+    const { chat_senders } = await postJson(CHAT_SENDER_URL, { feature, sender });
+    state.data.chat_senders = chat_senders;
+    showSettingsMessage(`${name}: sendet jetzt ${CHAT_SENDER_LABELS[sender]}.`, false);
+  } catch (err) {
+    showSettingsMessage(`${name}: ${err.message}`, true);
+  } finally {
+    s.busy.delete(feature);
+    select.disabled = false;
+    updateSenderSettings(state.data);
+  }
+}
+
+function senderCard() {
+  const s = state.settings.senders;
+  s.hint = el('div', { class: 'sub setting-hint' });
+  s.hint.hidden = true;
+  s.list = el('div', { class: 'setting-list' });
+  return card('Chat-Absender',
+    el('p', { class: 'sub', text: 'Wer schreibt die Nachricht in den Chat? Der Bot braucht Moderatorrechte; schlägt das Senden über den Bot fehl, sendet der Broadcaster.' }),
+    s.hint, s.list);
 }
 
 function updateEffectSettings(d) {
@@ -850,6 +904,7 @@ function settingsView() {
   settings.view = el('section', { class: 'settings' },
     effectCard(),
     card('Modul-Schalter', ...MODULE_SETTINGS.map(settingRow)),
+    senderCard(),
     settings.message);
   return settings.view;
 }
@@ -1158,7 +1213,7 @@ function switchRow(on) {
 }
 
 function botCard(d) {
-  const featureNames = { bdu: 'BdU-Chat', uboat: 'Soldbuch' };
+  const featureNames = Object.fromEntries((d.chat_senders || []).map(s => [s.feature, s.name]));
   if (!d.bot_configured) {
     return card('Bot', rows(
       row('DerBdu', indicator('off', 'nicht eingerichtet')),
@@ -1168,7 +1223,7 @@ function botCard(d) {
   }
   return card('Bot', rows(
     row('Konto', indicator('ok', d.bot_login)),
-    row('Sendet', el('span', { text: d.bot_features.map(f => featureNames[f] || f).join(', ') })),
+    row('Sendet', el('span', { text: d.bot_features.length ? d.bot_features.map(f => featureNames[f] || f).join(', ') : 'nichts (Einstellungen → Chat-Absender)' })),
   ));
 }
 

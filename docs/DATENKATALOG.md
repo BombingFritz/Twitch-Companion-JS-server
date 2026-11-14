@@ -42,7 +42,7 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 | `stream_reports/<ID>.txt` | Top 10 Chatter mit Anzahl | lesbarer Bericht, Abschlussanzeige | V | unbegrenzt | wie die `.json` |
 | `privacy_optouts.json` | User-ID → Zeitpunkt des `!privat` | Zuschauer anonymisiert zählen, Widgets informieren (ADR 0022) | V | bis zum Ausschalten per `!privat` | unverändert (die Liste muss bestehen, solange der Wunsch gilt) |
 | `error_log.json` | `text` kann Namen enthalten (z. B. fehlgeschlagener Shoutout); Secrets werden entfernt | Fehlersuche über Neustarts | D | 1000 Einträge, ohne Zeitgrenze | Frist 30 Tage |
-| `subgoal_cache.json`, `effect_mode.json`, `modules.json` | keine | Betrieb | E | – | unverändert |
+| `subgoal_cache.json`, `effect_mode.json`, `modules.json`, `chat_senders.json` (Absender je Chat-Funktion) | keine | Betrieb | E | – | unverändert |
 | `topics.json` | keine (Themen und Anzeige-Einstellungen, vom Streamer gepflegt) | Intro-Topics (ADR 0021) | E | bis überschrieben | unverändert |
 
 ## 3. Nur im Arbeitsspeicher (bis Neustart oder kürzer)

@@ -96,8 +96,9 @@ Vereinbart (Nutzer, 14.11.2026: „weiter mit 2“). Was SpargelPoll braucht, wu
 ## Schritt 3: Ergebniszeilen über den Server (Entwurf)
 - Texte wie heute in den Widgets (Spec `chat-nachricht.md` des Wetten-Widgets bzw. von SpargelPoll). Gesendet wird bei `end`, genau einmal je Wette oder Abstimmung.
 - **Migration:** Schalter je Zeile, anfangs aus. Ein Widget, das umgestellt hat, sendet selbst nicht mehr, dann schaltet der Nutzer den Server-Versand ein. So kommt keine Zeile doppelt.
-- **Absender konfigurierbar** (Nutzer, 14.11.2026): Broadcaster (wie heute) oder Bot-Konto. Vorgabe Broadcaster.
-- [UNGEKLÄRT] Ort der Schalter: gemeinsamer Einstellungs-Reiter (AGENTS.md) oder vorerst Konsolenbefehl.
+- **Absender konfigurierbar** (Nutzer, 14.11.2026): Broadcaster (wie heute) oder Bot-Konto. Vorgabe Broadcaster. Umgesetzt als eigener Schritt **3a** für alle Chat-Funktionen (Nutzer: „Alle Chat-Funktionen“), Spec `bot-account.md`, Abschnitt „Absender je Funktion“. 3b ergänzt dort `prediction` und `poll`.
+- **Ort der Schalter** (Nutzer, 14.11.2026): Webkonsole, Reiter „Einstellungen“, und Konsole.
+- **Verspätetes Ende** (Nutzer, 14.11.2026): Bemerkt der Server das Ende erst bei der Kontrolle, sendet er die Zeile verspätet, aber nie zweimal für dieselbe Wette oder Abstimmung. Gesendet wird nur, wenn dieser Serverprozess die Wette bzw. Abstimmung offen gesehen hat; eine schon beendete aus dem Ausgangsstand nach einem Neustart löst nichts aus.
 
 ## Schritt 4: Glückspilz des Abends (Entwurf, Issue #44)
 - **Wertung nach Reingewinn** (Nutzer, 14.11.2026): je Wette `channel_points_won − channel_points_used`, über die erfasste Stream-Session summiert.

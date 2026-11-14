@@ -1,7 +1,7 @@
 // Bot-Account „DerBdu“ (ADR 0017): /login-bot, /callback mit state, bot.json, Senden mit App-Token, 401-Erneuerung,
 // Rückfall bei 403, kein Rückfall bei is_sent:false, bot show/remove, /status, Startanzeige.
 // Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis, erzeugter Spielstand (test/uboat-fixture.js), Enigma-Widget als SSE-Client.
-// Aufruf: node bot-test.js <server.js> <szenario: ablauf | eingerichtet | ohne-bot>
+// Aufruf: node bot-test.js <server.js> <szenario: ablauf | eingerichtet | ohne-bot | absender>
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
 const fx = require('./uboat-fixture');
@@ -17,7 +17,8 @@ fs.writeFileSync(path.join(workDir, '.env'), `CLIENT_ID=<CLIENT_ID>\nCLIENT_SECR
 const TOKENS = JSON.stringify({ access_token: 'fake', refresh_token: 'fake', broadcaster_id: '1', broadcaster_name: 'test',
   obtained_at: Date.now(), expires_in: 99999, expires_at: Date.now() + 99999000 });
 fs.writeFileSync(path.join(workDir, 'tokens.json'), TOKENS);
-if (scenario === 'eingerichtet') fs.writeFileSync(path.join(workDir, 'bot.json'), JSON.stringify({ bot_id: '99', bot_login: 'derbdu', bot_name: 'DerBdu', authorized_at: '2026-11-07T10:00:00.000Z' }));
+if (scenario === 'eingerichtet' || scenario === 'absender') fs.writeFileSync(path.join(workDir, 'bot.json'), JSON.stringify({ bot_id: '99', bot_login: 'derbdu', bot_name: 'DerBdu', authorized_at: '2026-11-07T10:00:00.000Z' }));
+if (scenario === 'absender') fs.writeFileSync(path.join(workDir, 'chat_senders.json'), '{ kaputt');   // defekte Datei: Vorgaben
 process.chdir(workDir);
 
 const sockets = [];
@@ -204,7 +205,7 @@ function connectWidget() {
       && bdu[1].body.sender_id === '1' && bdu[1].body.message === 'FT vom BdU: Halten Sie Kurs.' && bdu[1].body.reply_parent_message_id, JSON.stringify(bdu));
     failMode = null;
 
-    // Nicht in BOT_FEATURES: bleibt beim Broadcaster, auch wenn der Bot eingerichtet ist
+    // Vorgabe „Broadcaster“ (chat_senders.json fehlt): bleibt beim Broadcaster, auch wenn der Bot eingerichtet ist
     let before = chatPosts.length;
     send('notification', 'channel.chat.message', { event: { chatter_user_id: 'u-mod', chatter_user_login: 'mod', chatter_user_name: 'Mod', broadcaster_user_id: '1',
       message_id: 'c-raidstats', message: { text: '!raidstats' }, badges: [{ set_id: 'moderator' }] } });
@@ -216,6 +217,70 @@ function connectWidget() {
     await sleep(500);
     const greet = chatPosts.slice(before);
     check('E5 Raid-Begrüßung bei eingerichtetem Bot: als Broadcaster', greet.length === 1 && greet[0].auth === 'Bearer fake' && greet[0].body.sender_id === '1' && greet[0].body.message.includes('raider'), JSON.stringify(greet));
+  }
+
+  // Absender je Funktion (Spec bot-account.md, „Absender je Funktion“): Konsole, Webkonsole, Datei
+  if (scenario === 'absender') {
+    const OWN = { Origin: `http://localhost:${PORT}`, 'Content-Type': 'application/json' };
+    const setSender = (body, headers = OWN) => request('/api/admin/chat/sender', { method: 'POST', headers, body: JSON.stringify(body) });
+    const senders = async () => Object.fromEntries((await getJson('/api/admin/overview')).chat_senders.map(s => [s.feature, s.sender]));
+    const file = () => JSON.parse(fs.readFileSync('chat_senders.json', 'utf8'));
+    const raid = async login => {
+      const before = chatPosts.length;
+      send('notification', 'channel.raid', { event: { from_broadcaster_user_id: 'r-' + login, from_broadcaster_user_login: login, to_broadcaster_user_id: '1', viewers: 1 } });
+      await sleep(500);
+      return chatPosts.slice(before);
+    };
+
+    let s = await senders();
+    check('S1 Defekte Datei: Vorgaben (BdU und Soldbuch Bot, Rest Broadcaster)', s.bdu === 'bot' && s.uboat === 'bot' && ['raid', 'whitelist', 'raidstats', 'privacy'].every(f => s[f] === 'broadcaster'), JSON.stringify(s));
+    let r = await setSender({ feature: 'raid', sender: 'bot' });
+    check('S2 Webkonsole: Raid-Begrüßung auf Bot, gespeichert', r.status === 200 && JSON.parse(r.body).changed === true && file().raid === 'bot' && has(/\[Bot\] Webkonsole: Raid-Begrüßung sendet jetzt der Bot$/), r.body);
+    let posts = await raid('raider');
+    check('S3 Raid-Begrüßung über den Bot', posts.length === 1 && posts[0].auth.startsWith('Bearer app-') && posts[0].body.sender_id === '99' && posts[0].body.message.includes('raider'), JSON.stringify(posts));
+    r = await setSender({ feature: 'raid', sender: 'bot' });
+    check('S4 Gleicher Wert: changed false', r.status === 200 && JSON.parse(r.body).changed === false);
+    const bad = [
+      await setSender({ feature: 'gibtsnicht', sender: 'bot' }),
+      await setSender({ feature: '__proto__', sender: 'bot' }),
+      await setSender({ feature: 'raid', sender: 'Bot' }),
+      await setSender({ feature: 'raid' }),
+    ];
+    check('S5 Unbekannte Funktion oder unbekannter Absender: 400', bad.every(x => x.status === 400), bad.map(x => x.status).join(','));
+    r = await setSender({ feature: 'raid', sender: 'broadcaster' }, { Origin: 'https://fremd.example', 'Content-Type': 'application/json' });
+    check('S6 Fremde Herkunft: 403, nichts geändert', r.status === 403 && file().raid === 'bot', String(r.status));
+
+    await cmd('bot sender privacy bot');
+    const before = chatPosts.length;
+    chat('anna', 'Anna', '!privat'); await sleep(250);
+    posts = chatPosts.slice(before);
+    check('S7 Konsole: !privat-Antwort über den Bot, als Reply', file().privacy === 'bot' && posts.length === 1 && posts[0].body.sender_id === '99' && posts[0].body.reply_parent_message_id && /Privatmodus/.test(posts[0].body.message), JSON.stringify(posts));
+    await cmd('bot sender uboat broadcaster');
+    posts = await say('kobold', 'Kobold', '!soldbuch');
+    check('S8 Konsole: Soldbuch auf Broadcaster', file().uboat === 'broadcaster' && posts.length === 1 && posts[0].auth === 'Bearer fake' && posts[0].body.sender_id === '1', JSON.stringify(posts));
+    await cmd('bot sender uboat broadcaster');
+    check('S9 Konsole: gleicher Wert wird gemeldet', has(/\[Bot\] UBOAT-Soldbuch sendet schon der Broadcaster/));
+    await cmd('bot sender raid irgendwer');
+    check('S10 Konsole: falsche Eingabe zeigt Nutzung mit Funktionen', has(/Nutzung: bot sender <funktion> bot\|broadcaster – Funktionen: bdu, uboat, raid, whitelist, raidstats, privacy/));
+    await cmd('bot sender');
+    check('S11 bot sender listet alle Funktionen', has(/\[Bot\]   raid +Raid-Begrüßung: Bot/) && has(/\[Bot\]   uboat +UBOAT-Soldbuch: Broadcaster/));
+    await cmd('bot show');
+    check('S12 bot show nennt die Bot-Funktionen', has(/\[Bot\] Sendet: BdU-Chat, Raid-Begrüßung, !privat-Antwort; alles andere sendet der Broadcaster/));
+    const st = await getJson('/status');
+    check('S13 /status: bot_features folgt der Einstellung', JSON.stringify(st.bot_features) === '["bdu","raid","privacy"]', JSON.stringify(st.bot_features));
+    // Zweite Raid-Begrüßung erst nach RAID_GREETING_MIN_GAP_MS; daher !raidstats
+    await cmd('bot sender raidstats bot');
+    await cmd('bot remove');
+    const beforeStats = chatPosts.length;
+    send('notification', 'channel.chat.message', { event: { chatter_user_id: 'u-mod', chatter_user_login: 'mod', chatter_user_name: 'Mod', broadcaster_user_id: '1',
+      message_id: 'c-raidstats', message: { text: '!raidstats' }, badges: [{ set_id: 'moderator' }] } });
+    await sleep(250);
+    posts = chatPosts.slice(beforeStats);
+    check('S14 Ohne Bot: !raidstats trotz Einstellung „Bot“ vom Broadcaster', file().raidstats === 'bot' && posts.length === 1 && posts[0].auth === 'Bearer fake' && posts[0].body.sender_id === '1', JSON.stringify(posts));
+    r = await setSender({ feature: 'whitelist', sender: 'bot' });
+    check('S15 Bot wählen ohne eingerichteten Bot: gespeichert, Hinweis im Log', r.status === 200 && file().whitelist === 'bot' && has(/Whitelist-Begrüßung sendet jetzt der Bot \(noch kein Bot eingerichtet/));
+    await cmd('help');
+    check('S16 Hilfe listet bot sender', has(/^ bot sender /));
   }
 
   if (scenario === 'ohne-bot') {
