@@ -141,11 +141,28 @@ function fakeClock(start = Date.UTC(2026, 10, 14, 12, 0, 0)) {
     await Promise.all(Array.from({ length: 7 }, (_, i) => s.api.get(`/users?id=${i}`)));
     check('T18 Viele Anfragen auf einmal laufen gedrosselt, aber vollständig durch', s.calls.length === 7 && s.c.clock.t - before >= 1300, String(s.c.clock.t - before));
   }
+  // ── Startfreibetrag (Nutzer, 14.11.2026): die ersten N Anfragen ohne Zeitgrenze, danach die normalen Grenzen ──
   {
     const c = fakeClock();
-    const off = createRateLimiter({ perSecond: 3, perMinute: 200, enabled: false, now: c.now, sleep: c.sleep });
-    await Promise.all(Array.from({ length: 50 }, () => off.acquire()));
-    check('T19 Abgeschaltet (nur Tests): keine Wartezeit, zählt trotzdem', c.clock.t === Date.UTC(2026, 10, 14, 12, 0, 0) && off.stats().last_minute === 50 && off.stats().disabled === true);
+    const start = c.clock.t;
+    const limiter = createRateLimiter({ perSecond: 3, perMinute: 200, burst: 20, startupFree: 300, now: c.now, sleep: c.sleep });
+    await Promise.all(Array.from({ length: 300 }, () => limiter.acquire()));
+    let s = limiter.stats();
+    check('T19 Startfreibetrag: 300 Anfragen sofort, zählen nicht in Minute und Spitze', c.clock.t === start && s.startup_used === 300 && s.startup_free === 300 && s.last_minute === 0 && s.waited === 0, `${c.clock.t - start} ${JSON.stringify(s)}`);
+    await Promise.all(Array.from({ length: 20 }, () => limiter.acquire()));
+    const afterBurst = c.clock.t - start;
+    await Promise.all(Array.from({ length: 9 }, () => limiter.acquire()));
+    s = limiter.stats();
+    check('T20 Danach normale Grenzen: Spitze 20 sofort, dann im Schnitt 3 je Sekunde', afterBurst === 0 && c.clock.t - start >= 2900 && c.clock.t - start <= 3100 && s.startup_used === 300 && s.last_minute === 29, `${afterBurst} ${c.clock.t - start} ${JSON.stringify(s)}`);
+  }
+  {
+    const c = fakeClock();
+    const limiter = createRateLimiter({ perSecond: 10, perMinute: 4, startupFree: 2, now: c.now, sleep: c.sleep });
+    const start = c.clock.t;
+    for (let i = 0; i < 6; i++) await limiter.acquire();
+    check('T21 Freibetrag zählt nicht in die Minutengrenze: 2 frei + 4 im Fenster ohne Warten, die nächste wartet', c.clock.t === start, String(c.clock.t - start));
+    await limiter.acquire();
+    check('T22 Ohne Angabe kein Freibetrag (Standard 0)', c.clock.t - start >= 60000 && createRateLimiter({ perSecond: 3, perMinute: 200 }).stats().startup_free === 0, String(c.clock.t - start));
   }
 
   for (const x of results) console.log(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : '  -> ' + x.info}`);
