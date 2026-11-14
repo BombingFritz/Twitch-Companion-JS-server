@@ -30,7 +30,7 @@ const results = []; const check = (n, c, i = '') => results.push({ n, ok: !!c, i
   await sleep(300);
   const s0 = sockets[0];
   welcome(s0); await sleep(300);
-  check('1 Start: 20 Subscriptions angelegt (17 + 3 Wett-Abos, Spec wetten-abstimmungen.md)', subPosts === 20, subPosts);
+  check('1 Start: 22 Subscriptions angelegt (20 + 2 Abstimmungs-Abos, Spec wetten-abstimmungen.md)', subPosts === 22, subPosts);
   await keepAlive(s0, 7000);
   check('2 Keepalives halten die Verbindung (7 s bei 1 s + 5 s Zuschlag)', s0.terminated === 0 && sockets.length === 1);
   // Notifications zählen ebenfalls
@@ -43,13 +43,13 @@ const results = []; const check = (n, c, i = '') => results.push({ n, ok: !!c, i
   const s1 = sockets[1];
   check('6 nach 5 s frische Verbindung zur Standard-URL', s1 && s1.url === 'wss://eventsub.wss.twitch.tv/ws', sockets.map(s => s.url));
   welcome(s1); await sleep(300);
-  check('7 frische Verbindung legt Subscriptions neu an', subPosts === 40, subPosts);
+  check('7 frische Verbindung legt Subscriptions neu an', subPosts === 44, subPosts);
   // session_reconnect
   msg(s1, 'session_reconnect', { session: { reconnect_url: 'wss://reconnect.example/ws' } }); await sleep(100);
   const s2 = sockets[2];
   check('8 Reconnect öffnet Verbindung zur reconnect_url', s2 && s2.url === 'wss://reconnect.example/ws');
   welcome(s2); await sleep(300);
-  check('9 Reconnect: alte geschlossen, keine neuen Subscriptions', s1.closed === 1 && subPosts === 40, `closed=${s1.closed} subs=${subPosts}`);
+  check('9 Reconnect: alte geschlossen, keine neuen Subscriptions', s1.closed === 1 && subPosts === 44, `closed=${s1.closed} subs=${subPosts}`);
   await keepAlive(s2, 7000);
   check('10 nach Reconnect: kein Fehlalarm, alte Verbindung nicht nachträglich getrennt', s1.terminated === 0 && s2.terminated === 0 && sockets.length === 3);
   await sleep(6500);
