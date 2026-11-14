@@ -210,6 +210,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `PRIVACY_COMMAND` / `PRIVACY_ANON_NAME` / `PRIVACY_COMMAND_COOLDOWN_MS` | `!privat` / `anonymer Schlaumeier` / 10000 | Befehl, Anzeigename anonymisierter Chatter, Abklingzeit je Zuschauer (ADR 0022) |
 | `PRIVACY_FILE` / `PRIVACY_OPTOUTS_PATH` | `./privacy_optouts.json` / `/api/privacy/optouts` | Liste und Widget-Endpunkt; Antworttexte in `PRIVACY_TEXT_ON` und `PRIVACY_TEXT_OFF` |
 | `RAID_GREETING_MIN_GAP_MS` | 90000 | Abstand zwischen Raid-Begrüßungen |
+| `RAID_SHOUTOUT_MIN_VIEWERS` | 3 | Shoutout nach einem Raid erst ab so vielen Zuschauern; soll später in die Einstellungen (OFFEN.md, Abschnitt 4) |
 | `RAID_YEARLY_FROM_YEAR` | 2027 | Ab diesem Jahr Raid-Statistik je Kalenderjahr statt je Quartal |
 | `SHOUTOUT_ACTIVITY_WINDOW_DAYS` | 40 | Whitelist-Shoutout nur bei Aktivität in diesem Zeitraum (ADR 0015) |
 | `SHOUTOUT_ACTIVITY_STRICT` | `false` | Testphase: bei unklarer Aktivität (kein Video, API-Fehler) trotzdem Shoutout; später `true` |

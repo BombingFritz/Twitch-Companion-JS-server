@@ -1,5 +1,7 @@
 # Spec: Stream-Bericht mit Clip-Kandidaten und Spielbewertung
 
+**Stand 14.11.2026 (Inventur):** Teil 1 „Stream-Dokumentation“ ist weitgehend in [statistik.md](statistik.md) umgesetzt (Stream-Ablauf, Bericht je Stream als `.txt`/`.json`, Knopf „Streamlog beenden“, Raids, Follows, Subs, Gifts, aktivste Chatter, Zuschauerverlauf; ADR 0019, 0022, 0023). Offen nach dieser Spec bleiben Spielbewertung, Clip-Kandidaten, Marker, Hype Train und Alarm-Endpoint; die Abschnitte unten sind dafür der Plan, für Umgesetztes gilt `statistik.md`.
+
 **Status:** geplant, nicht umgesetzt. Vorlage des Nutzers vom 04.11.2026, übernommen am 05.11.2026; ergänzt um den Abgleich mit Code und ADRs (Abschnitt „Abgleich“). Vor der Umsetzung eigenes ADR. Scopes, Event-Versionen und API-Endpunkte vor dem Bauen gegen die aktuelle Twitch-Doku prüfen.
 
 ## Ziel
