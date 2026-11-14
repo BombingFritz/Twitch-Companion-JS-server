@@ -33,6 +33,7 @@ const WHITELIST_USERS = { 'login=neuer_streamer': { id: '333', login: 'neuer_str
 const subscribed = [];
 const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
 let fakeStream = null, fakeStreamRequests = 0, fakeGoalRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
+let fakePrediction = null, fakePredictionRequests = 0;                 // ebenso für helix/predictions
 const fakeAxios = {
   post: async (url, body) => {
     if (url.includes('helix/chat/messages')) chatSent.push(body);
@@ -41,6 +42,10 @@ const fakeAxios = {
   },
   get: async url => {
     if (url.includes('helix/goals')) fakeGoalRequests += 1;
+    if (url.includes('helix/predictions')) {
+      fakePredictionRequests += 1;
+      return { data: { data: fakePrediction ? [fakePrediction] : [] } };
+    }
     if (url.includes('helix/streams')) {
       fakeStreamRequests += 1;
       if (fakeStream) return { data: { data: [fakeStream] } };
@@ -768,6 +773,53 @@ async function subgoal() {
   check('G7 Insgesamt keine weitere Abfrage', fakeGoalRequests === 1, String(fakeGoalRequests));
 }
 
+// Wette über EventSub (Spec wetten-abstimmungen.md, Schritt 1): Endpunkt gibt den letzten Stand aus, fragt Twitch nicht
+async function wette() {
+  // Beim Verbinden läuft schon eine Wette (z. B. nach einem Neustart des Servers)
+  fakePrediction = { id: 'w0', title: 'Alte Wette', status: 'LOCKED', prediction_window: 60, created_at: '2026-11-14T19:00:00Z', locked_at: '2026-11-14T19:01:00Z', ended_at: null, winning_outcome_id: null,
+    outcomes: [{ id: 'a', title: 'Ja', users: 2, channel_points: 200, color: 'BLUE', top_predictors: null }, { id: 'b', title: 'Nein', users: 1, channel_points: 50, color: 'PINK', top_predictors: null }] };
+  await welcome();
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `w${++n}` }, payload: { event } }));
+  const current = async () => JSON.parse((await request('/api/twitch/prediction/current')).body);
+  const types = ['channel.prediction.begin', 'channel.prediction.progress', 'channel.prediction.lock', 'channel.prediction.end'];
+
+  check('W1 Abos für channel.prediction.begin, .progress, .lock und .end', types.every(t => subscribed.includes(t)), subscribed.join(','));
+  check('W2 Ausgangsstand einmal je Verbindung abgefragt', fakePredictionRequests === 1, String(fakePredictionRequests));
+  let p = await current();
+  check('W3 Gesperrte Wette nach dem Verbinden bekannt', p.predictionId === 'w0' && p.status === 'LOCKED' && !Number.isNaN(Date.parse(p.updatedAt)), JSON.stringify(p));
+
+  const base = { id: 'w1', broadcaster_user_id: '4711', title: 'Taucht er rechtzeitig?', started_at: '2026-11-14T20:00:00Z' };
+  const outs = (won = null) => [
+    { id: 'x', title: 'Ja', color: 'blue', users: 3, channel_points: 3000, top_predictors: [{ user_id: '11', user_login: 'kalle', user_name: 'Kalle', channel_points_used: 2000, channel_points_won: won }] },
+    { id: 'y', title: 'Nein', color: 'pink', users: 1, channel_points: 1000, top_predictors: null },
+  ];
+  send('channel.prediction.begin', { ...base, outcomes: [{ id: 'x', title: 'Ja', color: 'blue' }, { id: 'y', title: 'Nein', color: 'pink' }], locks_at: '2026-11-14T20:02:00Z' });
+  send('channel.prediction.progress', { ...base, outcomes: outs(), locks_at: '2026-11-14T20:02:00Z' });
+  await sleep(50);
+  p = await current();
+  check('W4 begin/progress: ACTIVE mit Zahlen, locksAt, predictionWindow', p.predictionId === 'w1' && p.status === 'ACTIVE' && p.outcomes[0].users === 3 && p.outcomes[0].color === 'BLUE'
+    && p.locksAt === '2026-11-14T20:02:00Z' && p.predictionWindow === 120 && p.outcomes[0].topPredictors[0].userId === '11', JSON.stringify(p));
+
+  for (let i = 0; i < 10; i++) await current();
+  check('W5 Widget-Abrufe fragen Twitch nicht', fakePredictionRequests === 1, String(fakePredictionRequests));
+  const r = await request('/api/twitch/prediction/current', { Origin: 'https://fremd.example' });
+  check('W6 Fremde Herkunft: 403', r.status === 403, String(r.status));
+
+  send('channel.prediction.lock', { ...base, outcomes: outs(), locked_at: '2026-11-14T20:02:00Z' });
+  send('channel.prediction.progress', { ...base, outcomes: outs(), locks_at: '2026-11-14T20:02:00Z' });
+  await sleep(50);
+  p = await current();
+  check('W7 lock, danach verspätetes progress: bleibt LOCKED', p.status === 'LOCKED' && p.lockedAt === '2026-11-14T20:02:00Z', JSON.stringify(p));
+
+  send('channel.prediction.end', { ...base, outcomes: outs(2666), status: 'resolved', winning_outcome_id: 'x', ended_at: '2026-11-14T20:30:00Z' });
+  await sleep(50);
+  p = await current();
+  check('W8 end: RESOLVED, Sieger, endedAt, echte Auszahlung', p.status === 'RESOLVED' && p.winningOutcomeId === 'x' && p.endedAt === '2026-11-14T20:30:00Z' && p.outcomes[0].topPredictors[0].channelPointsWon === 2666, JSON.stringify(p));
+  // Statistik der Wetten (nur resolved zählt) prüft das Szenario statistik (S17b)
+  check('W9 Kein HTTP-Fehler, nur Statuswechsel im Log', logs.filter(l => l.includes('[Wette]')).length <= 5 && !logs.some(l => l.includes('Prediction API Fehler')), logs.filter(l => l.includes('[Wette]')).join(' | '));
+}
+
 async function effekteAlt() {
   const r = await request(OVERVIEW);
   check('O1 Gespeichertes "manual" wird zu auto', JSON.parse(r.body).effect_mode === 'auto', r.body.slice(0, 200));
@@ -847,6 +899,7 @@ async function ohneTokens() {
   else if (scenario === 'privat') await privat();
   else if (scenario === 'zuschauer') await zuschauer();
   else if (scenario === 'subgoal') await subgoal();
+  else if (scenario === 'wette') await wette();
   else await ablauf();
 
   console.log = realLog;

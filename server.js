@@ -14,6 +14,7 @@ const { createStreamSession } = require('./lib/stream-session');
 const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
 const { createTokenStore, createRateLimiter, createTwitchApi } = require('./lib/twitch-api');
 const { createTopics } = require('./lib/topics');
+const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/prediction-state');
 require('dotenv').config();
 
 const app = express();
@@ -155,6 +156,8 @@ const STREAM_RECONCILE_MIN_AGE_MS = 5 * 60 * 1000; // jünger: „nicht live“ 
 const STREAM_VIEWERS_POLL_MS = 30 * 1000;         // Zuschauerzahl so oft bei Twitch abfragen, nur während der Stream läuft (ADR 0023)
 const STREAM_VIEWERS_MAX_MINUTES = 48 * 60;       // Obergrenze des Minutenverlaufs je Stream
 const STREAM_VIEWERS_PATH = '/api/twitch/stream'; // letzter bekannter Stand für Widgets, ohne eigene Twitch-Abfrage (ADR 0023)
+const PREDICTION_PATH = '/api/twitch/prediction/current';  // letzter Stand der Wette aus EventSub (Spec wetten-abstimmungen.md)
+const PREDICTION_RECHECK_MS = 5 * 60 * 1000;      // offene Wette ohne Ereignis so lange, dann einmal bei Twitch nachsehen
 const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
@@ -1382,62 +1385,23 @@ app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) =>
   res.json({ ok: true });
 });
 
-app.get('/api/twitch/prediction/current', async (req, res) => {
-  try {
+// ── Wette (Prediction): Stand aus EventSub, Endpunkt fragt Twitch nicht (ADR 0023, Spec wetten-abstimmungen.md) ──
+// Ausgangsstand einmal je Verbindung, Kontrolle nach PREDICTION_RECHECK_MS ohne Ereignis, solange die Wette offen ist.
+const predictionTracker = createPredictionTracker({
+  fetchLatest: async () => {
     await getValidAccessToken();
-    const tokens = loadTokens();
+    const res = await twitchApi.get(`/predictions?broadcaster_id=${loadTokens().broadcaster_id}&first=1`);
+    return res.data?.data?.[0] || null;
+  },
+  recheckMs: PREDICTION_RECHECK_MS,
+  onChange: s => logIfChanged('prediction', s.status === 'WAITING'
+    ? '[Wette] keine Wette bekannt – Status: WAITING'
+    : `[Wette] „${s.title}“ – Status: ${s.status}`),
+  onError: err => logIfChanged('prediction', `[Wette] Abruf bei Twitch gescheitert, letzter Stand bleibt: ${err.response?.data?.message || err.message}`, 'warn'),
+});
 
-    const response = await twitchApi.get(`/predictions?broadcaster_id=${tokens.broadcaster_id}&first=1`);
-
-    const predictions = response.data.data;
-    if (!predictions || predictions.length === 0) {
-      logIfChanged('prediction', 'Keine Prediction vorhanden – Status: WAITING');
-      return res.json({ status: 'WAITING' });
-    }
-
-    const prediction = predictions[0];
-    if (prediction.status === 'ACTIVE' || prediction.status === 'LOCKED') {
-      logIfChanged('prediction', `Prediction "${prediction.title}" - Status: ${prediction.status}`);
-    }
-
-    // Helix-Felder laut Twitch-Doku „Get Predictions“: locked_at, ended_at, prediction_window, winning_outcome_id;
-    // locks_at/ends_at gibt es nicht (Issue #38). channel_points_won steht nur je Top-Tipper, nicht je Ausgang.
-    const outcomes = (prediction.outcomes || []).map(outcome => ({
-      id: outcome.id,
-      title: outcome.title,
-      channelPoints: outcome.channel_points || 0,
-      users: outcome.users || 0,
-      color: outcome.color || null,
-      topPredictors: (outcome.top_predictors || []).map(p => ({
-        userName: p.user_name,
-        userLogin: p.user_login,
-        channelPointsUsed: p.channel_points_used || 0,
-        channelPointsWon: p.channel_points_won || 0
-      }))
-    }));
-    const predictionWindow = Number.isFinite(prediction.prediction_window) ? prediction.prediction_window : null;
-    const createdMs = Date.parse(prediction.created_at);
-    const locksAt = predictionWindow !== null && Number.isFinite(createdMs)
-      ? new Date(createdMs + predictionWindow * 1000).toISOString()
-      : null;
-
-    res.json({
-      predictionId: prediction.id,
-      title: prediction.title,
-      status: prediction.status,
-      outcomes: outcomes,
-      createdAt: prediction.created_at,
-      locksAt: locksAt,                              // geplantes Ende der Wettphase: created_at + prediction_window
-      endsAt: prediction.ended_at || null,           // bisheriger Name, gleicher Wert wie endedAt
-      lockedAt: prediction.locked_at || null,
-      endedAt: prediction.ended_at || null,
-      predictionWindow: predictionWindow,
-      winningOutcomeId: prediction.winning_outcome_id || null
-    });
-  } catch (err) {
-    console.error('Prediction API Fehler:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to fetch prediction', status: 'ERROR', message: err.message });
-  }
+app.get(PREDICTION_PATH, (req, res) => {
+  res.json(predictionTracker.snapshot());
 });
 
 // ── Zuschauerzahl (ADR 0023): Der Server fragt Twitch im festen Takt, Widgets bekommen nur den letzten Stand ──
@@ -1998,7 +1962,7 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToStreamOnline(sessionId);
       await subscribeToStreamOffline(sessionId);
       await subscribeToPollEnd(sessionId);
-      await subscribeToPredictionEnd(sessionId);
+      await subscribeToPredictions(sessionId);
       await subscribeToShoutoutCreate(sessionId);
       await subscribeToSubscriptions(sessionId);
       await subscribeToChatNotifications(sessionId);
@@ -2006,6 +1970,7 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToChannelUpdate(sessionId);
       await subscribeToGoals(sessionId);
       await refreshSubGoalCache();   // Ausgangsstand einmal je Verbindung, danach aus den Goal-Ereignissen
+      await predictionTracker.refresh();   // ebenso für die Wette
       await refreshChannelCategory();
       await syncStreamWithTwitch();
     }
@@ -2050,6 +2015,7 @@ function connectEventSub(reconnectUrl = null) {
       }
 
       if (subType === 'channel.poll.end') recordPollEnd(msg.payload.event);
+      if (PREDICTION_EVENT_TYPES.includes(subType)) predictionTracker.handleEvent(subType, msg.payload.event);
       if (subType === 'channel.prediction.end') recordPredictionEnd(msg.payload.event);
       if (subType === 'channel.shoutout.create') stats.count('shoutouts');
 
@@ -2194,8 +2160,17 @@ async function subscribeToPollEnd(sessionId) {
   await subscribeForStats(sessionId, 'channel.poll.end', { broadcaster_user_id: loadTokens().broadcaster_id });
 }
 
-async function subscribeToPredictionEnd(sessionId) {
-  await subscribeForStats(sessionId, 'channel.prediction.end', { broadcaster_user_id: loadTokens().broadcaster_id });
+// Wette: begin/progress/lock/end für den Stand am Endpunkt, end zusätzlich für die Statistik
+async function subscribeToPredictions(sessionId) {
+  const condition = { broadcaster_user_id: loadTokens().broadcaster_id };
+  for (const type of PREDICTION_EVENT_TYPES) {
+    try {
+      await createEventSubSubscription(sessionId, type, '1', condition);
+      console.log(`${type}-Subscription aktiv`);
+    } catch (err) {
+      console.error(`Fehler beim Abonnieren von ${type}:`, err.response?.data || err.message);
+    }
+  }
 }
 
 async function subscribeToShoutoutCreate(sessionId) {
