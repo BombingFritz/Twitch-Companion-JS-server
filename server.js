@@ -3,6 +3,7 @@ const axios = require('axios');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const util = require('util');
 const crypto = require('crypto');
 const readline = require('readline');
@@ -80,6 +81,11 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;         // so kurz vor Ablauf ern
 const TOKEN_PROACTIVE_REFRESH_MS = 10 * 60 * 1000;     // so lange vor Ablauf erneuert der Server den Token von sich aus
 const TOKEN_PROACTIVE_RETRY_MS = 10 * 60 * 1000;       // nach einer gescheiterten Erneuerung erst so viel später wieder
 const TOKEN_CHECK_INTERVAL_MS = 60 * 1000;
+
+// Erreichbarkeit (Nutzer, 14.11.2026; ADR 0013, Nachtrag): nur auf diesem PC. Home Assistant bekommt nur Webhooks und fragt nicht ab.
+// IPv6-Loopback zusätzlich, weil manche Programme „localhost“ als ::1 auflösen. Zugang aus dem LAN später nur mit Schlüssel (#57).
+const SERVER_HOST = '127.0.0.1';
+const SERVER_HOST_V6 = '::1';
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
@@ -3337,10 +3343,17 @@ rl.on('line', async (input) => {
 // ═══════════════════════════════════════════════════════════════════
 
 const PORT_NUM = parseInt(PORT);
+
+// Zweiter Zugang über den IPv6-Loopback. Fehlt IPv6 oder ist ::1 belegt, läuft der Server über 127.0.0.1 weiter.
+function listenOnIpv6Loopback() {
+  const v6 = http.createServer(app);
+  v6.on('error', err => console.warn(`[Start] Kein Zugang über ${SERVER_HOST_V6} (${err.code || err.message}); der Server ist über ${SERVER_HOST} erreichbar.`));
+  v6.listen(PORT_NUM, SERVER_HOST_V6);
+}
 // Express 5 ruft diese Funktion auch bei einem Startfehler auf (z. B. Port belegt), dann mit `err`.
 // Ohne diese Prüfung liefe ein zweiter Server ohne HTTP-Teil, aber mit eigener EventSub-Verbindung
 // (doppelte Chat-Ausgaben, Widgets verbunden mit dem anderen Server).
-app.listen(PORT_NUM, (err) => {
+app.listen(PORT_NUM, SERVER_HOST, (err) => {
   if (err) {
     if (err.code === 'EADDRINUSE') {
       console.error(`FEHLER: Port ${PORT_NUM} ist bereits belegt. Läuft der Server schon in einem anderen Fenster? Dieser Start wird abgebrochen, damit nicht zwei Server parallel laufen.`);
@@ -3350,11 +3363,12 @@ app.listen(PORT_NUM, (err) => {
     process.exit(1);
     return;
   }
+  listenOnIpv6Loopback();
   console.log('');
   console.log('═════════════════════════════════════════════');
   console.log('Twitch Companion JS server');
   console.log('═════════════════════════════════════════════');
-  console.log(`Server läuft auf: http://localhost:${PORT_NUM}`);
+  console.log(`Server läuft auf: http://localhost:${PORT_NUM} (nur auf diesem PC erreichbar)`);
   console.log(`Prozess-ID: ${process.pid} (zum Beenden: taskkill /PID ${process.pid} /F)`);
   console.log(`Login: http://localhost:${PORT_NUM}/login`);
   console.log(`Status: http://localhost:${PORT_NUM}/status`);

@@ -30,6 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Stream-Deck-Anbindung, weitere Schritte: Clip-Moment (`POST /api/clip/mark`) und eigenes Plugin, Fahrplan `docs/FAHRPLAN.md`, Spec `stream-deck.md`, ADR 0020.
 
 ### Security
+- Der Server ist nur noch auf dem eigenen PC erreichbar: Er lauscht auf `127.0.0.1` und `::1` statt auf allen Netzwerkschnittstellen. Andere Geräte im Heimnetz erreichen weder `/token` noch die übrigen Endpunkte. Home Assistant ist nicht betroffen, es bekommt nur Webhooks. Startanzeige „nur auf diesem PC erreichbar“ (ADR 0013, Nachtrag; Issue #57). Neuer Test `test/bind-test.js`; `port-test` bildet einen zweiten Serverstart jetzt mit Bindung an `127.0.0.1` nach.
 - Entfernt: `GET /api/effects/mode/:mode` und `GET /api/effects/confirm`. Sie änderten ohne Schutz den Zustand des Servers; Einbindungen ohne `Origin` konnten sie auslösen. Stream-Deck-Tasten auf diese Adressen funktionieren nicht mehr, Ersatz ist der Reiter „Einstellungen“. `GET /api/effects/mode` (nur lesen) und die Konsolenbefehle bleiben (ADR 0018).
 - Login-CSRF geschlossen: `/login`, `/login-bot` und `/callback` nehmen nur noch Aufrufe vom eigenen Rechner an (wie `/token`). Der Broadcaster-Login trägt jetzt einen zufälligen, einmal gültigen `state`; `/callback` speichert nur mit gültigem `state`. Vorher konnte ein Gerät im Heimnetz einen Code für ein fremdes Konto an `/callback` schicken und `tokens.json` überschreiben (ADR 0013, Nachtrag 07.11.2026).
 - Das HTTP-Protokoll in der Konsole zeigt `code` und `state` aus der URL nicht mehr.

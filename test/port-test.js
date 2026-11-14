@@ -5,7 +5,8 @@ const Module = require('module'), path = require('path'), fs = require('fs'), os
 const { EventEmitter } = require('events');
 const serverPath = path.resolve(process.argv[2]);
 const PORT = 39900 + Math.floor(Math.random() * 90);
-const blocker = http.createServer((q, r) => r.end('ANDERER SERVER')).listen(PORT, () => {
+// Der blockierende Server bindet wie ein zweiter Server-Start an 127.0.0.1 (ADR 0013, Nachtrag 14.11.2026)
+const blocker = http.createServer((q, r) => r.end('ANDERER SERVER')).listen(PORT, '127.0.0.1', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'port-'));
   fs.writeFileSync(path.join(dir, '.env'), `CLIENT_ID=x\nCLIENT_SECRET=x\nREDIRECT_URI=x\nPORT=${PORT}\nSCOPES=x\n`);
   fs.writeFileSync(path.join(dir, 'tokens.json'), JSON.stringify({ access_token: 'a', refresh_token: 'r', broadcaster_id: '1', broadcaster_name: 't', obtained_at: Date.now(), expires_in: 9999, expires_at: Date.now() + 9999000 }));

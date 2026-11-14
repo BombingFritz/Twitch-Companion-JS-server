@@ -83,6 +83,7 @@ Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data
 Alle GET außer `POST /api/bdu/answer` (ADR 0014), `POST /api/admin/server/…`, `POST /api/admin/whitelist/…`, `POST /api/admin/modules`, `POST /api/admin/effects/…`, `POST /api/admin/reports/delete` und `POST /api/admin/stream/close` (ADR 0018, ADR 0019). Alle Antworten mit `Cache-Control: no-store`.
 
 Zugriffsschutz (ADR 0013):
+- Der Server lauscht nur auf `127.0.0.1` und `::1` (`SERVER_HOST`, `SERVER_HOST_V6`; ADR 0013, Nachtrag 14.11.2026). Andere Geräte im Heimnetz erreichen ihn nicht; Home Assistant bekommt nur Webhooks.
 - Browser-Anfragen mit `Origin`-Header werden nur von erlaubten Herkünften angenommen, sonst `403 {error, origin}`, bevor ein Endpoint etwas ausführt. Standard: `http://absolute` (OBS-Browser-Source mit „Lokale Datei“) und `null` (Datei per `file://`), dazu immer `http://localhost:<PORT>` und `http://127.0.0.1:<PORT>`. Änderbar über `CORS_ORIGINS`; `*` stellt das alte Verhalten (jede Herkunft) wieder her.
 - Anfragen ohne `Origin` (Stream Deck, Home Assistant, Adresszeile des Browsers) sind nicht betroffen.
 - OBS-Widgets werden per URL `file:///…` eingebunden (Herkunft `null`), nicht als „Lokale Datei“: Neuere OBS-Versionen sperren Anfragen von `http://absolute` an `localhost`, bevor sie den Server erreichen.
@@ -115,7 +116,7 @@ Zugriffsschutz (ADR 0013):
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id, title, channelPoints, users, color, topPredictors[{userName, userLogin, channelPointsUsed, channelPointsWon}]}], createdAt, locksAt (= createdAt + predictionWindow), endsAt (= endedAt, bisheriger Name), lockedAt, endedAt, predictionWindow (s), winningOutcomeId}` (nicht gesetzte Zeitpunkte und Sieger `null`; Issue #38) für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED | 500 `{error, status:'ERROR', message}` |
 | `/api/twitch/stream` | `{live, viewers, updatedAt}`: letzter Stand der Zuschauerabfrage des Servers (alle 30 s, solange live), ohne eigene Twitch-Anfrage; vor dem ersten Stream `{live:false, viewers:null, updatedAt:null}` (ADR 0023) | – |
 | `/api/twitch/subcounter` | `{current, target, title, goalId, status, lastUpdated, apiStatus:'OK'}`; lädt von Twitch, wenn `current` im Cache `null` ist | 500 `{error, apiStatus:'ERROR', message}` |
-| `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}` | – |
+| `/api/homeassistant/events` | `{lastEvent, recentEvents (letzte 20), counts{follow,sub,gift}, totalLogged}`; seit 14.11.2026 nur noch vom eigenen PC erreichbar (Home Assistant nutzt den Endpunkt nicht) | – |
 | `/api/effects/mode` | `{mode, queueLength}` | – |
 | `/api/uboat/crew` | `{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew[{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, born, decorations, died, traits, skills, status, statusLabel, wounded, woundLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“, „gefallen“ oder `null`; `woundLabel`: „verwundet“, „im Krankenhaus“ oder `null`); ohne `UBOAT_SAVES_DIR` `{enabled:false, active:false, category, crew:[]}` (ADR 0016) | – |
 | `/api/topics` | Zustand der Intro-Topics `{enabled, visible, hide_reason, step, total, current, complete, items[{title, status}], display, revision}`. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
@@ -203,6 +204,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 | Name | Wert | Bedeutung |
 |---|---|---|
+| `SERVER_HOST` / `SERVER_HOST_V6` | `127.0.0.1` / `::1` | Der Server ist nur auf diesem PC erreichbar; fehlt IPv6, nur Hinweis in der Konsole (ADR 0013, Nachtrag) |
 | `TWITCH_API_PER_SECOND` / `TWITCH_API_BURST` / `TWITCH_API_PER_MINUTE` | 3 / 20 / 200 | Drosselung aller Helix-Anfragen: im Schnitt 3 je Sekunde, Spitze 20 auf einmal, hart 200 je gleitender Minute (ADR 0024). Umgebungsvariable `TWITCH_COMPANION_NO_THROTTLE=1` schaltet sie ab, nur für Tests |
 | `TWITCH_API_MAX_RETRY_WAIT_MS` | 60000 | bei 429 höchstens so lange auf den Reset warten, dann einmal neu versuchen |
 | `TOKEN_REFRESH_BUFFER_MS` / `TOKEN_PROACTIVE_REFRESH_MS` / `TOKEN_PROACTIVE_RETRY_MS` / `TOKEN_CHECK_INTERVAL_MS` | 5 min / 10 min / 10 min / 60 s | Anfrage erneuert selbst ab 5 min vor Ablauf; der Server erneuert von sich aus ab 10 min vor Ablauf, nach einem Fehlschlag erst 10 min später wieder; Prüftakt |

@@ -14,6 +14,7 @@ const runs = [
   ['shoutout-test.js', ['offline']],
   ['shoutout-test.js', ['start-ohne-ha']],
   ['port-test.js', []],
+  ['bind-test.js', []],
   ['status-test.js', []],
   ['status-test.js', ['ohne-tokens']],
   ['keepalive-test.js', []],
