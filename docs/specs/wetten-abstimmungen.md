@@ -1,6 +1,6 @@
 # Spec: Wetten und Abstimmungen über den Server
 
-**Status:** Schritt 1 vereinbart (Nutzer, 14.11.2026: „Du kannst mit Schritt 1 loslegen“). Schritte 2–4 Entwurf. Bezug: Issue #50 (Abschnitt 1), Issue #44 (Glückspilz), ADR 0023.
+**Status:** Schritt 1 umgesetzt (PR #64). Schritt 2 vereinbart (Nutzer, 14.11.2026). Schritte 3 und 4 Entwurf. Bezug: Issue #50 (Abschnitt 1), Issue #44 (Glückspilz), ADR 0023.
 
 ## Ziel
 Der Server führt den Stand von Wetten (Predictions) und Abstimmungen (Polls) über EventSub mit. Widgets holen ihn beim Server ab, statt Twitch selbst zu fragen. Der Server sendet die Ergebniszeilen in den Chat und ermittelt den Glückspilz des Abends.
@@ -61,12 +61,37 @@ Erst wenn Schritt 1 und 2 auf `main` sind, stellen die Widgets in ihren Reposito
 - Bei `ACTIVE` oder `LOCKED` eine Kontrollabfrage je `PREDICTION_RECHECK_MS`. Meldet sie die Wette als beendet, übernimmt der Server das Ende. Bei `WAITING`, `RESOLVED` und `CANCELED` gibt es keine Kontrollabfrage.
 - Bisherige Felder unverändert vorhanden.
 
-## Schritt 2: Abstimmung als letzter Stand (Entwurf)
-- Neue Abos: `channel.poll.begin` und `.progress`. `.end` ist vorhanden.
-- Neu `GET /api/twitch/poll/current`, Zugriff wie oben. Felder: `pollId`, `title`, `status`, `choices[]` (`id`, `title`, `votes`, `channelPointsVotes`, `bitsVotes`), `channelPointsVoting`, `bitsVoting`, `startedAt`, `endsAt`, `endedAt`, `updatedAt`.
-- Status in Großbuchstaben wie bei Helix: `ACTIVE`, `COMPLETED`, `TERMINATED`, `ARCHIVED`. Ohne Abstimmung: `WAITING`.
-- Ausgangsstand einmal je Verbindung über `GET /helix/polls?first=1`.
-- [UNGEKLÄRT] Was SpargelPoll genau braucht, prüfe ich vor diesem Schritt im Widget-Code.
+## Schritt 2: Abstimmung als letzter Stand
+Vereinbart (Nutzer, 14.11.2026: „weiter mit 2“). Was SpargelPoll braucht, wurde im Widget-Code geprüft (0.8.2, `checkForActivePoll`, `getPollEndsAt`): `id`, `title`, `status`, je Auswahl `id`, `title` und `votes`, dazu das Ende als `ends_at` oder `started_at + duration`.
+
+### Verhalten
+- Neue Abos: `channel.poll.begin` und `.progress`. `.end` gibt es schon, es speist künftig auch den Stand. Insgesamt 22 Abos.
+- Ablauf wie bei der Wette, gemeinsamer Kern in `lib/live-state.js`:
+  - Stand nur im Arbeitsspeicher
+  - Ausgangsstand einmal je Verbindung über `GET /helix/polls?first=1`
+  - Kontrolle bei `ACTIVE` nach 5 Minuten ohne Ereignis (`POLL_RECHECK_MS`)
+  - Ein verspätetes `begin` derselben Abstimmung ändert nichts.
+- **Status** in Großbuchstaben wie bei Helix: `begin`/`progress` → `ACTIVE`; `end` → `COMPLETED`, `TERMINATED` oder `ARCHIVED`. Aus Helix können auch `MODERATED` und `INVALID` kommen. Ohne Abstimmung: `{status: 'WAITING'}`.
+- **Reihenfolge:** `ARCHIVED` folgt bei Twitch auf `COMPLETED` bzw. `TERMINATED` derselben Abstimmung und wird übernommen. Ein früherer Zustand ersetzt nie einen späteren.
+- **Log:** nur Statuswechsel über `logIfChanged('poll', …)`.
+
+### Schnittstelle `GET /api/twitch/poll/current` (neu)
+- Zugriff: Widget-Herkünfte (ADR 0013). Löst keine Twitch-Anfrage aus.
+- **Felder:**
+  - `pollId`, `title`, `status`
+  - `choices[]`: `id`, `title`, `votes`, `channelPointsVotes`, `bitsVotes`
+  - `channelPointsVoting` und `bitsVoting`, je `{isEnabled, amountPerVote}`
+  - `startedAt`, `endsAt`, `endedAt`, `duration` (s), `updatedAt`
+- Schreibweise camelCase wie bei `/api/twitch/prediction/current`. Von Claude festgelegt; SpargelPoll muss beim Umstellen nur wenige Felder umbenennen.
+- `endsAt`: aus Helix `started_at + duration`, aus EventSub `ends_at`. Das End-Ereignis liefert kein `ends_at`, dann bleibt der vorige Wert. `duration` aus EventSub ist `ends_at − started_at`.
+
+### Akzeptanzkriterien
+- Abos für `begin`, `progress` und `end` (v1) nach `session_welcome`.
+- Nach `begin` und `progress` liefert der Endpunkt `ACTIVE` mit Auswahl, Stimmen, `endsAt` und `duration`, ohne Twitch zu fragen.
+- `end` setzt den Endstatus, `endedAt` und den Endstand; ein danach eintreffendes `progress` ändert nichts.
+- `archived` nach `completed` wird übernommen, `completed` nach `archived` nicht.
+- Ausgangsstand einmal je Verbindung; Kontrolle nur bei `ACTIVE`.
+- Statistik wie bisher (`recordPollEnd`, `archived` zählt nicht doppelt).
 
 ## Schritt 3: Ergebniszeilen über den Server (Entwurf)
 - Texte wie heute in den Widgets (Spec `chat-nachricht.md` des Wetten-Widgets bzw. von SpargelPoll). Gesendet wird bei `end`, genau einmal je Wette oder Abstimmung.
@@ -89,4 +114,4 @@ Erst wenn Schritt 1 und 2 auf `main` sind, stellen die Widgets in ihren Reposito
 - Neue Datei für den laufenden Stand.
 
 ## Berührte Funktionen/Dateien (Schritt 1)
-Neu `lib/prediction-state.js` (`createPredictionTracker`: `handleEvent`, `refresh`, `snapshot`, Kontrolle mit einstellbarem Timer). In `server.js`: `subscribeToPredictionEnd` → `subscribeToPredictions`, `predictionTracker`, `/api/twitch/prediction/current`, `session_welcome`-Block, `recordPredictionEnd` unverändert. Tests: `test/prediction-test.js` (Modultest mit künstlichen Timern), `test/admin-test.js` (Szenario `wette`), `test/keepalive-test.js` (Zahl der Abos).
+Neu `lib/prediction-state.js` (`createPredictionTracker`: `handleEvent`, `refresh`, `snapshot`, Kontrolle mit einstellbarem Timer); seit Schritt 2 auf dem gemeinsamen Kern `lib/live-state.js`, dazu `lib/poll-state.js`, `test/poll-test.js` und das Szenario `abstimmung`. In `server.js`: `subscribeToPredictionEnd` → `subscribeToPredictions`, `predictionTracker`, `/api/twitch/prediction/current`, `session_welcome`-Block, `recordPredictionEnd` unverändert. Tests: `test/prediction-test.js` (Modultest mit künstlichen Timern), `test/admin-test.js` (Szenario `wette`), `test/keepalive-test.js` (Zahl der Abos).

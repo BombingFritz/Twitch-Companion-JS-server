@@ -34,6 +34,7 @@ const subscribed = [];
 const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
 let fakeStream = null, fakeStreamRequests = 0, fakeGoalRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
 let fakePrediction = null, fakePredictionRequests = 0;                 // ebenso für helix/predictions
+let fakePoll = null, fakePollRequests = 0;                             // und helix/polls
 const fakeAxios = {
   post: async (url, body) => {
     if (url.includes('helix/chat/messages')) chatSent.push(body);
@@ -45,6 +46,10 @@ const fakeAxios = {
     if (url.includes('helix/predictions')) {
       fakePredictionRequests += 1;
       return { data: { data: fakePrediction ? [fakePrediction] : [] } };
+    }
+    if (url.includes('helix/polls')) {
+      fakePollRequests += 1;
+      return { data: { data: fakePoll ? [fakePoll] : [] } };
     }
     if (url.includes('helix/streams')) {
       fakeStreamRequests += 1;
@@ -813,7 +818,49 @@ async function wette() {
   p = await current();
   check('W8 end: RESOLVED, Sieger, endedAt, echte Auszahlung', p.status === 'RESOLVED' && p.winningOutcomeId === 'x' && p.endedAt === '2026-11-14T20:30:00Z' && p.outcomes[0].topPredictors[0].channelPointsWon === 2666, JSON.stringify(p));
   // Statistik der Wetten (nur resolved zählt) prüft das Szenario statistik (S17b)
+  check('W9a Abstimmungs-Endpunkt bleibt unberührt', JSON.parse((await request('/api/twitch/poll/current')).body).status === 'WAITING');
   check('W9 Kein HTTP-Fehler, nur Statuswechsel im Log', logs.filter(l => l.includes('[Wette]')).length <= 5 && !logs.some(l => l.includes('Prediction API Fehler')), logs.filter(l => l.includes('[Wette]')).join(' | '));
+}
+
+// Abstimmung über EventSub (Spec wetten-abstimmungen.md, Schritt 2): neuer Endpunkt mit letztem Stand
+async function abstimmung() {
+  // Beim Verbinden läuft schon eine Abstimmung
+  fakePoll = { id: 'v0', title: 'Laufend', status: 'ACTIVE', duration: 120, started_at: '2026-11-14T19:00:00Z', ended_at: null,
+    bits_voting_enabled: false, bits_per_vote: 0, channel_points_voting_enabled: false, channel_points_per_vote: 0,
+    choices: [{ id: 'a', title: 'Ja', votes: 2, channel_points_votes: 0, bits_votes: 0 }, { id: 'b', title: 'Nein', votes: 1, channel_points_votes: 0, bits_votes: 0 }] };
+  await welcome();
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `v${++n}` }, payload: { event } }));
+  const current = async () => JSON.parse((await request('/api/twitch/poll/current')).body);
+  const types = ['channel.poll.begin', 'channel.poll.progress', 'channel.poll.end'];
+
+  check('V1 Abos für channel.poll.begin, .progress und .end', types.every(t => subscribed.includes(t)), subscribed.join(','));
+  check('V2 Ausgangsstand einmal je Verbindung abgefragt', fakePollRequests === 1, String(fakePollRequests));
+  let p = await current();
+  check('V3 Laufende Abstimmung nach dem Verbinden bekannt', p.pollId === 'v0' && p.status === 'ACTIVE' && p.endsAt === '2026-11-14T19:02:00.000Z' && !Number.isNaN(Date.parse(p.updatedAt)), JSON.stringify(p));
+
+  const base = { id: 'v1', broadcaster_user_id: '4711', title: 'Längster Spargel?', started_at: '2026-11-14T20:00:00Z',
+    bits_voting: { is_enabled: false, amount_per_vote: 0 }, channel_points_voting: { is_enabled: false, amount_per_vote: 0 } };
+  const choices = (x, y) => [{ id: 'x', title: 'Weiß', votes: x, channel_points_votes: 0, bits_votes: 0 }, { id: 'y', title: 'Grün', votes: y, channel_points_votes: 0, bits_votes: 0 }];
+  send('channel.poll.begin', { ...base, choices: [{ id: 'x', title: 'Weiß' }, { id: 'y', title: 'Grün' }], ends_at: '2026-11-14T20:01:00Z' });
+  send('channel.poll.progress', { ...base, choices: choices(4, 3), ends_at: '2026-11-14T20:01:00Z' });
+  await sleep(50);
+  p = await current();
+  check('V4 begin/progress: ACTIVE mit Stimmen, endsAt, duration', p.pollId === 'v1' && p.status === 'ACTIVE' && p.choices[0].votes === 4 && p.choices[1].title === 'Grün'
+    && p.endsAt === '2026-11-14T20:01:00Z' && p.duration === 60, JSON.stringify(p));
+  for (let i = 0; i < 10; i++) await current();
+  check('V5 Widget-Abrufe fragen Twitch nicht', fakePollRequests === 1, String(fakePollRequests));
+  let r = await request('/api/twitch/poll/current', { Origin: 'null' });
+  check('V6 Widget per file:/// (Herkunft null) darf lesen', r.status === 200, String(r.status));
+  r = await request('/api/twitch/poll/current', { Origin: 'https://fremd.example' });
+  check('V7 Fremde Herkunft: 403', r.status === 403, String(r.status));
+
+  send('channel.poll.end', { ...base, choices: choices(6, 3), status: 'completed', ended_at: '2026-11-14T20:01:00Z' });
+  send('channel.poll.end', { ...base, choices: choices(6, 3), status: 'archived', ended_at: '2026-11-14T20:01:00Z' });
+  await sleep(50);
+  p = await current();
+  check('V8 end: Endstand, endedAt; archived danach übernommen', p.status === 'ARCHIVED' && p.choices[0].votes === 6 && p.endedAt === '2026-11-14T20:01:00Z', JSON.stringify(p));
+  check('V9 Nur Statuswechsel im Log', logs.filter(l => l.includes('[Abstimmung]')).length <= 5, logs.filter(l => l.includes('[Abstimmung]')).join(' | '));
 }
 
 async function effekteAlt() {
@@ -896,6 +943,7 @@ async function ohneTokens() {
   else if (scenario === 'zuschauer') await zuschauer();
   else if (scenario === 'subgoal') await subgoal();
   else if (scenario === 'wette') await wette();
+  else if (scenario === 'abstimmung') await abstimmung();
   else await ablauf();
 
   console.log = realLog;

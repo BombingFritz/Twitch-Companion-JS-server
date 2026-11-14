@@ -15,6 +15,7 @@ const { createStreamReports, reportWarnings, isReportId } = require('./lib/strea
 const { createTokenStore, createRateLimiter, createTwitchApi } = require('./lib/twitch-api');
 const { createTopics } = require('./lib/topics');
 const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/prediction-state');
+const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
 require('dotenv').config();
 
 const app = express();
@@ -159,6 +160,8 @@ const STREAM_VIEWERS_MAX_MINUTES = 48 * 60;       // Obergrenze des Minutenverla
 const STREAM_VIEWERS_PATH = '/api/twitch/stream'; // letzter bekannter Stand für Widgets, ohne eigene Twitch-Abfrage (ADR 0023)
 const PREDICTION_PATH = '/api/twitch/prediction/current';  // letzter Stand der Wette aus EventSub (Spec wetten-abstimmungen.md)
 const PREDICTION_RECHECK_MS = 5 * 60 * 1000;      // offene Wette ohne Ereignis so lange, dann einmal bei Twitch nachsehen
+const POLL_PATH = '/api/twitch/poll/current';     // letzter Stand der Abstimmung aus EventSub (Spec wetten-abstimmungen.md)
+const POLL_RECHECK_MS = 5 * 60 * 1000;            // laufende Abstimmung ohne Ereignis so lange, dann einmal bei Twitch nachsehen
 const STATS_EXCLUDED_CHATTERS = ['nightbot', 'streamelements', 'derbdu'];   // zählen nicht als Chatnachricht; wird später im Reiter „Whitelist“ bearbeitbar
 const ADMIN_WHITELIST_PATH = '/api/admin/whitelist';
 const ADMIN_MODULES_PATH = '/api/admin/modules';
@@ -1405,6 +1408,24 @@ app.get(PREDICTION_PATH, (req, res) => {
   res.json(predictionTracker.snapshot());
 });
 
+// ── Abstimmung (Poll): wie die Wette, Stand aus channel.poll.*, Endpunkt fragt Twitch nicht ──
+const pollTracker = createPollTracker({
+  fetchLatest: async () => {
+    await getValidAccessToken();
+    const res = await twitchApi.get(`/polls?broadcaster_id=${loadTokens().broadcaster_id}&first=1`);
+    return res.data?.data?.[0] || null;
+  },
+  recheckMs: POLL_RECHECK_MS,
+  onChange: s => logIfChanged('poll', s.status === 'WAITING'
+    ? '[Abstimmung] keine Abstimmung bekannt – Status: WAITING'
+    : `[Abstimmung] „${s.title}“ – Status: ${s.status}`),
+  onError: err => logIfChanged('poll', `[Abstimmung] Abruf bei Twitch gescheitert, letzter Stand bleibt: ${err.response?.data?.message || err.message}`, 'warn'),
+});
+
+app.get(POLL_PATH, (req, res) => {
+  res.json(pollTracker.snapshot());
+});
+
 // ── Zuschauerzahl (ADR 0023): Der Server fragt Twitch im festen Takt, Widgets bekommen nur den letzten Stand ──
 const streamViewers = { live: false, viewers: null, updatedAt: null };
 
@@ -1962,7 +1983,7 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToChat(sessionId);
       await subscribeToStreamOnline(sessionId);
       await subscribeToStreamOffline(sessionId);
-      await subscribeToPollEnd(sessionId);
+      await subscribeToPolls(sessionId);
       await subscribeToPredictions(sessionId);
       await subscribeToShoutoutCreate(sessionId);
       await subscribeToSubscriptions(sessionId);
@@ -1972,6 +1993,7 @@ function connectEventSub(reconnectUrl = null) {
       await subscribeToGoals(sessionId);
       await refreshSubGoalCache();   // Ausgangsstand einmal je Verbindung, danach aus den Goal-Ereignissen
       await predictionTracker.refresh();   // ebenso für die Wette
+      await pollTracker.refresh();         // und die Abstimmung
       await refreshChannelCategory();
       await syncStreamWithTwitch();
     }
@@ -2015,6 +2037,7 @@ function connectEventSub(reconnectUrl = null) {
         handleGoalEvent(subType, msg.payload.event);
       }
 
+      if (POLL_EVENT_TYPES.includes(subType)) pollTracker.handleEvent(subType, msg.payload.event);
       if (subType === 'channel.poll.end') recordPollEnd(msg.payload.event);
       if (PREDICTION_EVENT_TYPES.includes(subType)) predictionTracker.handleEvent(subType, msg.payload.event);
       if (subType === 'channel.prediction.end') recordPredictionEnd(msg.payload.event);
@@ -2157,14 +2180,10 @@ async function subscribeForStats(sessionId, type, condition) {
   }
 }
 
-async function subscribeToPollEnd(sessionId) {
-  await subscribeForStats(sessionId, 'channel.poll.end', { broadcaster_user_id: loadTokens().broadcaster_id });
-}
-
-// Wette: begin/progress/lock/end für den Stand am Endpunkt, end zusätzlich für die Statistik
-async function subscribeToPredictions(sessionId) {
+// Mehrere Abos derselben Bedingung; ein fehlendes bricht die übrigen nicht ab
+async function subscribeToTypes(sessionId, types) {
   const condition = { broadcaster_user_id: loadTokens().broadcaster_id };
-  for (const type of PREDICTION_EVENT_TYPES) {
+  for (const type of types) {
     try {
       await createEventSubSubscription(sessionId, type, '1', condition);
       console.log(`${type}-Subscription aktiv`);
@@ -2172,6 +2191,16 @@ async function subscribeToPredictions(sessionId) {
       console.error(`Fehler beim Abonnieren von ${type}:`, err.response?.data || err.message);
     }
   }
+}
+
+// Abstimmung: begin/progress/end für den Stand am Endpunkt, end zusätzlich für die Statistik
+async function subscribeToPolls(sessionId) {
+  await subscribeToTypes(sessionId, POLL_EVENT_TYPES);
+}
+
+// Wette: begin/progress/lock/end für den Stand am Endpunkt, end zusätzlich für die Statistik
+async function subscribeToPredictions(sessionId) {
+  await subscribeToTypes(sessionId, PREDICTION_EVENT_TYPES);
 }
 
 async function subscribeToShoutoutCreate(sessionId) {
