@@ -923,10 +923,12 @@ async function ergebnis() {
   const TEXT = 'Die Vorhersage ist beendet! »Ja« gewinnt mit einer Quote von 2,69. Als größter Gewinner räumt Kaleun_Kalle 26.905 Kanalpunkte ab.';
 
   let ov = JSON.parse((await request(OVERVIEW)).body);
-  check('E1 Übersicht: Ergebniszeilen anfangs aus, Absender in der Liste', JSON.stringify(ov.chat_results.map(x => [x.line, x.enabled])) === '[["prediction",false],["poll",false]]'
+  check('E1 Übersicht: Ergebniszeilen in der Vorgabe an (Nutzer, 14.11.2026), Absender in der Liste', JSON.stringify(ov.chat_results.map(x => [x.line, x.enabled])) === '[["prediction",true],["poll",true]]'
     && ov.chat_senders.some(x => x.feature === 'prediction' && x.sender === 'broadcaster') && ov.chat_senders.some(x => x.feature === 'poll'), JSON.stringify(ov.chat_results));
-  check('E2 Aufgelöste Wette aus dem Ausgangsstand: keine Zeile, kein Log-Eintrag', !logs.some(l => /Ergebniszeile (nicht )?gesendet/.test(l)) && lines(/Vorhersage/).length === 0);
+  check('E2 Aufgelöste Wette aus dem Ausgangsstand: trotz Schalter an keine Zeile, kein Log-Eintrag', !logs.some(l => /Ergebniszeile (nicht )?gesendet/.test(l)) && lines(/Vorhersage/).length === 0);
 
+  // Fall „aus“ (älteres Widget schreibt selbst): erst ausschalten
+  await set({ line: 'prediction', enabled: false });
   let w = wette('w1'); w.begin(); w.lock(); w.end(); await sleep(100);
   check('E3 Schalter aus: nichts im Chat, Text im Log', lines(/Vorhersage/).length === 0 && logs.some(l => l === `[Wette] Ergebniszeile nicht gesendet, Schalter aus (results prediction on): ${TEXT}`), logs.filter(l => l.includes('Ergebniszeile')).join(' | '));
 
@@ -963,7 +965,7 @@ async function ergebnis() {
   ov = JSON.parse((await request(OVERVIEW)).body);
   check('E11 Übersicht zeigt beide Zeilen an', ov.chat_results.every(x => x.enabled === true), JSON.stringify(ov.chat_results));
   r = await set({ line: 'prediction', enabled: false });
-  check('E12 Ausschalten: gespeichert, Log-Zeile', r.status === 200 && JSON.parse(fs.readFileSync(path.join(workDir, 'chat_results.json'), 'utf8')).prediction === false && logs.some(l => l === '[Chat] Webkonsole: Ergebniszeile Wett-Ergebnis aus'));
+  check('E12 Ausschalten: gespeichert, Log-Zeile', r.status === 200 && JSON.parse(fs.readFileSync(path.join(workDir, 'chat_results.json'), 'utf8')).prediction === false && logs.some(l => l === '[Chat] Webkonsole: Ergebniszeile Wett-Ergebnis aus – der Server schreibt kein Ergebnis mehr in den Chat'));
 }
 
 async function effekteAlt() {

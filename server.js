@@ -75,8 +75,8 @@ const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Kont
 const CHAT_SENDERS_FILE = './chat_senders.json';
 const CHAT_FEATURES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', raid: 'Raid-Begrüßung', whitelist: 'Whitelist-Begrüßung', raidstats: '!raidstats', privacy: '!privat-Antwort',
   prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
-// Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): je Zeile ein Schalter, anfangs aus,
-// damit nichts doppelt im Chat steht, solange das Widget seine Zeile noch selbst sendet
+// Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): je Zeile ein Schalter, Vorgabe an
+// (Nutzer, 14.11.2026). Aus nur, solange ein älteres Widget seine Zeile noch selbst sendet.
 const CHAT_RESULTS_FILE = './chat_results.json';
 const CHAT_RESULT_LINES = { prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
 const CHAT_SENDER_DEFAULTS = { bdu: 'bot', uboat: 'bot' };   // alle übrigen: Broadcaster (wie vor der Einstellung)
@@ -587,14 +587,14 @@ function setChatSender(feature, sender, source) {
 }
 
 // ── Ergebniszeilen für Wette und Abstimmung (Spec wetten-abstimmungen.md, Schritt 3b) ──
-// Fehlende oder defekte Datei, fehlender Eintrag: aus
+// Fehlende oder defekte Datei, fehlender Eintrag: an
 function loadChatResults() {
-  const switches = Object.fromEntries(Object.keys(CHAT_RESULT_LINES).map(k => [k, false]));
+  const switches = Object.fromEntries(Object.keys(CHAT_RESULT_LINES).map(k => [k, true]));
   if (!fs.existsSync(CHAT_RESULTS_FILE)) return switches;
   try {
     const data = JSON.parse(fs.readFileSync(CHAT_RESULTS_FILE, 'utf8'));
     for (const k of Object.keys(switches)) if (typeof data[k] === 'boolean') switches[k] = data[k];
-  } catch { /* defekte Datei: alles aus */ }
+  } catch { /* defekte Datei: Vorgabe (an) */ }
   return switches;
 }
 
@@ -608,7 +608,7 @@ function setChatResult(line, on, source) {
   if (chatResults[line] === on) return false;
   chatResults = { ...chatResults, [line]: on };
   saveChatResults(chatResults);
-  console.log(`[Chat] ${source}: Ergebniszeile ${CHAT_RESULT_LINES[line]} ${on ? 'an – der Server sendet sie, das Widget sollte es nicht mehr tun' : 'aus'}`);
+  console.log(`[Chat] ${source}: Ergebniszeile ${CHAT_RESULT_LINES[line]} ${on ? 'an – der Server schreibt das Ergebnis in den Chat' : 'aus – der Server schreibt kein Ergebnis mehr in den Chat'}`);
   return true;
 }
 

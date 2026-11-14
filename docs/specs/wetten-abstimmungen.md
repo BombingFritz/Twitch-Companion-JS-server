@@ -112,9 +112,10 @@ Vereinbart (Nutzer, 14.11.2026). 3a (Absender) ist umgesetzt in PR #67, 3b (Erge
 
 ### Verhalten
 - **Wann:** einmal je Wette bzw. Abstimmung, sobald ein Endstand vorliegt (Ereignis oder Kontrolle), wenn dieser Serverprozess sie vorher offen gesehen hat (`createResultAnnouncer`).
-- **Schalter aus (Vorgabe):** Die Zeile steht nur im Log: „[Wette] Ergebniszeile nicht gesendet, Schalter aus (results prediction on): …“. So lässt sie sich mit der des Widgets vergleichen.
+- **Vorgabe an** (Nutzer, 14.11.2026, nach dem Off-Stream-Test mit Wetten-Widget 0.8.0 und SpargelPoll 0.9.0, die selbst nichts mehr senden). Bis dahin war die Vorgabe aus.
+- **Schalter aus:** Die Zeile steht nur im Log: „[Wette] Ergebniszeile nicht gesendet, Schalter aus (results prediction on): …“. Ausschalten ist nur nötig, solange ein älteres Widget die Zeile noch selbst sendet (Wetten-Widget vor 0.8.0, SpargelPoll vor 0.9.0).
 - **Schalter an:** `sendChatMessage(text, null, 'prediction' | 'poll')`, Absender nach „Chat-Absender“ (Vorgabe Broadcaster).
-- **Gespeichert** in `chat_results.json` (`{prediction, poll}`, je `true`/`false`). Fehlt die Datei oder ist sie defekt, ist alles aus.
+- **Gespeichert** in `chat_results.json` (`{prediction, poll}`, je `true`/`false`). Fehlt die Datei oder ist sie defekt, ist alles an. Eine vorhandene Datei bleibt unverändert, wer ausgeschaltet hat, behält das.
 - **Konsole:** `results show` sowie `results prediction on|off` und `results poll on|off`.
 - **Webkonsole:** Reiter „Einstellungen“, Karte „Ergebniszeilen im Chat“ mit Hinweis auf doppelte Zeilen. Dazu `POST /api/admin/chat/results` `{line, enabled}` → `{ok, changed, chat_results}`; 400 bei unbekannter Zeile oder wenn `enabled` kein Wahrheitswert ist. In der Übersicht: `chat_results` (`[{line, name, enabled}]`).
 - Von Claude festgelegt, nicht einzeln zur Wahl gestellt: Logzeile bei Schalter aus, Namen von Befehl und Datei, Platz der Karte vor „Chat-Absender“.
@@ -126,7 +127,7 @@ Vereinbart (Nutzer, 14.11.2026). 3a (Absender) ist umgesetzt in PR #67, 3b (Erge
 
 ### Ursprünglicher Entwurf
 - Texte wie heute in den Widgets (Spec `chat-nachricht.md` des Wetten-Widgets bzw. von SpargelPoll). Gesendet wird bei `end`, genau einmal je Wette oder Abstimmung.
-- **Migration:** Schalter je Zeile, anfangs aus. Ein Widget, das umgestellt hat, sendet selbst nicht mehr, dann schaltet der Nutzer den Server-Versand ein. So kommt keine Zeile doppelt.
+- **Migration:** Schalter je Zeile, anfangs aus. Ein Widget, das umgestellt hat, sendet selbst nicht mehr, dann schaltet der Nutzer den Server-Versand ein. So kommt keine Zeile doppelt. Erledigt: Beide Widgets sind umgestellt, seitdem Vorgabe an (siehe oben).
 - **Absender konfigurierbar** (Nutzer, 14.11.2026): Broadcaster (wie heute) oder Bot-Konto. Vorgabe Broadcaster. Umgesetzt als eigener Schritt **3a** für alle Chat-Funktionen (Nutzer: „Alle Chat-Funktionen“), Spec `bot-account.md`, Abschnitt „Absender je Funktion“. 3b ergänzt dort `prediction` und `poll`.
 - **Ort der Schalter** (Nutzer, 14.11.2026): Webkonsole, Reiter „Einstellungen“, und Konsole.
 - **Verspätetes Ende** (Nutzer, 14.11.2026): Bemerkt der Server das Ende erst bei der Kontrolle, sendet er die Zeile verspätet, aber nie zweimal für dieselbe Wette oder Abstimmung. Gesendet wird nur, wenn dieser Serverprozess die Wette bzw. Abstimmung offen gesehen hat; eine schon beendete aus dem Ausgangsstand nach einem Neustart löst nichts aus.
