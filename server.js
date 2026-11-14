@@ -11,6 +11,7 @@ const { createUboatCrew } = require('./lib/uboat-crew');
 const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats');
 const { createStreamSession } = require('./lib/stream-session');
 const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
+const { createTokenStore, createRateLimiter, createTwitchApi } = require('./lib/twitch-api');
 const { createTopics } = require('./lib/topics');
 require('dotenv').config();
 
@@ -69,6 +70,16 @@ const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Kont
 const BOT_FEATURES = ['bdu', 'uboat'];            // diese Funktionen senden über den Bot; alles andere als Broadcaster
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;        // so lange gilt ein über /login oder /login-bot begonnener Login (state)
 const APP_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;   // App-Access-Token so lange vor Ablauf neu holen
+
+// Twitch-API (ADR 0024, Issue #50): Vorgabe des Nutzers für alle Helix-Anfragen des Servers zusammen
+const TWITCH_API_PER_SECOND = 3;                      // im Schnitt
+const TWITCH_API_BURST = 20;                           // kurze Spitze, z. B. die EventSub-Abos binnen 10 s nach dem Welcome
+const TWITCH_API_PER_MINUTE = 200;                     // hart, in jedem gleitenden 60-s-Fenster
+const TWITCH_API_MAX_RETRY_WAIT_MS = 60 * 1000;        // bei 429 höchstens so lange auf den Reset warten
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;         // so kurz vor Ablauf erneuert eine Anfrage den Token selbst
+const TOKEN_PROACTIVE_REFRESH_MS = 10 * 60 * 1000;     // so lange vor Ablauf erneuert der Server den Token von sich aus
+const TOKEN_PROACTIVE_RETRY_MS = 10 * 60 * 1000;       // nach einer gescheiterten Erneuerung erst so viel später wieder
+const TOKEN_CHECK_INTERVAL_MS = 60 * 1000;
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
@@ -438,54 +449,43 @@ function hasLoopbackHost(req) {
 // HILFSFUNKTIONEN – TOKENS
 // ═══════════════════════════════════════════════════════════════════
 
-function loadTokens() {
+// tokens.json wird nur beim Start gelesen; danach liegt der Stand im Arbeitsspeicher (ADR 0024).
+function readTokensFile() {
   if (!fs.existsSync(TOKEN_FILE)) return null;
   try { return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8')); } catch { return null; }
 }
 
+const tokenStore = createTokenStore({
+  load: readTokensFile,
+  save: tokens => writeJsonAtomic(TOKEN_FILE, tokens),
+  http: axios,
+  clientId: CLIENT_ID,
+  clientSecret: CLIENT_SECRET,
+  bufferMs: TOKEN_REFRESH_BUFFER_MS,
+  log: (message, level = 'log') => console[level](message),
+});
+
+function loadTokens() {
+  return tokenStore.get();
+}
+
 function saveTokens(tokens) {
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2), 'utf8');
+  tokenStore.set(tokens);
 }
 
 async function getValidAccessToken() {
-  let tokens = loadTokens();
-  if (!tokens) {
-    throw new Error('Keine Tokens gespeichert. Bitte login durchführen: http://localhost:3000/login');
-  }
-
-  const now = Date.now();
-  const expiresAt = tokens.expires_at || (tokens.obtained_at + tokens.expires_in * 1000);
-  const bufferTime = 5 * 60 * 1000;
-
-  if (now < (expiresAt - bufferTime)) {
-    return tokens.access_token;
-  }
-
-  console.log('Token abgelaufen, führe Refresh durch...');
-  try {
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      refresh_token: tokens.refresh_token,
-      grant_type: 'refresh_token'
-    });
-
-    const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
-
-    tokens.access_token = response.data.access_token;
-    tokens.refresh_token = response.data.refresh_token || tokens.refresh_token;
-    tokens.obtained_at = Date.now();
-    tokens.expires_in = response.data.expires_in;
-    tokens.expires_at = Date.now() + response.data.expires_in * 1000;
-
-    saveTokens(tokens);
-    console.log('Token erfolgreich aktualisiert!');
-    return tokens.access_token;
-  } catch (err) {
-    console.error('Token-Refresh fehlgeschlagen:', err.response?.data || err.message);
-    throw new Error('Token-Refresh fehlgeschlagen. Bitte neu einloggen.');
-  }
+  if (!tokenStore.get()) throw new Error(`Keine Tokens gespeichert. Bitte login durchführen: http://localhost:${PORT}/login`);
+  return tokenStore.getValidAccessToken();
 }
+
+// Rechtzeitig vor dem Ablauf erneuern, damit Widgets mit /token nicht in einen abgelaufenen Token laufen.
+// Scheitert es, erst nach TOKEN_PROACTIVE_RETRY_MS wieder versuchen, damit das Fehlerprotokoll nicht volläuft.
+let tokenProactiveRetryAt = 0;
+setInterval(() => {
+  const expiresAt = tokenStore.expiresAt();
+  if (!expiresAt || expiresAt - Date.now() > TOKEN_PROACTIVE_REFRESH_MS || Date.now() < tokenProactiveRetryAt) return;
+  tokenStore.refresh().catch(() => { tokenProactiveRetryAt = Date.now() + TOKEN_PROACTIVE_RETRY_MS; });
+}, TOKEN_CHECK_INTERVAL_MS).unref();
 
 // ═══════════════════════════════════════════════════════════════════
 // HILFSFUNKTIONEN – BOT-ACCOUNT „DerBdu“ (ADR 0017)
@@ -515,6 +515,20 @@ async function getAppAccessToken(forceNew = false) {
   appAccessToken = { token: response.data.access_token, expiresAt: Date.now() + response.data.expires_in * 1000 };
   return appAccessToken.token;
 }
+
+// Alle Helix-Anfragen laufen hierüber: Drosselung, Token, 401/429 (ADR 0024, Issue #50)
+const twitchApi = createTwitchApi({
+  http: axios,
+  clientId: CLIENT_ID,
+  tokens: { getValidAccessToken, refresh: () => tokenStore.refresh() },
+  getAppToken: getAppAccessToken,
+  limiter: createRateLimiter({
+    perSecond: TWITCH_API_PER_SECOND, perMinute: TWITCH_API_PER_MINUTE, burst: TWITCH_API_BURST,
+    enabled: process.env.TWITCH_COMPANION_NO_THROTTLE !== '1',   // nur Tests setzen das
+  }),
+  maxRetryWaitMs: TWITCH_API_MAX_RETRY_WAIT_MS,
+  log: (message, level = 'log') => logIfChanged(`twitch-api:${message}`, message, level),
+});
 
 function botFeatureLabels() {
   return BOT_FEATURES.map(f => MODULE_NAMES[f] || f).join(', ');
@@ -693,18 +707,12 @@ function printWhitelistChecks(limit = 20) {
 }
 
 async function resolveUserByLogin(login) {
-  const accessToken = await getValidAccessToken();
-  const res = await axios.get(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(login)}`, {
-    headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID }
-  });
+  const res = await twitchApi.get(`/users?login=${encodeURIComponent(login)}`);
   return res.data.data[0] || null;
 }
 
 async function resolveUserById(id) {
-  const accessToken = await getValidAccessToken();
-  const res = await axios.get(`https://api.twitch.tv/helix/users?id=${encodeURIComponent(id)}`, {
-    headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID }
-  });
+  const res = await twitchApi.get(`/users?id=${encodeURIComponent(id)}`);
   return res.data.data[0] || null;
 }
 
@@ -725,12 +733,9 @@ function saveSubGoalCache(data) {
 
 async function refreshSubGoalCache() {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-    const res = await axios.get(
-      `https://api.twitch.tv/helix/goals?broadcaster_id=${tokens.broadcaster_id}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } }
-    );
+    const res = await twitchApi.get(`/goals?broadcaster_id=${tokens.broadcaster_id}`);
     const goals = res.data.data || [];
     const goal = goals.find(g => (g.type === 'subscription' || g.type === 'subscription_count') && g.status === 'active')
               || goals.find(g => g.type === 'subscription' || g.type === 'subscription_count')
@@ -1169,9 +1174,7 @@ async function handleBotCallback(req, res) {
     const params = new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, code, grant_type: 'authorization_code', redirect_uri: REDIRECT_URI });
     const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
     const granted = Array.isArray(response.data.scope) ? response.data.scope : String(response.data.scope || '').split(' ');
-    const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
-      headers: { 'Authorization': `Bearer ${response.data.access_token}`, 'Client-ID': CLIENT_ID }
-    });
+    const userResponse = await twitchApi.get('/users', { auth: { token: response.data.access_token } });
     const user = userResponse.data.data[0];
     const tokens = loadTokens();
     if (tokens && user.id === tokens.broadcaster_id) {
@@ -1217,12 +1220,7 @@ app.get('/callback', async (req, res) => {
 
     const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
 
-    const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
-      headers: {
-        'Authorization': `Bearer ${response.data.access_token}`,
-        'Client-ID': CLIENT_ID
-      }
-    });
+    const userResponse = await twitchApi.get('/users', { auth: { token: response.data.access_token } });
 
     const userData = userResponse.data.data[0];
     const broadcasterUserId = userData.id;
@@ -1271,10 +1269,12 @@ app.get('/token', async (req, res) => {
     const tokens = loadTokens();
     // Einmal je Herkunft loggen, damit sichtbar wird, welche Origin die Widgets tatsächlich senden.
     logIfChanged(`token-origin:${req.headers.origin || '-'}`, `[Token] Ausgabe an Widget-Herkunft: ${req.headers.origin || '(keine Origin)'}`);
+    // expires_at: Widgets holen sich rechtzeitig einen neuen Token (der Server erneuert TOKEN_PROACTIVE_REFRESH_MS vor Ablauf)
     res.json({
       access_token: accessToken,
       broadcaster_id: tokens.broadcaster_id,
-      client_id: CLIENT_ID
+      client_id: CLIENT_ID,
+      expires_at: new Date(tokenStore.expiresAt()).toISOString(),
     });
   } catch (err) {
     console.error('Token-Endpoint Fehler:', err.message);
@@ -1357,13 +1357,10 @@ app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) =>
 
 app.get('/api/twitch/prediction/current', async (req, res) => {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
 
-    const response = await axios.get(
-      `https://api.twitch.tv/helix/predictions?broadcaster_id=${tokens.broadcaster_id}&first=1`,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } }
-    );
+    const response = await twitchApi.get(`/predictions?broadcaster_id=${tokens.broadcaster_id}&first=1`);
 
     const predictions = response.data.data;
     if (!predictions || predictions.length === 0) {
@@ -1426,10 +1423,9 @@ async function pollStreamViewers() {
     return;
   }
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-    const res = await axios.get(`https://api.twitch.tv/helix/streams?user_id=${tokens.broadcaster_id}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } });
+    const res = await twitchApi.get(`/streams?user_id=${tokens.broadcaster_id}`);
     const live = res.data?.data?.[0];
     const isLive = Boolean(live && live.type === 'live');
     Object.assign(streamViewers, { live: isLive, viewers: isLive ? live.viewer_count : null, updatedAt: new Date().toISOString() });
@@ -1656,6 +1652,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     ha_webhook_configured: Boolean(HA_WEBHOOK_URL),
     category: currentCategory,
     stream: overviewStream(),
+    twitch_api: twitchApi.stats(),
     recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
       type: e.type,
       count: e.count,
@@ -2109,21 +2106,19 @@ function connectEventSub(reconnectUrl = null) {
   });
 }
 
+// EventSub-Abo über die gemeinsame Twitch-API (Drosselung, Token; ADR 0024)
+async function createEventSubSubscription(sessionId, type, version, condition) {
+  await getValidAccessToken();
+  return twitchApi.post('/eventsub/subscriptions',
+    { type, version, condition, transport: { method: 'websocket', session_id: sessionId } },
+    { headers: { 'Content-Type': 'application/json' } });
+}
+
 async function subscribeToRaid(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'channel.raid',
-        version: '1',
-        condition: { to_broadcaster_user_id: tokens.broadcaster_id },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'channel.raid', '1', { to_broadcaster_user_id: tokens.broadcaster_id });
     console.log('Raid-Subscription aktiv');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.raid:', err.response?.data || err.message);
@@ -2133,19 +2128,9 @@ async function subscribeToRaid(sessionId) {
 // Twitch erlaubt je Abo nur from_ oder to_broadcaster_user_id, deshalb ein zweites Abo. Ein Raid beendet die Stream-Erfassung (ADR 0019).
 async function subscribeToOutgoingRaid(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'channel.raid',
-        version: '1',
-        condition: { from_broadcaster_user_id: tokens.broadcaster_id },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'channel.raid', '1', { from_broadcaster_user_id: tokens.broadcaster_id });
     console.log('Subscription für ausgehende Raids aktiv');
   } catch (err) {
     console.error('Fehler beim Abonnieren der ausgehenden Raids:', err.response?.data || err.message);
@@ -2154,19 +2139,9 @@ async function subscribeToOutgoingRaid(sessionId) {
 
 async function subscribeToStreamOffline(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'stream.offline',
-        version: '1',
-        condition: { broadcaster_user_id: tokens.broadcaster_id },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'stream.offline', '1', { broadcaster_user_id: tokens.broadcaster_id });
     console.log('Stream-Offline-Subscription aktiv (für die Statistik)');
   } catch (err) {
     console.error('Fehler beim Abonnieren von stream.offline:', err.response?.data || err.message);
@@ -2176,12 +2151,7 @@ async function subscribeToStreamOffline(sessionId) {
 // Nur für die Statistik: Fehlt ein Scope, steht das einmal im Fehlerprotokoll, der Rest läuft weiter.
 async function subscribeForStats(sessionId, type, condition) {
   try {
-    const accessToken = await getValidAccessToken();
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      { type, version: '1', condition, transport: { method: 'websocket', session_id: sessionId } },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, type, '1', condition);
     console.log(`${type}-Subscription aktiv (für die Statistik)`);
   } catch (err) {
     console.error(`Fehler beim Abonnieren von ${type}:`, err.response?.data || err.message);
@@ -2221,10 +2191,9 @@ function recordPredictionEnd(evt) {
 // Beim Verbinden: Ereignisse während einer Lücke könnten fehlen (ADR 0019).
 async function syncStreamWithTwitch() {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-    const res = await axios.get(`https://api.twitch.tv/helix/streams?user_id=${tokens.broadcaster_id}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } });
+    const res = await twitchApi.get(`/streams?user_id=${tokens.broadcaster_id}`);
     const live = res.data?.data?.[0];
     streamSession.reconcile(live && live.type === 'live' ? { id: live.id, startedAt: live.started_at } : null);
   } catch (err) {
@@ -2234,22 +2203,9 @@ async function syncStreamWithTwitch() {
 
 async function subscribeToChat(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'channel.chat.message',
-        version: '1',
-        condition: {
-          broadcaster_user_id: tokens.broadcaster_id,
-          user_id: tokens.broadcaster_id
-        },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'channel.chat.message', '1', { broadcaster_user_id: tokens.broadcaster_id, user_id: tokens.broadcaster_id });
     console.log('Chat-Message-Subscription aktiv (für Mod-Befehle & Whitelist)');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.chat.message:', err.response?.data || err.message);
@@ -2258,19 +2214,9 @@ async function subscribeToChat(sessionId) {
 
 async function subscribeToStreamOnline(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'stream.online',
-        version: '1',
-        condition: { broadcaster_user_id: tokens.broadcaster_id },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'stream.online', '1', { broadcaster_user_id: tokens.broadcaster_id });
     console.log('Stream-Online-Subscription aktiv (für Whitelist-Reset & Sub-Goal-Refresh)');
   } catch (err) {
     console.error('Fehler beim Abonnieren von stream.online:', err.response?.data || err.message);
@@ -2279,23 +2225,13 @@ async function subscribeToStreamOnline(sessionId) {
 
 async function subscribeToSubscriptions(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-    const headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' };
     const condition = { broadcaster_user_id: tokens.broadcaster_id };
 
     const subTypes = ['channel.subscribe', 'channel.subscription.gift', 'channel.subscription.message'];
     for (const type of subTypes) {
-      await axios.post(
-        'https://api.twitch.tv/helix/eventsub/subscriptions',
-        {
-          type,
-          version: '1',
-          condition,
-          transport: { method: 'websocket', session_id: sessionId }
-        },
-        { headers }
-      );
+      await createEventSubSubscription(sessionId, type, '1', condition);
       console.log(`${type}-Subscription aktiv`);
     }
   } catch (err) {
@@ -2305,22 +2241,9 @@ async function subscribeToSubscriptions(sessionId) {
 
 async function subscribeToChatNotifications(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'channel.chat.notification',
-        version: '1',
-        condition: {
-          broadcaster_user_id: tokens.broadcaster_id,
-          user_id: tokens.broadcaster_id
-        },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'channel.chat.notification', '1', { broadcaster_user_id: tokens.broadcaster_id, user_id: tokens.broadcaster_id });
     console.log('Chat-Notification-Subscription aktiv (löst Sub-/Gift-Effekte aus, sobald die Meldung im Chat erscheint)');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.chat.notification (ohne diese Subscription gibt es KEINE Sub-/Gift-Effekte!):', err.response?.data || err.message);
@@ -2413,22 +2336,9 @@ function describeSubNotice(info) {
 
 async function subscribeToFollows(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'channel.follow',
-        version: '2',
-        condition: {
-          broadcaster_user_id: tokens.broadcaster_id,
-          moderator_user_id: tokens.broadcaster_id
-        },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'channel.follow', '2', { broadcaster_user_id: tokens.broadcaster_id, moderator_user_id: tokens.broadcaster_id });
     console.log('Follow-Subscription aktiv');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.follow:', err.response?.data || err.message);
@@ -2454,12 +2364,11 @@ async function sendChatMessage(text, replyToMessageId = null, feature = null, op
   }
   const message = cut((options.broadcasterPrefix || '') + text);
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
     const body = { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message };
     if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
-    const response = await axios.post('https://api.twitch.tv/helix/chat/messages', body,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
+    const response = await twitchApi.post('/chat/messages', body, { headers: { 'Content-Type': 'application/json' } });
     return checkChatSendResult(response, message, logPrefix);
   } catch (err) {
     console.error(`${logPrefix}Fehler beim Senden in den Chat:`, err.response?.data || err.message, '– Text:', message);
@@ -2483,16 +2392,9 @@ async function sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix) {
   if (!tokens) return 'fallback';
   const body = { broadcaster_id: tokens.broadcaster_id, sender_id: bot.bot_id, message };
   if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
-  const post = async token => axios.post('https://api.twitch.tv/helix/chat/messages', body,
-    { headers: { 'Authorization': `Bearer ${token}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } });
   try {
-    let response;
-    try {
-      response = await post(await getAppAccessToken());
-    } catch (err) {
-      if (err.response?.status !== 401) throw err;
-      response = await post(await getAppAccessToken(true));   // App-Token abgelaufen oder widerrufen: einmal neu
-    }
+    // App-Token; bei 401 holt twitchApi einmal einen neuen (abgelaufen oder widerrufen)
+    const response = await twitchApi.post('/chat/messages', body, { auth: 'app', headers: { 'Content-Type': 'application/json' } });
     const sent = checkChatSendResult(response, message, logPrefix);
     if (sent) stats.count('bot_messages');
     return sent;
@@ -2508,24 +2410,14 @@ async function sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix) {
 
 async function sendShoutout(toBroadcasterId, toBroadcasterName) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
 
-    await axios.post(
-      'https://api.twitch.tv/helix/chat/shoutouts',
-      null,
-      {
-        params: {
-          from_broadcaster_id: tokens.broadcaster_id,
-          to_broadcaster_id: toBroadcasterId,
-          moderator_id: tokens.broadcaster_id
-        },
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Client-ID': CLIENT_ID
-        }
-      }
-    );
+    // 429 heißt hier „Shoutout-Wartezeit läuft“, nicht „zu viele Anfragen“: nicht warten und neu versuchen
+    await twitchApi.post('/chat/shoutouts', null, {
+      params: { from_broadcaster_id: tokens.broadcaster_id, to_broadcaster_id: toBroadcasterId, moderator_id: tokens.broadcaster_id },
+      retryOn429: false,
+    });
     console.log(`Shoutout erfolgreich gesendet für @${toBroadcasterName}`);
     return true;
   } catch (e) {
@@ -2832,13 +2724,12 @@ function formatDateDe(iso) {
 // game: aktuelle Kategorie des Kanals (/helix/channels), bei Offline-Kanälen meist das zuletzt gestreamte Spiel.
 // Wirft bei einem API-Fehler.
 async function getChannelActivity(userId) {
-  const accessToken = await getValidAccessToken();
-  const headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID };
+  await getValidAccessToken();
   const id = encodeURIComponent(userId);
   const [streamRes, videoRes, channelRes] = await Promise.all([
-    axios.get(`https://api.twitch.tv/helix/streams?user_id=${id}`, { headers }),
-    axios.get(`https://api.twitch.tv/helix/videos?user_id=${id}&type=all&sort=time&first=20`, { headers }),
-    axios.get(`https://api.twitch.tv/helix/channels?broadcaster_id=${id}`, { headers })
+    twitchApi.get(`/streams?user_id=${id}`),
+    twitchApi.get(`/videos?user_id=${id}&type=all&sort=time&first=20`),
+    twitchApi.get(`/channels?broadcaster_id=${id}`)
   ]);
 
   const channelGame = channelRes.data.data?.[0]?.game_name || null;
@@ -2904,10 +2795,8 @@ async function handleRaidEvent(evt) {
   console.log(' Whitelist-Konsolenbefehl:', `whitelist add ${fromId} ${fromName}`);
   console.log(' Rohes Event-Objekt:', JSON.stringify(evt, null, 2));
 
-  let headers;
   try {
-    const accessToken = await getValidAccessToken();
-    headers = { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID };
+    await getValidAccessToken();
   } catch (err) {
     console.error('Konnte Access-Token für Raid-Verarbeitung nicht laden:', err.message);
     return;
@@ -2919,8 +2808,8 @@ async function handleRaidEvent(evt) {
 
   try {
     const [chanRes, streamRes] = await Promise.all([
-      axios.get(`https://api.twitch.tv/helix/channels?broadcaster_id=${fromId}`, { headers }),
-      axios.get(`https://api.twitch.tv/helix/streams?user_id=${fromId}`, { headers })
+      twitchApi.get(`/channels?broadcaster_id=${fromId}`),
+      twitchApi.get(`/streams?user_id=${fromId}`)
     ]);
 
     game = chanRes.data.data[0]?.game_name || null;
@@ -3060,10 +2949,9 @@ function setCurrentCategory(name, source) {
 // Kategorie beim Verbindungsaufbau holen; danach hält channel.update sie aktuell.
 async function refreshChannelCategory() {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-    const res = await axios.get(`https://api.twitch.tv/helix/channels?broadcaster_id=${tokens.broadcaster_id}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID } });
+    const res = await twitchApi.get(`/channels?broadcaster_id=${tokens.broadcaster_id}`);
     setCurrentCategory(res.data?.data?.[0]?.game_name || null, 'Abruf');
   } catch (err) {
     console.warn('[Kategorie] Abruf der Twitch-Kategorie gescheitert:', err.response?.data || err.message);
@@ -3072,19 +2960,9 @@ async function refreshChannelCategory() {
 
 async function subscribeToChannelUpdate(sessionId) {
   try {
-    const accessToken = await getValidAccessToken();
+    await getValidAccessToken();
     const tokens = loadTokens();
-
-    await axios.post(
-      'https://api.twitch.tv/helix/eventsub/subscriptions',
-      {
-        type: 'channel.update',
-        version: '2',
-        condition: { broadcaster_user_id: tokens.broadcaster_id },
-        transport: { method: 'websocket', session_id: sessionId }
-      },
-      { headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-ID': CLIENT_ID, 'Content-Type': 'application/json' } }
-    );
+    await createEventSubSubscription(sessionId, 'channel.update', '2', { broadcaster_user_id: tokens.broadcaster_id });
     console.log('Channel-Update-Subscription aktiv (Kategorie für das UBOAT-Soldbuch)');
   } catch (err) {
     console.error('Fehler beim Abonnieren von channel.update:', err.response?.data || err.message);

@@ -5,7 +5,7 @@ Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`u
 ## 1. Datenfluss
 
 ```
-Widget --GET /token, /api/...--> server.js --> Twitch Helix API
+Widget --GET /token, /api/...--> server.js --twitchApi (Drosselung 3/s im Schnitt, Spitze 20, 200/min; ADR 0024)--> Twitch Helix API
 server.js --alle 30 s, solange live: GET /helix/streams--> streamViewers (RAM) + Minutenverlauf in stream_stats.json ; Widget --GET /api/twitch/stream--> letzter Stand, ohne Twitch-Anfrage (ADR 0023)
 Twitch --EventSub WebSocket--> server.js
 server.js --scheduleEffect()--> effectQueue --POST--> HA_WEBHOOK_URL
@@ -26,7 +26,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 
 | Bereich | Funktionen / Zustand |
 |---|---|
-| Tokens | `loadTokens`, `saveTokens`, `getValidAccessToken` |
+| Tokens und Twitch-API (ADR 0024) | `server.js`: `readTokensFile`, `loadTokens`/`saveTokens` (aus dem und in den Arbeitsspeicher, gespeichert atomar), `getValidAccessToken`, `createEventSubSubscription`, Zeitgeber für die Erneuerung vor Ablauf; RAM: `tokenStore`, `twitchApi`, `tokenProactiveRetryAt`. `lib/twitch-api.js`: `createTokenStore` (`get`, `set`, `expiresAt`, `refresh` – nur eine zur Zeit, `getValidAccessToken`), `createRateLimiter` (`acquire`, `stats`), `createTwitchApi` (`get`, `post`, `patch`, `delete`, `stats`). Alle Helix-Anfragen laufen über `twitchApi` |
 | Zugriffsschutz (ADR 0013) | `isAllowedOrigin` (Browser-Herkunft), `isLoopbackRequest` (Aufruf vom eigenen Rechner), `hasLoopbackHost` (Host-Header, gegen DNS-Rebinding); Middleware für Herkunftsprüfung, CORS und `Cache-Control: no-store` |
 | Login (ADR 0013, 0017) | `requireLocalRequest` (nur lokal für `/login`, `/login-bot`, `/callback`), `createLoginState`, `takeLoginState`; RAM: `pendingLogins` (state → Art, einmal gültig) |
 | Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLastError` |
@@ -60,7 +60,7 @@ Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`
 
 | Datei | Struktur |
 |---|---|
-| `tokens.json` | `{access_token, refresh_token, broadcaster_id, broadcaster_name, obtained_at, expires_in, expires_at}` |
+| `tokens.json` | `{access_token, refresh_token, broadcaster_id, broadcaster_name, obtained_at, expires_in, expires_at}`; nur beim Start gelesen, danach im Arbeitsspeicher; geschrieben über `tokens.json.tmp` (ADR 0024) |
 | `raids.json` | `{ "<Periode>": { "<raiderId>": {name, count, totalViewers} } }`, Periode bis 2026 je Quartal (z. B. `2026-Q4`), ab 2027 je Jahr (z. B. `2027`), ADR 0012 |
 | `whitelist.json` | `{ "<userId>": "<userName>" }` |
 | `subgoal_cache.json` | `{current, target, title, goalId, status, lastUpdated}` |
@@ -94,10 +94,10 @@ Zugriffsschutz (ADR 0013):
 | `/login` | Redirect zu Twitch OAuth (`SCOPES`, `+` wird zu Leerzeichen; `state`) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/login-bot` | Redirect zu Twitch OAuth für das Bot-Konto (`BOT_SCOPES`, `force_verify`, `state`; ADR 0017) | 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/callback?code=&state=` | `state` von `/login`: tauscht Code gegen Tokens, schreibt `tokens.json`, startet EventSub falls nicht verbunden. `state` von `/login-bot`: schreibt nur `bot.json`. Jeder `state` gilt einmal, 10 min | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 400 ohne gültigen `state` (nichts gespeichert), ohne `code`, bei Bot-Login mit Broadcaster-Konto oder fehlenden Scopes; 500 bei Fehler |
-| `/token` | `{access_token, broadcaster_id, client_id}`; loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
+| `/token` | `{access_token, broadcaster_id, client_id, expires_at}` (`expires_at` ISO-Zeit, seit ADR 0024; der Server erneuert 10 min vor Ablauf, Widgets holen sich danach einen neuen Token); loggt einmal je Herkunft `[Token] Ausgabe an Widget-Herkunft: …` | 401 `{error, hint}`; 403 bei Aufruf aus dem Netzwerk oder fremdem Host |
 | `/status` | `{authenticated, broadcaster_id, broadcaster_name, token_valid, expires_in_seconds, expires_in_minutes, auto_refresh, eventsub_connected, raid_queue_length, whitelist_count, effect_mode, effect_queue_length, allowed_origins, modules, bot_configured, bot_login, bot_features, bdu_widget_connected, bdu_silence_until, uboat_enabled, uboat_active, uboat_save, uboat_saved_at, pid, started_at}` (`modules`: `{bdu, uboat}` Modul-Schalter; `bot_*`: Bot-Account laut `bot.json` und `BOT_FEATURES`; `uboat_enabled`: `UBOAT_SAVES_DIR` gesetzt; `uboat_active`: Kategorie ist UBOAT; `uboat_saved_at`: Änderungszeit des gelesenen Spielstands als ISO-Zeit oder `null`; `bdu_silence_until`: `null`, ISO-Zeit oder „bis Streamstart“; `pid`: Prozess-ID, `started_at`: Startzeit als ISO-Zeit, um bei mehreren Prozessen den antwortenden zu erkennen); ohne Tokens `{authenticated:false, message, pid, started_at}` | – |
 | `/TwitchCompanionAdmin` | Webkonsole: statische Dateien aus `public/admin/` (leitet auf dieselbe Adresse mit `/` am Ende; Groß-/Kleinschreibung egal), mit `Content-Security-Policy` ohne Einbettung. Nur lokal | 403 bei Aufruf aus dem Netzwerk oder fremdem Host; 404 außerhalb von `public/admin` |
-| `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), ha_webhook_configured (nur ja/nein, nie die Adresse), category, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}, stream{status, started_at, ended_at, closes_at, close_reason, report_id, report_deleted, warnings}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
+| `/api/admin/overview` | Felder von `/status` ohne `allowed_origins` und `broadcaster_id`, dazu `{version, port, poll_ms, can_restart (Start über AuthServer.cmd), ha_webhook_configured (nur ja/nein, nie die Adresse), category, recent_effects[{type, count, userName, giftCount, skipped, timestamp}] (letzte 5, neuester zuerst), subgoal{current, target, title, status, lastUpdated}, stream{status, started_at, ended_at, closes_at, close_reason, report_id, report_deleted, warnings, viewers}, twitch_api{last_minute, per_minute, per_second, burst, queued, waited, twitch{limit, remaining, reset_at, seen_at}}}`; ohne Tokens `authenticated:false` und die Laufzeitwerte. Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/stream` | Server-Sent Events für den Live-Log: `retry: 5000`, Ereignis `hello` `{pid, started_at}`, dann der Puffer und jede neue Zeile als `line` `{id, at, level: info/warn/error, text}`, Kommentar-Ping alle 30 s. Texte ohne Secrets, Tokens, Webhook-Adresse und private Adressen | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/log/errors` | `{entries: [{at, pid, text}] (neuester zuerst, höchstens 1000), limit}` aus `error_log.json` | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
 | `/api/admin/stats` | `{enabled, instance: {started_at, uptime_seconds, metrics: [{key, label, value}]}, stream: {status, started_at, ended_at, offline_at, closes_at, close_reason, aborted, late_start, duration_seconds, interruptions, interruption_seconds, categories, tags, unique_chatters, top_chatters, metrics, report_id[, report_deleted]}}` (`report_id` ist `null`, wenn der Bericht gelöscht wurde). Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll | 403 bei Aufruf aus dem Netzwerk, fremdem Host oder fremder Herkunft |
@@ -203,6 +203,9 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 | Name | Wert | Bedeutung |
 |---|---|---|
+| `TWITCH_API_PER_SECOND` / `TWITCH_API_BURST` / `TWITCH_API_PER_MINUTE` | 3 / 20 / 200 | Drosselung aller Helix-Anfragen: im Schnitt 3 je Sekunde, Spitze 20 auf einmal, hart 200 je gleitender Minute (ADR 0024). Umgebungsvariable `TWITCH_COMPANION_NO_THROTTLE=1` schaltet sie ab, nur für Tests |
+| `TWITCH_API_MAX_RETRY_WAIT_MS` | 60000 | bei 429 höchstens so lange auf den Reset warten, dann einmal neu versuchen |
+| `TOKEN_REFRESH_BUFFER_MS` / `TOKEN_PROACTIVE_REFRESH_MS` / `TOKEN_PROACTIVE_RETRY_MS` / `TOKEN_CHECK_INTERVAL_MS` | 5 min / 10 min / 10 min / 60 s | Anfrage erneuert selbst ab 5 min vor Ablauf; der Server erneuert von sich aus ab 10 min vor Ablauf, nach einem Fehlschlag erst 10 min später wieder; Prüftakt |
 | `RAIDSTATS_COOLDOWN_MS` | 30000 | Abstand zwischen `!raidstats` |
 | `PRIVACY_COMMAND` / `PRIVACY_ANON_NAME` / `PRIVACY_COMMAND_COOLDOWN_MS` | `!privat` / `anonymer Schlaumeier` / 10000 | Befehl, Anzeigename anonymisierter Chatter, Abklingzeit je Zuschauer (ADR 0022) |
 | `PRIVACY_FILE` / `PRIVACY_OPTOUTS_PATH` | `./privacy_optouts.json` / `/api/privacy/optouts` | Liste und Widget-Endpunkt; Antworttexte in `PRIVACY_TEXT_ON` und `PRIVACY_TEXT_OFF` |
