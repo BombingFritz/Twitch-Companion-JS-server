@@ -4,6 +4,8 @@ Gegliedert bei der Inventur am 14.11.2026 (Aufräumgruppe 1). Erledigte und übe
 
 ## 1. Live-Abnahmen (in den nächsten Streams prüfen)
 
+Checkliste als Issue: #56.
+
 - **Chat-Ankündigungen:** Feldnamen in `handleChatNotification` gegen reale Twitch-Events.
   - Belegt (03.11.2026): `notice_type` `resub` (6×) und `sub_gift` ohne `community_gift_id` (1×) lösten je genau einen Effekt aus; beim Einzel-Gift kein zusätzlicher Sub-Effekt für den Empfänger; die Lichter reagierten.
   - Belegt (11.11.2026, Co-Stream mit geteiltem Chat): `community_sub_gift` mit `total` 2 löste genau einen Gift-Effekt aus und zählte 2.
@@ -23,6 +25,8 @@ Gegliedert bei der Inventur am 14.11.2026 (Aufräumgruppe 1). Erledigte und übe
 
 ## 2. Sicherheit und Datenschutz
 
+Issues: Sicherheitsprüfung #57, Datenschutz #58.
+
 - **Erreichbarkeit im Netzwerk (Entscheidung Nutzer, 14.11.2026):** Der Server lauscht bisher auf allen Netzwerkschnittstellen. Home Assistant fragt ihn nicht ab, es bekommt nur Webhooks; kein anderes Gerät braucht ihn. Deshalb wird er nur noch an `127.0.0.1` gebunden (eigener PR). Später, z. B. für kleine ESP32-Bildschirme, die direkt oder über Home Assistant angesteuert werden: Zugang aus dem LAN/WLAN in den Einstellungen an- und abschaltbar und nur mit Sicherheitsmechanismus (Schlüssel o. Ä.) [Umsetzung offen].
 - **Herkunft `null` und Zugangsschlüssel für Widgets (Nahziel, Nutzer 14.11.2026):** Widgets, die per `file:///` in OBS eingebunden sind, melden die Herkunft `null`; der Server muss sie erlauben. Dieselbe Herkunft kann eine präparierte Webseite über einen abgeschotteten Rahmen vortäuschen und so im Browser des Streaming-PCs `/token` lesen. Nahziel: eine einfache, halbwegs sichere Anmeldung der Widgets mit wenig Bau- und Betriebsaufwand, z. B. ein vom Server erzeugter Widget-Schlüssel, der in der OBS-Adresse des Widgets steht und bei `/token` und den Widget-Endpunkten mitgeschickt wird; ohne Schlüssel kein Token. Betrifft alle Widget-Repositories (Issues dort), braucht ein ADR. Fernziel bleibt, dass der Server die Widgets selbst ausliefert (P3); dann entfällt `null`.
 - **Begrenzung eingehender Anfragen und Abhängigkeiten:** Anfragen an den Server sind nicht begrenzt (ausgehende Twitch-Anfragen seit ADR 0024 schon); `npm audit` ist noch nie gelaufen.
@@ -34,7 +38,7 @@ Gegliedert bei der Inventur am 14.11.2026 (Aufräumgruppe 1). Erledigte und übe
 
 - **`server.js` aufteilen:** rund 3300 Zeilen. Die Größe kostet keine Rechenleistung (Nutzer, 14.11.2026: 0 % CPU, 27 MB Arbeitsspeicher kurz nach dem Start), erschwert aber Übersicht und parallele Arbeit. Erkennbare Bereiche: Webkonsole, Statistik, Widget-Schnittstelle, Twitch-Zugriff (seit ADR 0024 in `lib/twitch-api.js`), EventSub, Chat-Befehle, Raid und Shoutouts. Vorgehen: schrittweise nach `lib/`, jeweils wenn ein Bereich ohnehin angefasst wird, ohne gleichzeitig das Verhalten neu zu gestalten.
 - **Wett-Endpunkt nach ADR 0023:** `/api/twitch/prediction/current` fragt Twitch noch bei jedem Abruf. Ziel: Stand der Wette über `channel.prediction.begin/progress/lock/end` mitführen (Scope `channel:read:predictions` ist vorhanden), Endpunkt gibt den letzten Stand mit Zeitstempel aus; ebenso für Abstimmungen (`channel:read:polls` vorhanden). Dazu Glückspilz des Abends (#44) und Chat-Zeilen über den Server (#50).
-- **Sub-Goal über EventSub:** `refreshSubGoalCache` fragt Twitch bei jedem Sub-Ereignis, bei einem Gift-Bomb mehrfach. Ziel: `channel.goal.begin/progress/end` abonnieren (Scope `channel:read:goals` vorhanden) und den Stand aus den Ereignissen führen.
+- **Sub-Goal über EventSub (#60):** `refreshSubGoalCache` fragt Twitch bei jedem Sub-Ereignis, bei einem Gift-Bomb mehrfach. Ziel: `channel.goal.begin/progress/end` abonnieren (Scope `channel:read:goals` vorhanden) und den Stand aus den Ereignissen führen.
 - **`events.json`:** wird bei jedem Effekt geschrieben, die Übersicht der Webkonsole liest die Datei alle 5 s. Im Arbeitsspeicher halten und gebündelt schreiben (Projektordner in der Cloud).
 - **`widget-log`-Anfragen:** Das Wetten-Widget schickt Testmeldungen an `/widget-log/…`, im Live-Log erscheinen sie als 404. Entweder nimmt der Server sie als `[Widget] …` an, oder das Widget lässt sie weg, sobald der Server die Wetten auswertet (#50).
 - **Tests mit festen Wartezeiten:** `shoutout-test` und `uboat-test` warten seit #54 auf das Ergebnis; weitere Tests nutzen feste Wartezeiten (z. B. `topics-test`, 40 s) und können auf langsamen Rechnern scheitern.
@@ -47,7 +51,7 @@ Gegliedert bei der Inventur am 14.11.2026 (Aufräumgruppe 1). Erledigte und übe
 - **Glückspilz des Abends (#44):** Wertung als Summe der Auszahlungen oder Reingewinn.
 - **Datenschutz:** Felder und Fristen (Abschnitt 2, Datenkatalog Abschnitt 6).
 - **Einstellungen statt Konstanten (Nutzer, 14.11.2026):** Raid-Shoutout-Schwelle (`RAID_SHOUTOUT_MIN_VIEWERS`, heute 3), Shoutout- und Begrüßungstexte, dazu aus den Webkonsolen-Ideen: Auto-Shoutout an/aus, Raid-Begrüßung an/aus, Timer und Limits, manueller Token-Refresh. Gehört in den gemeinsamen Einstellungs-Reiter für Module und Plugins (AGENTS.md).
-- **Review der Testpraxis (Nutzer, 13.11.2026):** Seit `ci/tests` laufen lokal vor jedem Commit nur `node --check` und die Tests der geänderten Bereiche, die volle Testreihe nur in der CI (AGENTS.md, Pflicht-Checks). Nach etwa zehn weiteren Versionen prüfen, ob das gut funktioniert: Wie oft war die CI rot, obwohl die gezielten lokalen Tests grün waren? Sind Fehler auf `main` gelandet, die die volle lokale Testreihe gefunden hätte? Wie viel Zeit hat es gespart? Danach beibehalten, anpassen oder zurück zur vollen lokalen Testreihe. Bisher (14.11.2026): Die CI fand zwei zu knapp getaktete Tests, die lokal nie aufgefallen waren.
+- **Review der Testpraxis (Nutzer, 13.11.2026; #59):** Seit `ci/tests` laufen lokal vor jedem Commit nur `node --check` und die Tests der geänderten Bereiche, die volle Testreihe nur in der CI (AGENTS.md, Pflicht-Checks). Nach etwa zehn weiteren Versionen prüfen, ob das gut funktioniert: Wie oft war die CI rot, obwohl die gezielten lokalen Tests grün waren? Sind Fehler auf `main` gelandet, die die volle lokale Testreihe gefunden hätte? Wie viel Zeit hat es gespart? Danach beibehalten, anpassen oder zurück zur vollen lokalen Testreihe. Bisher (14.11.2026): Die CI fand zwei zu knapp getaktete Tests, die lokal nie aufgefallen waren.
 - **Effekt-Queue nur für Twitch-Events (früher K4):** Stream-Deck-Lichteffekte und ESP32-Events gehen direkt an Home Assistant. Die Queue schützt deshalb nicht vor Überlappungen mit diesen Effekten, und `off` schaltet nur die Twitch-Effekte stumm. Ob die Entkopplung in Home Assistant passieren soll (z. B. Script-Modus `queued`) oder Events in den Server eingespeist werden sollen, ist [UNGEKLÄRT].
 - **Lizenz:** entschieden in der Projektvorgabe „Lizenz- und Entwicklungskontext“ (12.11.2026; internes Dokument beim Nutzer, nicht im Repository): Server Ziel PolyForm Perimeter 1.0.1, Widgets und Stream-Deck-Plugin als eigenständige Module unter MIT. Offen ist nur die Umstellung im Repository (`LICENSE`, `package.json` sagt noch `ISC`) als eigener Schritt.
 
