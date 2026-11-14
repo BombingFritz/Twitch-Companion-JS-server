@@ -27,12 +27,38 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 
 ### Senden (`sendChatMessage(text, replyToMessageId, feature)`)
 - Kürzt auf `CHAT_MAX_CHARS` (500).
-- `feature` in `BOT_FEATURES` (`['bdu', 'uboat']`) und Bot eingerichtet: Senden mit App-Token, `sender_id` = Bot-ID, `broadcaster_id` = Broadcaster, ggf. `reply_parent_message_id`.
+- Absender der Funktion `feature` ist der Bot (seit 14.11.2026 einstellbar, siehe „Absender je Funktion“; vorher fest `BOT_FEATURES` = `['bdu', 'uboat']`) und Bot eingerichtet: Senden mit App-Token, `sender_id` = Bot-ID, `broadcaster_id` = Broadcaster, ggf. `reply_parent_message_id`.
   - HTTP-Fehler (auch nach dem einen erneuten Versuch bei 401): Konsolenwarnung mit Status und Twitch-Meldung, dann Rückfall: Senden als Broadcaster. Bei 403 zusätzlich Hinweis „Ist DerBdu Moderator (/mod DerBdu) und ist die Freigabe noch gültig (/login-bot)?“.
   - Antwort `is_sent: false`: Konsolenwarnung mit `drop_reason`, kein Rückfall.
 - Sonst: Senden als Broadcaster wie bisher (Raid-, Whitelist-Shoutouts und alle übrigen Nachrichten).
 - `sendBduChatMessage` nutzt `sendChatMessage(…, 'bdu', {broadcasterPrefix})`; das Soldbuch `sendChatMessage(…, 'uboat')`.
 - `options.broadcasterPrefix` steht nur vor dem Text, wenn der Broadcaster sendet. BdU-Antworten kommen von DerBdu also ohne „FT vom BdU: “ (Nutzer, 07.11.2026), im Rückfall mit. Gekürzt wird je Weg auf 500 Zeichen inklusive Präfix.
+
+### Absender je Funktion (Nutzer, 14.11.2026; Issue #50, Spec `wetten-abstimmungen.md`, Schritt 3a)
+- Je Chat-Funktion ist einstellbar, ob der Bot oder der Broadcaster sendet:
+  - `bdu`: BdU-Chat
+  - `uboat`: UBOAT-Soldbuch
+  - `raid`: Raid-Begrüßung
+  - `whitelist`: Whitelist-Begrüßung
+  - `raidstats`: `!raidstats`
+  - `privacy`: Antwort auf `!privat`
+  - Mit Schritt 3b kommen das Wett- und das Abstimmungs-Ergebnis dazu.
+- Vorgabe wie bisher (`CHAT_SENDER_DEFAULTS`): BdU und Soldbuch über den Bot, alles andere als Broadcaster.
+- Gespeichert in `chat_senders.json` (`{funktion: 'bot' | 'broadcaster'}`). Eine fehlende oder defekte Datei bzw. ein unbekannter Wert bedeutet: Vorgabe.
+- „Bot“ wirkt nur, wenn ein Bot eingerichtet ist; sonst sendet der Broadcaster. Rückfall bei HTTP-Fehler wie oben.
+- **Konsole:**
+  - `bot sender` zeigt alle Funktionen mit Absender.
+  - `bot sender <funktion> bot|broadcaster` stellt um und speichert.
+- **Webkonsole:** Karte „Chat-Absender“ im Reiter „Einstellungen“, je Funktion eine Auswahl Broadcaster/Bot. Ohne eingerichteten Bot steht dort ein Hinweis, die Auswahl bleibt bedienbar.
+- **`POST /api/admin/chat/sender`** `{feature, sender}`:
+  - Zugriff wie die übrigen schreibenden Webkonsolen-Aufrufe: nur POST mit JSON und eigener Herkunft
+  - Antwort `{ok, changed, chat_senders}`
+  - Unbekannte Funktion oder unbekannter Absender: 400
+- `/status` und `/api/admin/overview`: `bot_features` (Funktionen mit Absender Bot) wie bisher. Neu in der Übersicht ist `chat_senders` (`[{feature, name, sender}]`).
+- Von Claude festgelegt, nicht einzeln zur Wahl gestellt:
+  - Funktionsnamen und Dateiname
+  - Konsolenbefehl unter `bot`
+  - Wett- und Abstimmungs-Ergebnis erst mit 3b
 
 ### Konsole und Status
 - `bot show`: eingerichtet ja/nein, Name und ID, welche Funktionen über den Bot laufen, letzter Sendefehler, Einrichtungshinweis.
@@ -41,10 +67,10 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
 - `/status`: `bot_configured`, `bot_login`, `bot_features`.
 
 ### Konstanten (oben in `server.js`)
-`BOT_FILE = './bot.json'`, `BOT_SCOPES = 'user:bot user:write:chat'`, `BOT_FEATURES = ['bdu', 'uboat']`, `LOGIN_STATE_TTL_MS = 10 min`, `APP_TOKEN_REFRESH_MARGIN_MS = 5 min`.
+`BOT_FILE = './bot.json'`, `BOT_SCOPES = 'user:bot user:write:chat'`, ~~`BOT_FEATURES = ['bdu', 'uboat']`~~ seit 14.11.2026 `CHAT_SENDERS_FILE = './chat_senders.json'`, `CHAT_FEATURES` (Namen), `CHAT_SENDER_DEFAULTS = {bdu: 'bot', uboat: 'bot'}`, `LOGIN_STATE_TTL_MS = 10 min`, `APP_TOKEN_REFRESH_MARGIN_MS = 5 min`.
 
 ## Nicht-Ziele (vorerst)
-- Umstellen per Konsole, welche Funktion über den Bot sendet (Wunsch Nutzer, später).
+- ~~Umstellen per Konsole, welche Funktion über den Bot sendet (Wunsch Nutzer, später).~~ Umgesetzt mit „Absender je Funktion“ (14.11.2026).
 - Flüstern, Empfangen von Chat über den Bot, eigene EventSub-Verbindung des Bots.
 - Prüfen der Moderatorrolle per API (bräuchte zusätzlichen Scope beim Broadcaster); Fehler zeigt sich beim Senden.
 

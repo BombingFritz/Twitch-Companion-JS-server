@@ -102,6 +102,12 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Schlägt das Schalten fehl, springt der Schalter zurück und die Meldung steht darunter. Änderungen an der Konsole zeigt die Seite bei der nächsten Abfrage.
 - Ist `UBOAT_SAVES_DIR` nicht gesetzt, nennt die Zeile das; der Schalter bleibt bedienbar.
 - `POST /api/admin/modules` mit `{module: bdu|uboat, enabled: true|false}`: `{ok:true, changed, modules}`. 400 bei unbekanntem Modul oder wenn `enabled` kein Wahrheitswert ist; sonst dieselben Regeln wie die übrigen POST-Aktionen (403, 415, 413).
+- **Karte „Chat-Absender“** (14.11.2026, Spec `bot-account.md`, „Absender je Funktion“):
+  - je Chat-Funktion eine Auswahl Broadcaster/Bot, Zeilen nach `chat_senders` aus der Übersicht
+  - Ohne eingerichteten Bot steht dort ein Hinweis, die Auswahl bleibt bedienbar.
+  - Wirkung wie `bot sender <funktion> bot|broadcaster`, gespeichert in `chat_senders.json`, über `POST /api/admin/chat/sender`
+  - Schlägt das Umstellen fehl, zeigt die Auswahl danach wieder den Stand des Servers, die Meldung steht darunter.
+  - Die Karte „Bot“ der Übersicht nennt unter „Sendet“ die Funktionen mit Absender Bot.
 
 ## Verhalten Stufe 5: Whitelist
 - **Anzeige:** Liste aller Einträge mit `@Name` und ID, nach Namen sortiert, mit Anzahl und Filterfeld (Name oder ID, nur in der Seite). Die Liste wird beim Öffnen des Reiters geladen und erneut, wenn sich `whitelist_count` in der Übersicht ändert, also auch nach einer Änderung an der Konsole.

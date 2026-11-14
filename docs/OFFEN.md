@@ -87,7 +87,7 @@ Umgesetzt nach `docs/specs/uboat-personalakte.md`, ADR 0016. Befehl bis 06.11.20
 
 ### BdU-Chat und Bot-Account, weitere Ideen
 - BdU-Chat: Das Widget trennt sich beim Ein-/Ausblenden der Quelle bzw. bei manchen Szenenwechseln und verbindet sich neu (OBS lädt die Quelle neu). Erwartet, kein Fehler; in der Zwischenzeit wird `!BdU` still ignoriert. Tageszähler je Kalendertag bleibt (Nutzer, 04.11.2026): Bei Streams über Mitternacht gelten 60 vor und 60 nach 0:00. Zustand im RAM: Limits und Funkstille beginnen nach einem Neustart neu.
-- Bot-Account DerBdu (ADR 0017): sendet BdU- und Soldbuch-Nachrichten mit dem Abzeichen „Chat Bot“ (vom Nutzer bestätigt, 14.11.2026). Raid- und Whitelist-Shoutouts bleiben vorerst beim Broadcaster; später umverteilbar, am liebsten per Konsole (Wunsch Nutzer, noch nicht umgesetzt; Grundlage: `BOT_FEATURES`). Weiterer möglicher Nutzen: Bewertungen per Flüstern an den Bot statt offen im Chat (siehe specs/stream-bericht.md, Spielbewertung).
+- Bot-Account DerBdu (ADR 0017): sendet BdU- und Soldbuch-Nachrichten mit dem Abzeichen „Chat Bot“ (vom Nutzer bestätigt, 14.11.2026). Raid- und Whitelist-Begrüßung, `!raidstats` und die `!privat`-Antwort senden in der Vorgabe der Broadcaster. Seit 14.11.2026 lässt sich das je Funktion per Konsole (`bot sender`) und Webkonsole umstellen (Spec `bot-account.md`, „Absender je Funktion“; Branch `feature/chat-absender`). Weiterer möglicher Nutzen: Bewertungen per Flüstern an den Bot statt offen im Chat (siehe specs/stream-bericht.md, Spielbewertung).
 
 ### Ideen zum Enigma-Widget (Nutzer, 11.11.2026)
 Noch nicht entschieden, nicht spezifiziert. Gegenstück in `docs/OFFEN.md` des Repositorys Uboat-Widget.
