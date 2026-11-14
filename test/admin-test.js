@@ -58,10 +58,23 @@ const realExit = process.exit.bind(process), exits = [];
 if (scenario.startsWith('server-')) process.exit = code => { exits.push(code); };
 if (scenario === 'server-neustart') process.env.TWITCH_COMPANION_SUPERVISED = '1';
 else delete process.env.TWITCH_COMPANION_SUPERVISED;
+// Nach dem Verbindungsaufbau (über 20 Anfragen) ist der Burst-Vorrat leer, jede Anfrage wartet dann etwa 1/3 s.
+// Die Szenarien prüfen Abläufe, nicht die Drosselung; die prüft twitch-api-test.js.
+process.env.TWITCH_COMPANION_NO_THROTTLE = '1';
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const request = (p, headers = {}, method = 'GET', body) => new Promise((res, rej) => {
+// EventSub-Verbindung aufbauen und warten, bis alle Abos und Abfragen danach durch sind.
+// Mehr als 20 Anfragen laufen in die Drosselung (ADR 0024); feste Wartezeiten reichen dann nicht.
+// Letzter Schritt nach session_welcome ist der Stream-Abgleich über helix/streams.
+async function welcome() {
+  const before = fakeStreamRequests;
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
+  const end = Date.now() + 15000;
+  while (fakeStreamRequests === before && Date.now() < end) await sleep(50);
+  await sleep(50);
+}
+const request =(p, headers = {}, method = 'GET', body) => new Promise((res, rej) => {
   http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, r => {
     let d = ''; r.on('data', c => d += c); r.on('end', () => res({ status: r.statusCode, headers: r.headers, body: d }));
   }).on('error', rej).end(body);
@@ -445,8 +458,7 @@ async function effekte() {
 
 async function statistik() {
   let n = 0;
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(100);
+  await welcome();
   const send = (subType, event, id = `s${++n}`) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
   const chat = (login, id, extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `c${n}`, message: { text: 'hallo' }, badges: [], ...extra });
   const notice = (notice_type, extra) => send('channel.chat.notification', { notice_type, broadcaster_user_id: '4711', chatter_user_id: `u${n}`, chatter_user_login: `gast${n}`, chatter_user_name: `gast${n}`, ...extra });
@@ -624,8 +636,7 @@ async function statistik() {
 // !privat (ADR 0022): umschalten, anonymisieren (laufender Stream und Berichte), Liste für Widgets
 async function privat() {
   let n = 0;
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(100);
+  await welcome();
   const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `p${++n}` }, payload: { event } }));
   const chat = (login, id, text = 'hallo', extra = {}) => send('channel.chat.message', { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `m${n}`, message: { text }, badges: [], ...extra });
   const stream = async () => JSON.parse((await request(STATS)).body).stream;
@@ -684,8 +695,7 @@ async function privat() {
 
 // Zuschauerzahl (ADR 0023): Der Server fragt Twitch, Widgets bekommen nur den letzten Stand
 async function zuschauer() {
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(100);
+  await welcome();
   const send = (subType, event, id) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: id }, payload: { event } }));
   const VIEWERS = '/api/twitch/stream';
 
@@ -726,8 +736,7 @@ async function zuschauer() {
 
 // Sub-Goal über EventSub (Issue #60): Stand aus channel.goal.*, keine Abfrage je Sub
 async function subgoal() {
-  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'session_welcome', message_id: 'w' }, payload: { session: { id: 's', keepalive_timeout_seconds: 3600 } } }));
-  await sleep(150);
+  await welcome();
   let n = 0;
   const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `g${++n}` }, payload: { event } }));
   const counter = async () => JSON.parse((await request('/api/twitch/subcounter')).body);
