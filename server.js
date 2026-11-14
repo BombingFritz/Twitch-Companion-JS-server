@@ -83,6 +83,7 @@ const TOKEN_CHECK_INTERVAL_MS = 60 * 1000;
 
 const RAIDSTATS_COOLDOWN_MS = 30 * 1000;
 const RAID_GREETING_MIN_GAP_MS = 90 * 1000;
+const RAID_SHOUTOUT_MIN_VIEWERS = 3;              // Shoutout nach einem Raid erst ab so vielen Zuschauern; später in den Einstellungen (OFFEN.md, Abschnitt 4)
 const RAID_YEARLY_FROM_YEAR = 2027;               // Raid-Statistik ab diesem Jahr je Kalenderjahr statt je Quartal (ADR 0012)
 const SHOUTOUT_ACTIVITY_WINDOW_DAYS = 40;         // Whitelist-Shoutout nur, wenn der Kanal in diesem Zeitraum aktiv war (ADR 0015)
 const SHOUTOUT_ACTIVITY_STRICT = false;           // Testphase: Aktivität unklar (API-Fehler, kein Video) -> trotzdem Shoutout; später true
@@ -175,7 +176,7 @@ const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
 // UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
 const UBOAT_COMMAND = '!soldbuch';                // Vergleich ohne Groß-/Kleinschreibung, "!Soldbuch" geht auch
 const UBOAT_USER_COOLDOWN_MS = 60 * 1000;         // je Zuschauer höchstens eine Antwort pro Minute
-const UBOAT_CATEGORY_NAMES = ['UBOAT'];           // Twitch-Kategorie, in der der Befehl antwortet [UNGEKLÄRT: Name beim ersten Stream prüfen]
+const UBOAT_CATEGORY_NAMES = ['UBOAT'];           // Twitch-Kategorie, in der der Befehl antwortet (Name im Stream vom 11.11.2026 bestätigt)
 const UBOAT_SAVE_SETTLE_MS = 3 * 1000;            // Spielstand erst lesen, wenn er so lange unverändert ist
 const UBOAT_POLL_MS = 60 * 1000;                  // zusätzlich zur Dateibeobachtung
 const UBOAT_KNOWN_GAME_VERSIONS = ['2026.1 Patch 21'];   // Parser daran erprobt; andere: Hinweis in der Konsole
@@ -2880,7 +2881,7 @@ async function handleRaidEvent(evt) {
   } else {
     console.log(`Raid-Begrüßung erfolgreich gesendet für @${fromName}`);
 
-    if (viewers >= 3) {
+    if (viewers >= RAID_SHOUTOUT_MIN_VIEWERS) {
       // Sofort als geshoutet merken, damit die erste Chat-Nachricht des Raiders (Whitelist)
       // keinen zweiten Shoutout versucht, den Twitch mit 429 ablehnt. Scheitert der
       // Raid-Shoutout, wird der Eintrag wieder entfernt.
@@ -2891,7 +2892,7 @@ async function handleRaidEvent(evt) {
         if (!ok && !alreadyMarked) shoutedOutThisSession.delete(fromId);
       }, 2000);
     } else {
-      console.log(`Kein Shoutout – nur ${viewers} Viewer (Schwelle: 3)`);
+      console.log(`Kein Shoutout – nur ${viewers} Viewer (Schwelle: ${RAID_SHOUTOUT_MIN_VIEWERS})`);
     }
   }
 
