@@ -31,6 +31,7 @@ const orig = Module._load;
 Module._load = function (r, ...a) { if (r === 'ws') return FakeWS; if (r === 'axios') return fakeAxios; if (r === 'readline') return { createInterface: () => rl }; return orig.call(this, r, ...a); };
 const realLog = console.log, logs = [];
 console.log = console.warn = console.error = (...a) => logs.push(a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '));
+process.env.TWITCH_COMPANION_NO_THROTTLE = '1';   // nach dem Verbindungsaufbau wartet sonst jede Anfrage; die Drosselung prüft twitch-api-test.js
 require(serverPath);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
