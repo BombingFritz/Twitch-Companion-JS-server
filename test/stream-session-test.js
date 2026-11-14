@@ -293,6 +293,53 @@ check('B10 Älterer abgeschlossener Stand ohne Bericht wird einmal archiviert', 
   check('Z5 Offline: keine neuen Werte', snap(z.session).viewers.peak === 20);
 }
 
+// Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4): Reingewinn = Auszahlungen minus alle Einsätze
+{
+  const priv = new Set();
+  const g = setup({ isPrivate: id => priv.has(id), anonName: 'anonymer Schlaumeier' });
+  const tp = (id, name, used, won) => ({ user_id: id, user_login: name.toLowerCase(), user_name: name, channel_points_used: used, channel_points_won: won });
+  // Topf 1.000: Ja 400 (gewinnt, Quote 2,5), Nein 600
+  const bet = (id, over = {}) => ({ id, status: 'resolved', winning_outcome_id: 'ja', outcomes: [
+    { id: 'ja', channel_points: 400, top_predictors: [tp('1', 'Anna', 300, 750), tp('2', 'Bert', 100, 0)] },
+    { id: 'nein', channel_points: 600, top_predictors: [tp('3', 'Cora', 600, 0)] },
+  ], ...over });
+  g.session.notePrediction(bet('w0'));
+  check('G1 Ohne laufenden Stream: nichts erfasst', snap(g.session).bettors === 0);
+  g.session.onOnline({ id: 's1', startedAt: new Date(START).toISOString() });
+  check('G2 Noch keine Wette: niemand, keine Tipper', snap(g.session).bettors === 0 && snap(g.session).lucky_bettors.length === 0);
+  g.session.notePrediction(bet('w1'));
+  g.session.flush();
+  const b = g.file.data.bettors;
+  check('G3 Reingewinn je Tipper: Gewinn samt Einsatz minus Einsatz; Gewinn 0 beim Sieger → Einsatz × Quote; Verlierer minus Einsatz',
+    b['1'].net === 450 && b['2'].net === 150 && b['2'].won === 250 && b['3'].net === -600 && b['1'].bets === 1, JSON.stringify(b));
+  check('G4 Glückspilz: höchster Reingewinn', JSON.stringify(snap(g.session).lucky_bettors) === '[{"name":"Anna","net":450,"bets":1}]', JSON.stringify(snap(g.session).lucky_bettors));
+  g.session.notePrediction(bet('w1'));
+  check('G5 Dasselbe Ende doppelt: zählt einmal', snap(g.session).lucky_bettors[0].net === 450 && g.file.data.bettors['1'].bets === 1);
+  g.session.notePrediction(bet('w2', { status: 'canceled' }));
+  check('G6 Abgebrochene Wette zählt nicht', snap(g.session).lucky_bettors[0].bets === 1);
+  // Zweite Wette: Bert gewinnt, Anna verliert
+  g.session.notePrediction({ id: 'w3', status: 'resolved', winning_outcome_id: 'b', outcomes: [
+    { id: 'a', channel_points: 300, top_predictors: [tp('1', 'Anna', 300, 0)] },
+    { id: 'b', channel_points: 100, top_predictors: [tp('2', 'Bert', 100, 400)] },
+  ] });
+  // Anna: 450 − 300 = 150; Bert: 150 + 300 = 450
+  check('G7 Summe über den Abend, Name bleibt', JSON.stringify(snap(g.session).lucky_bettors) === '[{"name":"Bert","net":450,"bets":2}]', JSON.stringify(snap(g.session).lucky_bettors));
+  g.session.notePrediction({ id: 'w4', status: 'resolved', winning_outcome_id: 'a', outcomes: [
+    { id: 'a', channel_points: 300, top_predictors: [tp('1', 'Anna', 300, 600)] },
+    { id: 'b', channel_points: 300, top_predictors: [] },
+  ] });
+  check('G8 Gleichstand: alle mit dem höchsten Reingewinn', JSON.stringify(snap(g.session).lucky_bettors.map(x => x.name).sort()) === '["Anna","Bert"]' && snap(g.session).lucky_bettors.every(x => x.net === 450));
+  priv.add('2');
+  check('G9 !privat: bisheriger Eintrag anonymisiert, Zahlen bleiben', g.session.anonymize('2') === true && snap(g.session).lucky_bettors.some(x => x.name === 'anonymer Schlaumeier' && x.net === 450) && !JSON.stringify(g.file.data.bettors).includes('Bert'), JSON.stringify(g.file.data.bettors));
+  g.session.notePrediction({ id: 'w5', status: 'resolved', winning_outcome_id: 'a', outcomes: [{ id: 'a', channel_points: 10, top_predictors: [tp('2', 'Bert', 10, 10)] }] });
+  g.session.flush();
+  check('G10 !privat danach: weiter unter dem anonymen Eintrag, ohne Namen', !JSON.stringify(g.file.data.bettors).includes('Bert') && Object.values(g.file.data.bettors).filter(x => x.name === 'anonymer Schlaumeier').length === 1 && Object.values(g.file.data.bettors).find(x => x.name === 'anonymer Schlaumeier').bets === 3, JSON.stringify(g.file.data.bettors));
+  const loss = setup();
+  loss.session.onOnline({ id: 's2', startedAt: new Date(START).toISOString() });
+  loss.session.notePrediction({ id: 'v1', status: 'resolved', winning_outcome_id: 'a', outcomes: [{ id: 'a', channel_points: 100, top_predictors: [tp('9', 'Ida', 100, 100)] }, { id: 'b', channel_points: 50, top_predictors: [tp('8', 'Jo', 50, 0)] }] });
+  check('G11 Nur Gewinn zählt: kein Glückspilz, wenn niemand im Plus liegt (Reingewinn 0 bzw. negativ)', snap(loss.session).bettors === 2 && snap(loss.session).lucky_bettors.length === 0);
+}
+
 // Robustheit
 ({ session } = setup({ save: () => { throw new Error('Datei gesperrt'); } }));
 let threw = false;

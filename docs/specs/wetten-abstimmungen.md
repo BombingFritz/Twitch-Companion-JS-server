@@ -1,6 +1,6 @@
 # Spec: Wetten und Abstimmungen über den Server
 
-**Status:** Schritt 1 umgesetzt (PR #64), Schritt 2 (PR #66), Schritt 3a (PR #67). Schritt 3b vereinbart und im Branch. Schritt 4 Entwurf. Bezug: Issue #50 (Abschnitt 1), Issue #44 (Glückspilz), ADR 0023.
+**Status:** Schritt 1 umgesetzt (PR #64), Schritt 2 (PR #66), Schritt 3a (PR #67), Schritt 3b (PR #68). Schritt 4 vereinbart und im Branch. Bezug: Issue #50 (Abschnitt 1), Issue #44 (Glückspilz), ADR 0023.
 
 ## Ziel
 Der Server führt den Stand von Wetten (Predictions) und Abstimmungen (Polls) über EventSub mit. Widgets holen ihn beim Server ab, statt Twitch selbst zu fragen. Der Server sendet die Ergebniszeilen in den Chat und ermittelt den Glückspilz des Abends.
@@ -131,14 +131,39 @@ Vereinbart (Nutzer, 14.11.2026). 3a (Absender) ist umgesetzt in PR #67, 3b (Erge
 - **Ort der Schalter** (Nutzer, 14.11.2026): Webkonsole, Reiter „Einstellungen“, und Konsole.
 - **Verspätetes Ende** (Nutzer, 14.11.2026): Bemerkt der Server das Ende erst bei der Kontrolle, sendet er die Zeile verspätet, aber nie zweimal für dieselbe Wette oder Abstimmung. Gesendet wird nur, wenn dieser Serverprozess die Wette bzw. Abstimmung offen gesehen hat; eine schon beendete aus dem Ausgangsstand nach einem Neustart löst nichts aus.
 
-## Schritt 4: Glückspilz des Abends (Entwurf, Issue #44)
-- **Wertung nach Reingewinn** (Nutzer, 14.11.2026): je Wette `channel_points_won − channel_points_used`, über die erfasste Stream-Session summiert.
-- Grundlage sind nur die `top_predictors` aus `channel.prediction.end`, bis zu 10 je Ausgang. Wer außerhalb davon setzt, wird nicht erfasst. Der größte Gewinner einer Wette ist fast immer der Top-Tipper mit dem höchsten Einsatz auf dem Siegerausgang, also enthalten.
-- Gespeichert in `stream_stats.json` (ADR 0019), nach der Regel aus ADR 0022 anonymisierbar.
-- [UNGEKLÄRT] Gleichstand
-- [UNGEKLÄRT] abgebrochene Wetten (vermutlich 0)
-- [UNGEKLÄRT] Untergrenze (zum Beispiel nur mit Reingewinn über 0)
-- [UNGEKLÄRT] Ausgabe: Endpunkt, Chat, Bericht
+## Schritt 4: Glückspilz des Abends (Issue #44)
+Vereinbart (Nutzer, 14.11.2026); im Branch `feature/glueckspilz`.
+
+### Entscheidungen des Nutzers
+- **Wertung nach Reingewinn:** Auszahlungen minus alle Einsätze, auch die verlorenen, über die erfasste Stream-Session summiert.
+- **Gleichstand:** alle mit dem höchsten Reingewinn nennen.
+- **Abgebrochene Wetten** zählen gar nicht.
+- **Untergrenze:** Glückspilz nur mit Reingewinn über 0, sonst „keiner“.
+- **Ausgabe:** Stream-Bericht, Webkonsole (Reiter „Statistik“) und ein Endpunkt für Widgets. Keine Chatzeile.
+
+### Verhalten
+- **Quelle:** `channel.prediction.end` mit `status: resolved` (wie die Statistik, `recordPredictionEnd` → `streamSession.notePrediction`), nur solange ein Stream erfasst wird.
+  - Je Ausgang zählen die `top_predictors`, laut Helix-Doku bis zu 10. Wer klein setzt, fehlt.
+  - Der größte Gewinner einer Wette ist fast immer der Top-Tipper mit dem höchsten Einsatz auf dem Siegerausgang, also enthalten.
+- **Je Tipper:** `channel_points_won` ist die Auszahlung samt Einsatz (Beobachtung im Wetten-Widget, #44).
+  - Steht beim Sieger noch 0, gilt Einsatz × Quote (Quote = Topf ÷ Punkte des Siegers). Auf Verliererausgängen ist die Auszahlung 0.
+  - Reingewinn = Summe der Auszahlungen − Summe der Einsätze.
+- **Gespeichert** in `stream_stats.json` und im Bericht:
+  - `bettors` {Twitch-ID: {name, net, won, used, bets}}, höchstens `maxBettors` (1000)
+  - `bet_ids` gegen doppelt gezählte Enden
+- **`!privat`** wie bei den Chattern (ADR 0022): Eintrag unter `anon-N` mit „anonymer Schlaumeier“, die Zahlen bleiben. Beim Einschalten werden auch frühere Einträge in `stream_stats.json` und allen Berichten umgeschrieben.
+- **Bericht** (`.txt`): „Glückspilz des Abends: Kalle mit +12.345 Kanalpunkten Reingewinn aus 3 Wetten“.
+  - Gleichstand: „Anna und Bert mit je +100 …“.
+  - Niemand im Plus: „keiner, unterm Strich lag niemand im Plus“.
+  - Ohne Wette: keine Zeile.
+- **Webkonsole**, Reiter „Statistik“, laufender Stream: Zeile „Glückspilz“, sobald jemand gewettet hat. Grundlage sind `lucky_bettors` und `bettors` im Stream-Stand.
+- **`GET /api/stream/lucky`** (neu, Widget-Herkünfte wie die übrigen Leseendpunkte, ADR 0013; fragt Twitch nicht):
+  - `{stream, startedAt, luckyBettors: [{name, net, bets}], bettors, predictions}`
+  - nur Namen und Punkte, keine IDs
+- Von Claude festgelegt, nicht einzeln zur Wahl gestellt:
+  - Adresse und Felder des Endpunkts
+  - Wortlaut der Berichtszeile
+  - Anzahl gemerkter Wett-IDs (500)
 
 ## Nicht-Ziele
 - Wetten oder Abstimmungen starten, sperren oder auflösen (bräuchte `channel:manage:*`).

@@ -863,6 +863,39 @@ async function abstimmung() {
   check('V9 Nur Statuswechsel im Log', logs.filter(l => l.includes('[Abstimmung]')).length <= 5, logs.filter(l => l.includes('[Abstimmung]')).join(' | '));
 }
 
+// Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4): Endpunkt, Statistik, Bericht
+async function glueckspilz() {
+  await welcome();
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `g${++n}` }, payload: { event } }));
+  const LUCKY = '/api/stream/lucky';
+  const lucky = async () => JSON.parse((await request(LUCKY)).body);
+  const tp = (id, name, used, won) => ({ user_id: id, user_login: name.toLowerCase(), user_name: name, channel_points_used: used, channel_points_won: won });
+
+  let l = await lucky();
+  check('L1 Vor dem Stream: keiner, keine Tipper', l.stream === 'none' && l.luckyBettors.length === 0 && l.bettors === 0, JSON.stringify(l));
+  send('stream.online', { id: 'st1', type: 'live', started_at: new Date().toISOString() });
+  await sleep(50);
+  send('channel.prediction.end', { id: 'p1', status: 'resolved', winning_outcome_id: 'ja', outcomes: [
+    { id: 'ja', title: 'Ja', users: 2, channel_points: 400, top_predictors: [tp('1', 'Anna', 300, 750), tp('2', 'Bert', 100, 250)] },
+    { id: 'nein', title: 'Nein', users: 1, channel_points: 600, top_predictors: [tp('3', 'Cora', 600, 0)] },
+  ] });
+  send('channel.prediction.end', { id: 'p2', status: 'canceled', winning_outcome_id: null, outcomes: [{ id: 'x', channel_points: 9999, top_predictors: [tp('3', 'Cora', 9999, 0)] }] });
+  await sleep(100);
+  l = await lucky();
+  check('L2 Aufgelöste Wette: Anna Glückspilz mit +450, Abbruch zählt nicht', l.stream === 'live' && JSON.stringify(l.luckyBettors) === '[{"name":"Anna","net":450,"bets":1}]' && l.bettors === 3 && l.predictions === 1, JSON.stringify(l));
+  check('L3 Keine IDs im Endpunkt', !JSON.stringify(l).includes('"1"') && !('userId' in l.luckyBettors[0]));
+  let r = await request(LUCKY, { Origin: 'null' });
+  check('L4 Widget per file:/// darf lesen, fremde Herkunft nicht', r.status === 200 && (await request(LUCKY, { Origin: 'https://fremd.example' })).status === 403);
+  const st = JSON.parse((await request(STATS)).body).stream;
+  check('L5 Statistik der Webkonsole: Glückspilz und Zahl der Tipper', st.lucky_bettors[0].name === 'Anna' && st.bettors === 3, JSON.stringify(st.lucky_bettors));
+  send('channel.raid', { from_broadcaster_user_id: '4711', from_broadcaster_user_login: 'testkanal', to_broadcaster_user_id: '88', to_broadcaster_user_login: 'freund', viewers: 5 });
+  await sleep(150);
+  const reportsDir = path.join(workDir, 'stream_reports');
+  const txt = fs.readdirSync(reportsDir).filter(f => f.endsWith('.txt')).map(f => fs.readFileSync(path.join(reportsDir, f), 'utf8')).join('\n');
+  check('L6 Bericht nach dem Raid nennt den Glückspilz', txt.includes('Glückspilz des Abends: Anna mit +450 Kanalpunkten Reingewinn aus 1 Wette'), txt);
+}
+
 // Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b)
 async function ergebnis() {
   // Ausgangsstand: eine schon aufgelöste Wette (z. B. vor dem Neustart) darf nichts auslösen
@@ -1015,6 +1048,7 @@ async function ohneTokens() {
   else if (scenario === 'wette') await wette();
   else if (scenario === 'abstimmung') await abstimmung();
   else if (scenario === 'ergebnis') await ergebnis();
+  else if (scenario === 'glueckspilz') await glueckspilz();
   else await ablauf();
 
   console.log = realLog;
