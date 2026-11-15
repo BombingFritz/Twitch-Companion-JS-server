@@ -23,8 +23,8 @@ const CHAT_SENDER_URL = '/api/admin/chat/sender';
 const CHAT_SENDER_LABELS = { broadcaster: 'Broadcaster', bot: 'Bot' };
 const CHAT_RESULTS_URL = '/api/admin/chat/results';
 const CHAT_RESULT_TEXTS = {
-  prediction: 'Nach der Auflösung einer Wette: Sieger, Quote und größter Gewinner (wie im Wetten-Widget).',
-  poll: 'Nach dem Ende einer Abstimmung: Sieger und Zweitplatzierter oder Gleichstand (wie in SpargelPoll).',
+  prediction: 'Nennt den siegreichen Ausgang, die Quote und den größten Gewinner. Bei einer abgebrochenen Wette gibt es keine Zeile.',
+  poll: 'Nennt die Option mit den meisten Stimmen und die zweite, jeweils in Prozent. Bei Gleichstand werden alle gleichauf liegenden Optionen genannt.',
 };
 const MODULE_SETTINGS = [
   { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
@@ -832,7 +832,8 @@ function resultCard() {
   const r = state.settings.results;
   r.list = el('div', { class: 'setting-list' });
   return card('Ergebniszeilen im Chat',
-    el('p', { class: 'sub', text: 'Erst einschalten, wenn das Widget seine Zeile nicht mehr selbst sendet, sonst steht sie doppelt im Chat. Wer sendet, steht unter „Chat-Absender“.' }),
+    el('p', { class: 'sub', text: 'Ist eine Wette aufgelöst oder eine Abstimmung beendet, schreibt der Server das Ergebnis einmal in den Chat. Wer schreibt, legst du unter „Chat-Absender“ fest.' }),
+    el('p', { class: 'sub', text: 'Ausschalten nur, wenn ein älteres Widget das Ergebnis noch selbst schreibt (Wetten-Widget vor 0.8.0, SpargelPoll vor 0.9.0). Sonst stünde es doppelt im Chat.' }),
     r.list);
 }
 
