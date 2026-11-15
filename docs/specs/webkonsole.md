@@ -68,6 +68,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `ha_webhook_configured`, `category`, `recent_effects` (letzte 5), `subgoal`.
 - `/status` bleibt unverändert; beide nutzen dieselben Hilfsfunktionen (`buildAuthStatus`, `buildRuntimeStatus`), damit die Werte nicht auseinanderlaufen.
 - Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll der Konsole, sonst stünde dort alle 5 s eine Zeile. Abgelehnte Abrufe erscheinen weiterhin.
+- Ebenso seit 15.11.2026 die Leseendpunkte, die Widgets im Takt abfragen (Wette, Abstimmung, Zuschauer, Sub-Goal, Privat-Liste, Glückspilz). Im Off-Stream-Test vom 14.11.2026 waren das zusammen etwa eine Zeile je Sekunde, in einem Stream von 4–5 Stunden über 15.000 Zeilen in Konsole und Live-Log. Mit `http debug on` erscheinen sie bis zum Neustart wieder. `/token` und Antworten ab 400 erscheinen immer.
 
 ## Verhalten Stufe 2: Server beenden und neu starten
 - Zwei Knöpfe in der Karte „Server“, je mit Rückfrage, damit ein Fehlklick im Stream nichts auslöst. Die Rückfrage nennt, dass wartende Effekte und Raid-Begrüßungen verloren gehen (sie liegen nur im Arbeitsspeicher). Der Bestätigungsknopf ist die ersten 500 ms gesperrt (`CONFIRM_LOCK_MS`), damit ein Doppelklick nicht gleich bestätigt; ohne Antwort schließt sich die Rückfrage nach 15 s (`CONFIRM_MS`).
