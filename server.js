@@ -170,6 +170,9 @@ const STREAM_VIEWERS_MAX_MINUTES = 48 * 60;       // Obergrenze des Minutenverla
 const STREAM_VIEWERS_PATH = '/api/twitch/stream'; // letzter bekannter Stand für Widgets, ohne eigene Twitch-Abfrage (ADR 0023)
 const PREDICTION_PATH = '/api/twitch/prediction/current';  // letzter Stand der Wette aus EventSub (Spec wetten-abstimmungen.md)
 const STREAM_LUCKY_PATH = '/api/stream/lucky';    // Glückspilz des Abends aus der Stream-Statistik (Spec wetten-abstimmungen.md, Schritt 4)
+// Leseendpunkte, die Widgets im Takt abfragen: erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll (außer mit "http debug on").
+// /token bleibt sichtbar (Token-Ausgabe), ebenso jede Antwort ab 400.
+const HTTP_QUIET_WIDGET_PATHS = ['/api/twitch/prediction/current', '/api/twitch/poll/current', '/api/twitch/stream', '/api/twitch/subcounter', '/api/privacy/optouts', '/api/stream/lucky'];
 const PREDICTION_RECHECK_MS = 5 * 60 * 1000;      // offene Wette ohne Ereignis so lange, dann einmal bei Twitch nachsehen
 const POLL_PATH = '/api/twitch/poll/current';     // letzter Stand der Abstimmung aus EventSub (Spec wetten-abstimmungen.md)
 const POLL_RECHECK_MS = 5 * 60 * 1000;            // laufende Abstimmung ohne Ereignis so lange, dann einmal bei Twitch nachsehen
@@ -398,12 +401,15 @@ function logIfChanged(key, message, level = 'log') {
 // auch für künftig angedockte Widgets - es wird nichts an Funktionalität
 // eingeschränkt, nur die Konsolenausgabe entrauscht.
 let lastRequestLogLine = null;
+let httpDebug = false;   // Konsolenbefehl "http debug on": auch erfolgreiche Abrufe der Widget-Leseendpunkte protokollieren (bis Neustart)
 
 app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on('finish', () => {
     // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
     if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH, ADMIN_REPORTS_PATH].includes(req.path) && res.statusCode === 200) return;
+    // Widgets fragen ihre Leseendpunkte alle 2–5 s ab: erfolgreiche Abrufe nur im Testmodus (http debug on). Fehler bleiben sichtbar.
+    if (req.method === 'GET' && HTTP_QUIET_WIDGET_PATHS.includes(req.path) && res.statusCode < 400 && !httpDebug) return;
     // Intro-Topics: Tastendrücke und Widget-Verbindungen nur im Testmodus protokollieren (topics debug on)
     if (isTopicsPath(req.path) && res.statusCode < 400 && !topicsDebug) return;
     const durationMs = Date.now() - startedAt;
@@ -3271,6 +3277,7 @@ function printConsoleHelp() {
   console.log(' topics next|back|toggle|reset - Intro-Topics bedienen (wie die Stream-Deck-Tasten)');
   console.log(' topics debug on|off        - Intro-Topics: Testmodus, zeigt Effekte und Tastendrücke im Log (bis Neustart)');
   console.log(' topics activate|deactivate - Intro-Topics ein- bzw. ausschalten (bleibt nach Neustart)');
+  console.log(' http debug on|off          - Testmodus: auch erfolgreiche Widget-Abrufe im HTTP-Protokoll zeigen (bis Neustart)');
   console.log(' bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler');
   console.log(' bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)');
   console.log(' bot sender [<f> bot|broadcaster] - Absender je Chat-Funktion zeigen bzw. umstellen');
@@ -3413,6 +3420,18 @@ rl.on('line', async (input) => {
     }
 
     console.log('Nutzung: effects mode <auto|off> | effects show');
+    return;
+  }
+
+  if (cmd === 'http') {
+    const sub = (parts[1] || '').toLowerCase();
+    const value = (parts[2] || '').toLowerCase();
+    if (sub === 'debug' && (value === 'on' || value === 'off')) {
+      httpDebug = value === 'on';
+      console.log(`[HTTP] Testmodus ${httpDebug ? 'an – auch erfolgreiche Widget-Abrufe erscheinen im Protokoll (bis "http debug off" oder Neustart)' : 'aus – erfolgreiche Widget-Abrufe erscheinen nicht im Protokoll, Fehler weiterhin'}`);
+      return;
+    }
+    console.log('Nutzung: http debug on|off');
     return;
   }
 

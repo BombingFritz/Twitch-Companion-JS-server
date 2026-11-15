@@ -61,7 +61,8 @@ const fakeAxios = {
   },
 };
 const orig = Module._load;
-Module._load = function (r, ...a) { if (r === 'ws') return FakeWS; if (r === 'axios') return fakeAxios; if (r === 'readline') return { createInterface: () => new EventEmitter() }; return orig.call(this, r, ...a); };
+const rl = new EventEmitter();   // Konsole des Servers (Attrappe), für Konsolenbefehle in Szenarien
+Module._load = function (r, ...a) { if (r === 'ws') return FakeWS; if (r === 'axios') return fakeAxios; if (r === 'readline') return { createInterface: () => rl }; return orig.call(this, r, ...a); };
 const realLog = console.log, logs = [];
 console.log = console.warn = console.error = (...a) => logs.push(a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '));
 const realExit = process.exit.bind(process), exits = [];
@@ -863,6 +864,34 @@ async function abstimmung() {
   check('V9 Nur Statuswechsel im Log', logs.filter(l => l.includes('[Abstimmung]')).length <= 5, logs.filter(l => l.includes('[Abstimmung]')).join(' | '));
 }
 
+// HTTP-Protokoll gestrafft (15.11.2026): erfolgreiche Widget-Abrufe nur mit "http debug on", Fehler und /token immer
+async function httpLog() {
+  const QUIET = ['/api/twitch/prediction/current', '/api/twitch/poll/current', '/api/twitch/stream', '/api/twitch/subcounter', '/api/privacy/optouts', '/api/stream/lucky'];
+  const httpLines = p => logs.filter(l => l.startsWith(`[HTTP] GET ${p} `));
+  for (const p of QUIET) await request(p);
+  await sleep(50);
+  check('H1 Erfolgreiche Widget-Abrufe erscheinen nicht im Protokoll', QUIET.every(p => httpLines(p).length === 0), QUIET.map(p => `${p}:${httpLines(p).length}`).join(' '));
+  await request('/api/twitch/poll/current', { Origin: 'https://fremd.example' });
+  await sleep(50);
+  check('H2 Abgelehnte Herkunft (403) bleibt sichtbar', httpLines('/api/twitch/poll/current').some(l => l.includes('-> 403')), httpLines('/api/twitch/poll/current').join(' | '));
+  await request('/token', { Host: `localhost:${PORT}` });
+  await request('/status');
+  await sleep(50);
+  check('H3 /token und andere Endpunkte bleiben sichtbar', httpLines('/token').length === 1 && httpLines('/status').length === 1);
+  rl.emit('line', 'http debug on');
+  await request('/api/twitch/prediction/current');
+  await sleep(50);
+  check('H4 http debug on: Widget-Abrufe wieder im Protokoll', logs.some(l => l.startsWith('[HTTP] Testmodus an')) && httpLines('/api/twitch/prediction/current').length === 1);
+  rl.emit('line', 'http debug off');
+  await request('/api/twitch/stream');
+  await sleep(50);
+  check('H5 http debug off: wieder still', logs.some(l => l.startsWith('[HTTP] Testmodus aus')) && httpLines('/api/twitch/stream').length === 0);
+  rl.emit('line', 'http irgendwas');
+  rl.emit('line', 'help');
+  await sleep(50);
+  check('H6 Falsche Eingabe zeigt Nutzung, Hilfe nennt den Befehl', logs.includes('Nutzung: http debug on|off') && logs.some(l => l.startsWith(' http debug on|off')));
+}
+
 // Glückspilz des Abends (Spec wetten-abstimmungen.md, Schritt 4): Endpunkt, Statistik, Bericht
 async function glueckspilz() {
   await welcome();
@@ -1049,6 +1078,7 @@ async function ohneTokens() {
   else if (scenario === 'abstimmung') await abstimmung();
   else if (scenario === 'ergebnis') await ergebnis();
   else if (scenario === 'glueckspilz') await glueckspilz();
+  else if (scenario === 'http-log') await httpLog();
   else await ablauf();
 
   console.log = realLog;
