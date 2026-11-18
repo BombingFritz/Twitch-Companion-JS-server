@@ -124,6 +124,13 @@ function fakeTimers() {
   check('E14 end canceled: CANCELED ohne Sieger', t.snapshot().status === 'CANCELED' && t.snapshot().winningOutcomeId === null);
   check('E15 Unbekannter Typ oder Ereignis ohne ID: ignoriert', t.handleEvent('channel.prediction.foo', begin) === false && t.handleEvent('channel.prediction.begin', {}) === false && t.snapshot().predictionId === 'e3');
 
+  // Spätes Ende einer früher begonnenen Wette, während eine neuere läuft (gleiche Regel wie bei Abstimmungen)
+  t.handleEvent('channel.prediction.begin', { ...begin, id: 'jung', started_at: '2026-11-14T22:00:00Z', locks_at: '2026-11-14T22:01:00Z' });
+  t.handleEvent('channel.prediction.end', { ...end, id: 'e3', started_at: '2026-11-14T20:00:00Z', status: 'canceled', winning_outcome_id: null });
+  check('E16 Spätes Ende einer älteren Wette ersetzt die laufende nicht', t.snapshot().predictionId === 'jung' && t.snapshot().status === 'ACTIVE', JSON.stringify(t.snapshot()));
+  t.handleEvent('channel.prediction.end', { ...end, id: 'jung', started_at: '2026-11-14T22:00:00Z' });
+  check('E17 Ende der laufenden wird übernommen', t.snapshot().predictionId === 'jung' && t.snapshot().status === 'RESOLVED');
+
   helix = []; await t.refresh();
   check('P10 Twitch kennt keine Wette: WAITING unverändert', JSON.stringify(t.snapshot()) === '{"status":"WAITING"}');
   t.stop();

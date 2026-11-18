@@ -37,7 +37,7 @@ Erst wenn Schritt 1 und 2 auf `main` sind, stellen die Widgets in ihren Reposito
 - **Kontrolle bei offener Wette:** Solange der Stand `ACTIVE` oder `LOCKED` ist und 5 Minuten (`PREDICTION_RECHECK_MS`) kein Ereignis zur Wette kam, fragt der Server einmal `GET /helix/predictions?first=1`. Jedes Ereignis setzt die Frist neu. Das fängt ein verlorenes `end`-Ereignis bei bestehender Verbindung ab. Kosten: 12 Anfragen je Stunde, nur bei offener Wette. Von Claude festgelegt, nachdem der Nutzer gefragt hatte, ob eine lange gesperrte Wette ohne Ereignisse robust abgebildet ist (14.11.2026).
 - **Was bei einer langen Sperre passiert:** Der Stand bleibt `LOCKED` im Arbeitsspeicher, ohne dass Ereignisse nötig sind. Ein Neustart, eine getrennte Verbindung oder ein verlorenes Ereignis werden durch den Ausgangsabruf bzw. die Kontrolle ausgeglichen. Bei einem `session_reconnect` überträgt Twitch die Abos ohne Lücke.
 - **Status** wie bei Helix in Großbuchstaben: `begin`/`progress` → `ACTIVE`, `lock` → `LOCKED`, `end` → `RESOLVED` oder `CANCELED`. Ohne bekannte Wette: `{status: 'WAITING'}` wie bisher.
-- **Reihenfolge:** Ereignisse einer anderen Wette ersetzen den Stand. Ein verspätetes `progress` nach `lock` oder `end` derselben Wette setzt den Status nicht zurück, Zahlen übernimmt es nur bei `ACTIVE`.
+- **Reihenfolge:** Ereignisse einer anderen Wette ersetzen den Stand, aber nur, wenn diese nicht früher begonnen hat (`createdAt`). Ein spätes Ende einer älteren Wette überschreibt also nicht die laufende (Befund aus dem Live-Stream vom 17.11.2026 bei Abstimmungen). Ein verspätetes `progress` nach `lock` oder `end` derselben Wette setzt den Status nicht zurück, Zahlen übernimmt es nur bei `ACTIVE`.
 - **Top-Tipper:** Bei `lock` und `progress` übernimmt der Server sie mit `channelPointsWon: 0`, das bisherige Verhalten bei `null`. Bei `end` kommt der echte Wert.
 - **Log:** nur Statuswechsel über `logIfChanged('prediction', …)`, keine Zeile je `progress`.
 
@@ -73,6 +73,7 @@ Vereinbart (Nutzer, 14.11.2026: „weiter mit 2“). Was SpargelPoll braucht, wu
   - Ein verspätetes `begin` derselben Abstimmung ändert nichts.
 - **Status** in Großbuchstaben wie bei Helix: `begin`/`progress` → `ACTIVE`; `end` → `COMPLETED`, `TERMINATED` oder `ARCHIVED`. Aus Helix können auch `MODERATED` und `INVALID` kommen. Ohne Abstimmung: `{status: 'WAITING'}`.
 - **Reihenfolge:** `ARCHIVED` folgt bei Twitch auf `COMPLETED` bzw. `TERMINATED` derselben Abstimmung und wird übernommen. Ein früherer Zustand ersetzt nie einen späteren.
+- **Überlappung** (Live-Stream vom 17.11.2026, 21:26): Twitch lieferte `ARCHIVED` der vorigen Abstimmung, als die nächste schon lief. Seitdem ersetzt eine andere ID den Stand nur, wenn sie nicht früher begonnen hat (`startedAt`). Vorher stand für unter einer Sekunde die alte Abstimmung im Endpunkt.
 - **Log:** nur Statuswechsel über `logIfChanged('poll', …)`.
 
 ### Schnittstelle `GET /api/twitch/poll/current` (neu)

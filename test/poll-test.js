@@ -82,8 +82,18 @@ function fakeTimers() {
   check('E12 Unbekannter Typ, unbekannter Endstatus, Ereignis ohne ID: ignoriert',
     t.handleEvent('channel.poll.foo', begin) === false && t.handleEvent('channel.poll.end', { ...end, id: 'e3', status: 'xyz' }) === false && t.handleEvent('channel.poll.begin', {}) === false && t.snapshot().pollId === 'e2');
 
+  // Überlappung wie im Live-Stream vom 17.11.2026, 21:26: neue Abstimmung läuft, Twitch liefert „archived“ der vorigen nach
+  t.handleEvent('channel.poll.begin', { ...begin, id: 'alt', started_at: '2026-11-14T21:00:00Z' });
+  t.handleEvent('channel.poll.end', { ...end, id: 'alt', started_at: '2026-11-14T21:00:00Z' });
+  t.handleEvent('channel.poll.begin', { ...begin, id: 'neu', started_at: '2026-11-14T21:04:00Z', ends_at: '2026-11-14T21:06:00Z' });
+  t.handleEvent('channel.poll.end', { ...end, id: 'alt', started_at: '2026-11-14T21:00:00Z', status: 'archived' });
+  check('O1 Spätes „archived“ der vorigen Abstimmung überschreibt die laufende nicht', t.snapshot().pollId === 'neu' && t.snapshot().status === 'ACTIVE', JSON.stringify(t.snapshot()));
+  t.handleEvent('channel.poll.progress', { ...progress, id: 'neu', started_at: '2026-11-14T21:04:00Z', ends_at: '2026-11-14T21:06:00Z' });
+  check('O2 Danach geht die laufende normal weiter', t.snapshot().pollId === 'neu' && t.snapshot().choices[0].votes === 3);
+  t.handleEvent('channel.poll.end', { ...end, id: 'neu', started_at: '2026-11-14T21:04:00Z' });
+
   // Kontrolle: laufende Abstimmung ohne Ereignis, Ende verloren
-  t.handleEvent('channel.poll.begin', { ...begin, id: 'e4' });
+  t.handleEvent('channel.poll.begin', { ...begin, id: 'e4', started_at: '2026-11-14T21:10:00Z', ends_at: '2026-11-14T21:12:00Z' });
   helix = [{ ...helixActive, id: 'e4' }];
   fail = true; await timers.fire(); fail = false;
   check('K1 Kontrolle scheitert: Stand bleibt ACTIVE, Fehler gemeldet, neue Kontrolle', t.snapshot().status === 'ACTIVE' && errors.length === 1 && timers.list().length === 1);

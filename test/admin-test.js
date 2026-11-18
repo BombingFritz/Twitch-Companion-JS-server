@@ -773,6 +773,21 @@ async function subgoal() {
   c = await counter();
   check('G6 Ende: Stand und „erreicht“', c.current === 10 && c.status === 'achieved', JSON.stringify(c));
   check('G7 Insgesamt keine weitere Abfrage', fakeGoalRequests === 1, String(fakeGoalRequests));
+
+  // Reihenfolge wie im Live-Stream vom 17.11.2026: Ende, danach noch ein progress des alten Ziels, dann ein neues Ziel
+  send('channel.goal.progress', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 10, target_amount: 10, started_at: '2026-11-17T20:00:00Z' });
+  await sleep(50);
+  c = await counter();
+  check('G8 progress nach dem Ende: bleibt „erreicht“', c.goalId === 'g1' && c.status === 'achieved', JSON.stringify(c));
+  send('channel.goal.begin', { id: 'g2', type: 'subscription_count', description: 'Neues Ziel', current_amount: 10, target_amount: 90, started_at: '2026-11-18T01:00:00Z' });
+  await sleep(50);
+  c = await counter();
+  check('G9 Neues Ziel wird übernommen', c.goalId === 'g2' && c.status === 'active' && c.target === 90, JSON.stringify(c));
+  send('channel.goal.progress', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 10, target_amount: 10, started_at: '2026-11-17T20:00:00Z' });
+  send('channel.goal.end', { id: 'g1', type: 'subscription_count', description: 'Spargel', current_amount: 10, target_amount: 10, is_achieved: true, started_at: '2026-11-17T20:00:00Z' });
+  await sleep(50);
+  c = await counter();
+  check('G10 Späte Ereignisse des alten Ziels ersetzen das neue nicht', c.goalId === 'g2' && c.status === 'active' && c.title === 'Neues Ziel', JSON.stringify(c));
 }
 
 // Wette über EventSub (Spec wetten-abstimmungen.md, Schritt 1): Endpunkt gibt den letzten Stand aus, fragt Twitch nicht

@@ -838,17 +838,26 @@ function saveSubGoalCache(data) {
 
 // Sub-Goal aus den EventSub-Ereignissen channel.goal.begin/progress/end (Issue #60, ADR 0023): keine Abfrage je Sub mehr.
 // Twitch kann Begin nach Progress schicken; ein Begin zu einem Ziel, das schon bekannt ist, ändert deshalb nichts.
+// Späte Ereignisse (Live-Stream vom 17.11.2026): Nach dem Ende kam noch ein progress des alten Ziels. Ein beendetes Ziel
+// wird nicht wieder aktiv, und ein Ereignis eines früher begonnenen Ziels ersetzt kein neueres (startedAt im Cache).
 function handleGoalEvent(subType, evt) {
   if (!SUB_GOAL_TYPES.includes(evt.type)) return;
   const cached = loadSubGoalCache();
-  if (subType === 'channel.goal.begin' && cached.goalId === evt.id) return;
-  const status = subType === 'channel.goal.end' ? (evt.is_achieved ? 'achieved' : 'ended') : 'active';
+  const isEnd = subType === 'channel.goal.end';
+  if (cached.goalId === evt.id) {
+    if (subType === 'channel.goal.begin') return;
+    if (!isEnd && (cached.status === 'achieved' || cached.status === 'ended')) return;
+  } else if (cached.goalId && Date.parse(evt.started_at) < Date.parse(cached.startedAt)) {
+    return;
+  }
+  const status = isEnd ? (evt.is_achieved ? 'achieved' : 'ended') : 'active';
   const cache = {
     current: evt.current_amount,
     target: evt.target_amount,
     title: evt.description || evt.type,
     goalId: evt.id,
     status,
+    startedAt: evt.started_at || (cached.goalId === evt.id ? cached.startedAt : null) || null,
     lastUpdated: new Date().toISOString(),
   };
   saveSubGoalCache(cache);
@@ -872,6 +881,7 @@ async function refreshSubGoalCache() {
         title: goal.description || goal.type,
         goalId: goal.id,
         status: goal.status,
+        startedAt: goal.created_at || null,   // für die Reihenfolge späterer Ereignisse (handleGoalEvent)
         lastUpdated: new Date().toISOString()
       };
       saveSubGoalCache(cache);

@@ -8,6 +8,10 @@ Den aktuellen Sub-Goal-Stand für Widgets bereitstellen, ohne bei jeder Abfrage 
 - Berücksichtigt werden Ziele vom Typ `subscription` und `subscription_count` (`SUB_GOAL_TYPES`, wie bisher bei der Abfrage); andere Ziele (z. B. `follow`) ändern den Cache nicht.
 - Twitch kann `channel.goal.begin` nach `channel.goal.progress` schicken. Ein Begin zu einem Ziel, das schon im Cache steht (`goalId`), ändert deshalb nichts.
 - `status`: `active` bei Begin und Progress; bei End `achieved` (Ziel erreicht) oder `ended`.
+- **Späte Ereignisse** (Live-Stream vom 17.11.2026: nach dem Ende kam noch ein Progress des alten Ziels, dann das neue Ziel):
+  - Ein beendetes Ziel (`achieved`/`ended`) wird durch Begin oder Progress desselben Ziels nicht wieder `active`.
+  - Ein Ereignis eines anderen Ziels ersetzt den Cache nur, wenn dieses nicht früher begonnen hat. Dafür merkt sich der Cache zusätzlich `startedAt` (aus `started_at` des Ereignisses bzw. `created_at` der Abfrage).
+  - `startedAt` ist intern und nicht Teil der Antwort von `/api/twitch/subcounter`. Ältere Cache-Dateien ohne den Wert funktionieren weiter.
 - `refreshSubGoalCache` lädt `/helix/goals` (über `twitchApi`, ADR 0024). Es wählt zuerst ein aktives Ziel vom Typ `subscription` oder `subscription_count`, sonst irgendein Ziel dieser Typen. Auslöser: einmal je frischer EventSub-Verbindung (Ausgangsstand), `stream.online`, Konsolenbefehl `subgoal refresh`, `/api/twitch/subcounter` bei leerem Cache. Die Sub-Ereignisse (`channel.subscribe`, `channel.subscription.gift`, `channel.subscription.message`) lösen keine Abfrage mehr aus.
 - Bei Fehler oder ohne passendes Ziel bleibt der bisherige Cache erhalten.
 
@@ -23,7 +27,8 @@ Den aktuellen Sub-Goal-Stand für Widgets bereitstellen, ohne bei jeder Abfrage 
 - Ohne Sub-Goal bei Twitch bleibt der Cache unverändert und eine Warnung erscheint einmalig im Log.
 - `subgoal show` zeigt `current / target`, Titel und Zeitstempel oder „nie geladen“.
 - Der Scope `channel:read:goals` ist in `SCOPES` enthalten.
-- Geprüft im Szenario `subgoal` von `test/admin-test.js` (G1–G7).
+- Geprüft im Szenario `subgoal` von `test/admin-test.js` (G1–G10; G8–G10 für späte Ereignisse).
+- Real geprüft im Live-Stream vom 17.11.2026: Fortschritt je Sub und Geschenk (49 → 81 von 60), Ende mit „erreicht“ nach Beenden von Hand, Beginn des neuen Ziels.
 
 ## Berührte Funktionen/Dateien
 `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache`, `handleGoalEvent`, `subscribeToGoals`, `logIfChanged`, `/api/twitch/subcounter`; `subgoal_cache.json`
