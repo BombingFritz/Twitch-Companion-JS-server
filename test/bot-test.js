@@ -174,7 +174,7 @@ function connectWidget() {
     await cmd('bot show');
     check('A17 bot show: Name, ID, Funktionen, letzter Fehler', has(/^\[Bot\] DerBdu \(ID 99\)/) && has(/^\[Bot\] Sendet: BdU-Chat, UBOAT-Soldbuch/) && has(/Letzter Sendefehler: .*403: user is not a moderator/));
     const st = await getJson('/status');
-    check('A18 /status: bot_configured, bot_login, bot_features', st.bot_configured === true && st.bot_login === 'derbdu' && JSON.stringify(st.bot_features) === '["bdu","uboat"]', JSON.stringify(st));
+    check('A18 /status: bot_configured, bot_login, bot_features', st.bot_configured === true && st.bot_login === 'derbdu' && JSON.stringify(st.bot_features) === '["bdu","uboat","rimworld"]', JSON.stringify(st));
     await cmd('bot remove');
     posts = await say('gefallenergustav', 'GefallenerGustav', '!soldbuch');
     check('A19 bot remove: Datei weg, nächste Nachricht vom Broadcaster', !fs.existsSync('bot.json') && posts.length === 1 && posts[0].auth === 'Bearer fake' && posts[0].body.sender_id === '1', JSON.stringify(posts));
@@ -196,7 +196,7 @@ function connectWidget() {
   }
 
   if (scenario === 'eingerichtet') {
-    check('E1 Startanzeige mit Bot', has(/^Bot-Account: DerBdu \(BdU-Chat, UBOAT-Soldbuch\)$/));
+    check('E1 Startanzeige mit Bot', has(/^Bot-Account: DerBdu \(BdU-Chat, UBOAT-Soldbuch, RimWorld\)$/));
     const posts = await say('kobold', 'Kobold', '!soldbuch');
     check('E2 gespeicherter Bot sendet nach Neustart', posts.length === 1 && posts[0].body.sender_id === '99' && posts[0].auth === 'Bearer app-1', JSON.stringify(posts));
     failMode = '403';
@@ -261,13 +261,13 @@ function connectWidget() {
     await cmd('bot sender uboat broadcaster');
     check('S9 Konsole: gleicher Wert wird gemeldet', has(/\[Bot\] UBOAT-Soldbuch sendet schon der Broadcaster/));
     await cmd('bot sender raid irgendwer');
-    check('S10 Konsole: falsche Eingabe zeigt Nutzung mit Funktionen', has(/Nutzung: bot sender <funktion> bot\|broadcaster – Funktionen: bdu, uboat, raid, whitelist, raidstats, privacy, prediction, poll/));
+    check('S10 Konsole: falsche Eingabe zeigt Nutzung mit Funktionen', has(/Nutzung: bot sender <funktion> bot\|broadcaster – Funktionen: bdu, uboat, raid, whitelist, raidstats, privacy, prediction, poll, rimworld, coinflip/));
     await cmd('bot sender');
     check('S11 bot sender listet alle Funktionen', has(/\[Bot\]   raid +Raid-Begrüßung: Bot/) && has(/\[Bot\]   uboat +UBOAT-Soldbuch: Broadcaster/));
     await cmd('bot show');
-    check('S12 bot show nennt die Bot-Funktionen', has(/\[Bot\] Sendet: BdU-Chat, Raid-Begrüßung, !privat-Antwort; alles andere sendet der Broadcaster/));
+    check('S12 bot show nennt die Bot-Funktionen', has(/\[Bot\] Sendet: BdU-Chat, Raid-Begrüßung, !privat-Antwort, RimWorld; alles andere sendet der Broadcaster/));
     const st = await getJson('/status');
-    check('S13 /status: bot_features folgt der Einstellung', JSON.stringify(st.bot_features) === '["bdu","raid","privacy"]', JSON.stringify(st.bot_features));
+    check('S13 /status: bot_features folgt der Einstellung', JSON.stringify(st.bot_features) === '["bdu","raid","privacy","rimworld"]', JSON.stringify(st.bot_features));
     // Zweite Raid-Begrüßung erst nach RAID_GREETING_MIN_GAP_MS; daher !raidstats
     await cmd('bot sender raidstats bot');
     await cmd('bot remove');

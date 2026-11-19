@@ -17,6 +17,7 @@ const { createTopics } = require('./lib/topics');
 const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/prediction-state');
 const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
 const { predictionResultMessage, pollResultMessage, createResultAnnouncer } = require('./lib/result-messages');
+const chatBridge = require('./lib/chat-bridge');
 require('dotenv').config();
 
 const app = express();
@@ -74,12 +75,19 @@ const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Kont
 // Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“): Bot oder Broadcaster, einstellbar per Konsole und Webkonsole
 const CHAT_SENDERS_FILE = './chat_senders.json';
 const CHAT_FEATURES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', raid: 'Raid-Begrüßung', whitelist: 'Whitelist-Begrüßung', raidstats: '!raidstats', privacy: '!privat-Antwort',
-  prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
+  prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis', rimworld: 'RimWorld', coinflip: 'CoinFlip' };
+// Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, ADR 0025): diese Chat-Funktionen dürfen über POST /api/chat/send senden
+const CHAT_BRIDGE_FEATURES = ['rimworld', 'coinflip'];
+const CHAT_BRIDGE_STREAM_PATH = '/api/chat/stream';
+const CHAT_BRIDGE_SEND_PATH = '/api/chat/send';
+const CHAT_BRIDGE_MIN_GAP_MS = 1000;              // je Funktion höchstens eine Nachricht je Sekunde
+const CHAT_BRIDGE_PING_MS = 30 * 1000;            // Lebenszeichen auf dem Ereignisstrom
+const CHAT_BRIDGE_JSON_LIMIT = '2kb';             // eine Chat-Nachricht hat höchstens 500 Zeichen
 // Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): je Zeile ein Schalter, Vorgabe an
 // (Nutzer, 14.11.2026). Aus nur, solange ein älteres Widget seine Zeile noch selbst sendet.
 const CHAT_RESULTS_FILE = './chat_results.json';
 const CHAT_RESULT_LINES = { prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
-const CHAT_SENDER_DEFAULTS = { bdu: 'bot', uboat: 'bot' };   // alle übrigen: Broadcaster (wie vor der Einstellung)
+const CHAT_SENDER_DEFAULTS = { bdu: 'bot', uboat: 'bot', rimworld: 'bot' };   // alle übrigen: Broadcaster (rimworld: Nutzer, 20.11.2026)
 const CHAT_SENDER_VALUES = ['bot', 'broadcaster'];
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;        // so lange gilt ein über /login oder /login-bot begonnener Login (state)
 const APP_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;   // App-Access-Token so lange vor Ablauf neu holen
@@ -205,6 +213,8 @@ const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
 
 // UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
 const UBOAT_COMMAND = '!soldbuch';                // Vergleich ohne Groß-/Kleinschreibung, "!Soldbuch" geht auch
+// Befehle, die der Server selbst beantwortet: gehen nicht über die Chat-Brücke an Verbraucher (Nutzer, 20.11.2026)
+const SERVER_CHAT_COMMANDS = [BDU_COMMAND, UBOAT_COMMAND, PRIVACY_COMMAND, '!raidstats'];
 const UBOAT_USER_COOLDOWN_MS = 60 * 1000;         // je Zuschauer höchstens eine Antwort pro Minute
 const UBOAT_CATEGORY_NAMES = ['UBOAT'];           // Twitch-Kategorie, in der der Befehl antwortet (Name im Stream vom 11.11.2026 bestätigt)
 const UBOAT_SAVE_SETTLE_MS = 3 * 1000;            // Spielstand erst lesen, wenn er so lange unverändert ist
@@ -1430,6 +1440,78 @@ function isLocalWidgetRequest(req, label) {
   return false;
 }
 
+// ── Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, Teil A, Issue #74, ADR 0025) ──
+// Verbraucher melden Befehle oder Präfixe an und bekommen passende Chat-Nachrichten als Ereignis; sie senden über den Server.
+const chatBridgeClients = [];             // {res, client, commands, prefixes, ping}
+const chatBridgeLastSend = new Map();     // feature -> Zeitpunkt des letzten Versands
+
+function chatBridgeExcludedLogins() {
+  const bot = loadBotConfig();
+  return [...STATS_EXCLUDED_CHATTERS, ...(bot && bot.bot_login ? [String(bot.bot_login).toLowerCase()] : [])];
+}
+
+function writeChatBridgeEvent(client, event, data) {
+  try { client.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* Verbindung schon zu; close räumt auf */ }
+}
+
+function forwardChatToBridge(evt) {
+  if (!chatBridgeClients.length) return;
+  if (!chatBridge.isForwardable(evt, { excludedLogins: chatBridgeExcludedLogins(), serverCommands: SERVER_CHAT_COMMANDS })) return;
+  let payload = null;
+  for (const client of chatBridgeClients) {
+    if (!chatBridge.matches(client, evt.message.text)) continue;
+    payload = payload || chatBridge.chatEvent(evt, { isPrivate: isPrivateUser });
+    writeChatBridgeEvent(client, 'chat', payload);
+  }
+}
+
+function notifyPrivacyChange(userId, userLogin, isPrivate) {
+  const data = { userId: String(userId), userLogin: userLogin || null, private: Boolean(isPrivate), at: new Date().toISOString() };
+  for (const client of chatBridgeClients) writeChatBridgeEvent(client, 'privacy', data);
+}
+
+app.get(CHAT_BRIDGE_STREAM_PATH, (req, res) => {
+  if (!isLocalWidgetRequest(req, CHAT_BRIDGE_STREAM_PATH)) {
+    return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  }
+  const sub = chatBridge.parseSubscription(req.query);
+  if (sub.error) return res.status(400).json({ error: sub.error });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive' });
+  res.write('retry: 5000\n\n');
+  const client = { res, ...sub };
+  const bot = loadBotConfig();
+  writeChatBridgeEvent(client, 'hello', { server: 'twitch-companion-js-server', version: APP_VERSION, client: sub.client, commands: sub.commands, prefixes: sub.prefixes, botLogin: bot ? bot.bot_login : null });
+  client.ping = setInterval(() => res.write(': ping\n\n'), CHAT_BRIDGE_PING_MS);
+  chatBridgeClients.push(client);
+  console.log(`[Chat-Brücke] ${sub.client} verbunden (${[...sub.commands, ...sub.prefixes.map(p => `${p}…`)].join(', ')}; verbunden: ${chatBridgeClients.length})`);
+  req.on('close', () => {
+    clearInterval(client.ping);
+    const i = chatBridgeClients.indexOf(client);
+    if (i >= 0) chatBridgeClients.splice(i, 1);
+    console.log(`[Chat-Brücke] ${sub.client} getrennt (verbunden: ${chatBridgeClients.length})`);
+  });
+});
+
+app.post(CHAT_BRIDGE_SEND_PATH, express.json({ limit: CHAT_BRIDGE_JSON_LIMIT }), async (req, res) => {
+  if (!isLocalWidgetRequest(req, CHAT_BRIDGE_SEND_PATH)) {
+    return res.status(403).json({ ok: false, sent: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  }
+  if (!req.is('application/json')) return res.status(415).json({ ok: false, sent: false, error: 'Content-Type application/json erwartet' });
+  const { feature, message } = req.body || {};
+  if (typeof feature !== 'string' || !CHAT_BRIDGE_FEATURES.includes(feature)) return res.status(400).json({ ok: false, sent: false, error: `feature muss eine von ${CHAT_BRIDGE_FEATURES.join(', ')} sein` });
+  const text = typeof message === 'string' ? message.trim() : '';
+  if (!text) return res.status(400).json({ ok: false, sent: false, error: 'message fehlt oder ist leer' });
+  if (!loadTokens()) return res.status(503).json({ ok: false, sent: false, error: 'Broadcaster nicht angemeldet' });
+  const since = Date.now() - (chatBridgeLastSend.get(feature) || 0);
+  if (since < CHAT_BRIDGE_MIN_GAP_MS) {
+    return res.status(429).json({ ok: false, sent: false, error: 'zu schnell, höchstens eine Nachricht je Sekunde', retryAfterMs: CHAT_BRIDGE_MIN_GAP_MS - since });
+  }
+  chatBridgeLastSend.set(feature, Date.now());
+  const sender = chatSenders[feature] === 'bot' && loadBotConfig() ? 'bot' : 'broadcaster';
+  const sent = await sendChatMessage(text, null, feature);
+  res.json({ ok: true, sent: Boolean(sent), sender });
+});
+
 app.get('/api/bdu/stream', (req, res) => {
   if (!isLocalWidgetRequest(req, '/api/bdu/stream')) {
     return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
@@ -2177,6 +2259,7 @@ function connectEventSub(reconnectUrl = null) {
       }
 
       if (subType === 'channel.chat.message') {
+        forwardChatToBridge(msg.payload.event);   // zuerst, damit Verbraucher nicht auf die übrigen Befehle warten
         if (isCountedChatter(msg.payload.event)) {
           stats.count('chat_messages');
           streamSession.noteChatter(msg.payload.event.chatter_user_id, msg.payload.event.chatter_user_name || msg.payload.event.chatter_user_login);
@@ -2554,7 +2637,7 @@ function isModOrBroadcaster(evt) {
 // options.broadcasterPrefix: nur beim Versand als Broadcaster vor den Text setzen (Absenderangabe, z. B. "FT vom BdU: ").
 async function sendChatMessage(text, replyToMessageId = null, feature = null, options = {}) {
   const cut = t => (t.length > CHAT_MAX_CHARS ? t.slice(0, CHAT_MAX_CHARS - 1) + '…' : t);
-  const logPrefix = { bdu: '[BdU] ', uboat: '[UBOAT] ', prediction: '[Wette] ', poll: '[Abstimmung] ' }[feature] || '';
+  const logPrefix = { bdu: '[BdU] ', uboat: '[UBOAT] ', prediction: '[Wette] ', poll: '[Abstimmung] ', rimworld: '[RimWorld] ', coinflip: '[CoinFlip] ' }[feature] || '';
   const bot = feature && chatSenders[feature] === 'bot' ? loadBotConfig() : null;
   if (bot) {
     const result = await sendChatMessageAsBot(bot, cut(text), replyToMessageId, logPrefix);
@@ -2683,6 +2766,7 @@ async function handlePrivacyCommand(evt) {
   const turnOn = !isPrivateUser(userId);
   if (turnOn) privacyOptouts[userId] = new Date(now).toISOString();
   else delete privacyOptouts[userId];
+  notifyPrivacyChange(userId, evt.chatter_user_login, turnOn);   // Chat-Brücke: Verbraucher löschen ggf. gespeicherte Daten
   try {
     savePrivacyOptouts(privacyOptouts);
   } catch (err) {
