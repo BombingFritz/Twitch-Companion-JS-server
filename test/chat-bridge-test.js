@@ -30,5 +30,27 @@ check('E1 Felder des Ereignisses', e.messageId === 'm1' && e.userId === '7' && e
 check('E2 Abzeichen (founder zählt als Subscriber), private', JSON.stringify(e.badges) === '{"broadcaster":false,"moderator":true,"vip":false,"subscriber":true}' && e.private === true, JSON.stringify(e));
 check('E3 erstes Wort', firstWord('  !Bal  5') === '!bal' && firstWord('') === '');
 
+// Teil B: aktive Chatter
+const { createActiveChatters } = require(path.join(__dirname, '..', 'lib', 'chat-bridge'));
+let clock = Date.parse('2026-11-20T20:00:00Z');
+const active = createActiveChatters({ windowMs: 60 * 60000, max: 3, now: () => clock });
+check('A1 Ohne Nachricht: leer, updatedAt null', JSON.stringify(active.snapshot()) === '{"updatedAt":null,"windowMinutes":60,"chatters":[]}');
+active.note(evt({ chatter_user_id: '1', chatter_user_login: 'anna', chatter_user_name: 'Anna', badges: [{ set_id: 'vip' }] }));
+clock += 60000;
+active.note(evt({ chatter_user_id: '2', chatter_user_login: 'bert', chatter_user_name: 'Bert', badges: [{ set_id: 'moderator' }, { set_id: 'subscriber' }] }));
+let snap = active.snapshot();
+check('A2 Zwei Chatter, zuletzt aktiv zuerst, mit Abzeichen und Zeitpunkt', snap.chatters.map(c => c.login).join() === 'bert,anna' && snap.chatters[0].moderator && snap.chatters[0].subscriber && snap.chatters[1].vip
+  && snap.chatters[1].lastChatAt === '2026-11-20T20:00:00.000Z' && snap.updatedAt === '2026-11-20T20:01:00.000Z', JSON.stringify(snap));
+clock += 60000;
+active.note(evt({ chatter_user_id: '1', chatter_user_login: 'anna', chatter_user_name: 'Anna', badges: [] }));
+snap = active.snapshot();
+check('A3 Erneute Nachricht: nach vorn, Abzeichen der letzten Nachricht', snap.chatters.map(c => c.login).join() === 'anna,bert' && snap.chatters[0].vip === false);
+clock += 60 * 60000 - 30000;
+check('A4 Nach 61 min Stille fällt bert heraus, anna bleibt', active.snapshot().chatters.map(c => c.login).join() === 'anna', JSON.stringify(active.snapshot().chatters));
+['3', '4', '5'].forEach(id => active.note(evt({ chatter_user_id: id, chatter_user_login: `z${id}` })));
+check('A5 Obergrenze: der am längsten stille fällt heraus', active.snapshot().chatters.map(c => c.login).join() === 'z5,z4,z3');
+active.remove('4');
+check('A6 Entfernen (!privat)', active.snapshot().chatters.map(c => c.login).join() === 'z5,z3');
+
 for (const r of results) console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.ok ? '' : `  -> ${r.info}`}`);
 process.exit(results.every(r => r.ok) ? 0 : 1);

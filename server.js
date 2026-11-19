@@ -83,6 +83,11 @@ const CHAT_BRIDGE_SEND_PATH = '/api/chat/send';
 const CHAT_BRIDGE_MIN_GAP_MS = 1000;              // je Funktion höchstens eine Nachricht je Sekunde
 const CHAT_BRIDGE_PING_MS = 30 * 1000;            // Lebenszeichen auf dem Ereignisstrom
 const CHAT_BRIDGE_JSON_LIMIT = '2kb';             // eine Chat-Nachricht hat höchstens 500 Zeichen
+// Aktive Chatter und Kategorie für lokale Verbraucher (Spec chat-bruecke.md, Teil B, Issue #79)
+const CHAT_ACTIVE_PATH = '/api/chat/active';
+const CHAT_ACTIVE_WINDOW_MS = 60 * 60 * 1000;     // wer in dieser Zeit geschrieben hat, zählt als aktiv
+const CHAT_ACTIVE_MAX = 2000;                     // Obergrenze der Liste im Arbeitsspeicher
+const CHANNEL_INFO_PATH = '/api/twitch/channel';
 // Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): je Zeile ein Schalter, Vorgabe an
 // (Nutzer, 14.11.2026). Aus nur, solange ein älteres Widget seine Zeile noch selbst sendet.
 const CHAT_RESULTS_FILE = './chat_results.json';
@@ -180,7 +185,8 @@ const PREDICTION_PATH = '/api/twitch/prediction/current';  // letzter Stand der 
 const STREAM_LUCKY_PATH = '/api/stream/lucky';    // Glückspilz des Abends aus der Stream-Statistik (Spec wetten-abstimmungen.md, Schritt 4)
 // Leseendpunkte, die Widgets im Takt abfragen: erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll (außer mit "http debug on").
 // /token bleibt sichtbar (Token-Ausgabe), ebenso jede Antwort ab 400.
-const HTTP_QUIET_WIDGET_PATHS = ['/api/twitch/prediction/current', '/api/twitch/poll/current', '/api/twitch/stream', '/api/twitch/subcounter', '/api/privacy/optouts', '/api/stream/lucky'];
+const HTTP_QUIET_WIDGET_PATHS = ['/api/twitch/prediction/current', '/api/twitch/poll/current', '/api/twitch/stream', '/api/twitch/subcounter', '/api/privacy/optouts', '/api/stream/lucky',
+  '/api/chat/active', '/api/twitch/channel'];
 const PREDICTION_RECHECK_MS = 5 * 60 * 1000;      // offene Wette ohne Ereignis so lange, dann einmal bei Twitch nachsehen
 const POLL_PATH = '/api/twitch/poll/current';     // letzter Stand der Abstimmung aus EventSub (Spec wetten-abstimmungen.md)
 const POLL_RECHECK_MS = 5 * 60 * 1000;            // laufende Abstimmung ohne Ereignis so lange, dann einmal bei Twitch nachsehen
@@ -1465,7 +1471,28 @@ function forwardChatToBridge(evt) {
   }
 }
 
+// Teil B: wer im eigenen Kanal schreibt (ohne Broadcaster, Bots, fremden geteilten Chat, !privat), für Coins in der RimWorld-Mod
+const activeChatters = chatBridge.createActiveChatters({ windowMs: CHAT_ACTIVE_WINDOW_MS, max: CHAT_ACTIVE_MAX });
+
+function noteActiveChatter(evt) {
+  if (!isCountedChatter(evt)) return;
+  if (chatBridgeExcludedLogins().includes(String(evt.chatter_user_login || '').toLowerCase())) return;
+  if (isPrivateUser(String(evt.chatter_user_id))) return;
+  activeChatters.note(evt);
+}
+
+app.get(CHAT_ACTIVE_PATH, (req, res) => {
+  if (!isLocalWidgetRequest(req, CHAT_ACTIVE_PATH)) return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  res.json(activeChatters.snapshot());
+});
+
+app.get(CHANNEL_INFO_PATH, (req, res) => {
+  if (!isLocalWidgetRequest(req, CHANNEL_INFO_PATH)) return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
+  res.json({ category: currentCategory, categoryChangedAt: currentCategoryChangedAt, live: streamSession.snapshot().status === 'live', updatedAt: currentCategoryConfirmedAt });
+});
+
 function notifyPrivacyChange(userId, userLogin, isPrivate) {
+  if (isPrivate) activeChatters.remove(userId);   // Teil B: fällt sofort aus der Liste der aktiven Chatter
   const data = { userId: String(userId), userLogin: userLogin || null, private: Boolean(isPrivate), at: new Date().toISOString() };
   for (const client of chatBridgeClients) writeChatBridgeEvent(client, 'privacy', data);
 }
@@ -2260,6 +2287,7 @@ function connectEventSub(reconnectUrl = null) {
 
       if (subType === 'channel.chat.message') {
         forwardChatToBridge(msg.payload.event);   // zuerst, damit Verbraucher nicht auf die übrigen Befehle warten
+        noteActiveChatter(msg.payload.event);
         if (isCountedChatter(msg.payload.event)) {
           stats.count('chat_messages');
           streamSession.noteChatter(msg.payload.event.chatter_user_id, msg.payload.event.chatter_user_name || msg.payload.event.chatter_user_login);
@@ -3201,6 +3229,8 @@ const uboatCrew = uboatSavesDir
   : null;
 const uboatLastAnswerByUser = new Map();   // user_id -> Zeitpunkt der letzten Antwort
 let currentCategory = null;                // Twitch-Kategorie des eigenen Kanals, null = unbekannt
+let currentCategoryChangedAt = null;       // wann sich die Kategorie zuletzt geändert hat (ISO), für /api/twitch/channel
+let currentCategoryConfirmedAt = null;     // wann der Server sie zuletzt bestätigt hat (Abruf oder channel.update)
 
 function loadUboatCrewMap() {
   try {
@@ -3222,8 +3252,10 @@ function isUboatCategoryActive() {
 }
 
 function setCurrentCategory(name, source) {
+  currentCategoryConfirmedAt = new Date().toISOString();
   if (name === currentCategory) return;
   currentCategory = name;
+  currentCategoryChangedAt = currentCategoryConfirmedAt;
   streamSession.setCategory(name);
   console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${!moduleSwitches.uboat ? 'deaktiviert' : isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
 }

@@ -964,6 +964,22 @@ async function chatBruecke() {
   rim.close(); coin.close();
   await sleep(100);
   check('B16 Trennen wird protokolliert', logs.some(l => l.startsWith('[Chat-Brücke] rimworld getrennt')));
+
+  // Teil B: aktive Chatter und Kategorie (#79)
+  const act = JSON.parse((await request('/api/chat/active')).body);
+  const ids = act.chatters.map(c => c.id);
+  check('B17 Aktive Chatter: anna (8) dabei; kalle (!privat), Broadcaster, Bots und fremder Chat nicht', ids.includes('8') && !ids.includes('7') && !ids.includes('4711') && !ids.includes('99') && !ids.includes('98') && !ids.includes('55')
+    && act.windowMinutes === 60 && !Number.isNaN(Date.parse(act.updatedAt)), JSON.stringify(act));
+  chat('stille', '12', 'nur plaudern, kein Befehl', { badges: [{ set_id: 'vip' }] });
+  await sleep(100);
+  const act2 = JSON.parse((await request('/api/chat/active')).body);
+  check('B18 Plaudern ohne Befehl zählt, zuletzt aktiv zuerst, Abzeichen', act2.chatters[0].id === '12' && act2.chatters[0].vip === true && act2.chatters[0].login === 'stille', JSON.stringify(act2.chatters[0]));
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: 'channel.update', message_id: 'cu1' }, payload: { event: { broadcaster_user_id: '4711', category_name: 'RimWorld' } } }));
+  await sleep(50);
+  const ch = JSON.parse((await request('/api/twitch/channel')).body);
+  check('B19 Kategorie mit Zeitpunkt der Änderung', ch.category === 'RimWorld' && !Number.isNaN(Date.parse(ch.categoryChangedAt)) && ch.updatedAt === ch.categoryChangedAt && ch.live === false, JSON.stringify(ch));
+  r = await request('/api/chat/active', { Origin: 'https://fremd.example' });
+  check('B20 Fremde Herkunft: 403; Abrufe nicht im HTTP-Protokoll', r.status === 403 && !logs.some(l => l.startsWith('[HTTP] GET /api/chat/active -> 200')) && !logs.some(l => l.startsWith('[HTTP] GET /api/twitch/channel -> 200')), String(r.status));
 }
 
 // HTTP-Protokoll gestrafft (15.11.2026): erfolgreiche Widget-Abrufe nur mit "http debug on", Fehler und /token immer

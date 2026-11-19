@@ -50,6 +50,7 @@ Spalte „heute“: aktuelles Verhalten. Spalte „Vorschlag“: Standardwert f�
 | Daten | Personenbezug | Zweck | Dauer heute |
 |---|---|---|---|
 | `seenMessageIds` | Nachrichten-IDs | Doppelte Zustellung erkennen | 10 min |
+| `activeChatters` (Chat-Brücke, Teil B) | Twitch-ID, Login, Anzeigename, Zeitpunkt der letzten Nachricht, Abzeichen | aktive Chatter für lokale Verbraucher (`/api/chat/active`, RimWorld-Coins); ohne Broadcaster, Bots, fremden geteilten Chat und `!privat` | 60 min nach der letzten Nachricht, höchstens 2000 Einträge |
 | `recentSubByUser`, `recentFollowByUser` | User-IDs | Effekt nicht doppelt auslösen | 60 s |
 | `shoutedOutThisSession` | User-IDs | Shoutout nur einmal je Stream | bis Streambeginn bzw. Neustart |
 | `bduPending`, `bduAcceptedByUser` | Login, Nachrichten-ID | Antwort zuordnen, Limit je Nutzer | bis Antwort bzw. Ablauf der Sperre |

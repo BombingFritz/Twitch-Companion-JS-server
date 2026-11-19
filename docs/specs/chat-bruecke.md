@@ -1,6 +1,6 @@
 # Spec: Chat-Brücke für lokale Verbraucher
 
-**Status:** vereinbart für Teil A und B (Nutzer, 20.11.2026: Entscheidungen unten). Teil A setzt Issue #74 um, Teil B Issue #79. ADR 0025.
+**Status:** vereinbart für Teil A und B (Nutzer, 20.11.2026: Entscheidungen unten), beide umgesetzt im Branch `feature/chat-bruecke`. Teil A setzt Issue #74 um, Teil B Issue #79. ADR 0025.
 Erste Verbraucher: RimWorld-Mod (`BombingFritz/TwitchCompanion_RimWorld`, Stufe 1, dort Spec `docs/specs/mod.md`) und CoinFlip (`BombingFritz/CoinFlip`, Glücksrad geplant).
 
 ## Ziel
