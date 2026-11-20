@@ -168,7 +168,7 @@ Vereinbart (Nutzer, 14.11.2026); im Branch `feature/glueckspilz`.
   - Anzahl gemerkter Wett-IDs (500)
 
 ## Nicht-Ziele
-- Wetten oder Abstimmungen starten, sperren oder auflösen (bräuchte `channel:manage:*`).
+- Wetten oder Abstimmungen starten, sperren oder auflösen (bräuchte `channel:manage:*`). Ausnahme seit 20.11.2026: Lokale Verbraucher können eine Abstimmung starten lassen (Spec `chat-bruecke.md`, Teil C, #81, Scope `channel:manage:polls`). Ihr Stand und ihre Ergebniszeile laufen wie hier beschrieben.
 - Anzeige- oder Quotenlogik der Widgets im Server.
 - Neue Datei für den laufenden Stand.
 

@@ -21,7 +21,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0018](0018-webkonsole-nur-lokal-mit-reitern.md) | Webkonsole unter `/TwitchCompanionAdmin`, nur am Streaming-PC, mit Reitern. Ergänzt 0013, Nachträge in 0006 und 0010. |
 | [0023](0023-nur-der-server-fragt-twitch.md) | Nur der Server fragt Twitch; Widget-Endpunkte geben den letzten Stand mit Zeitstempel aus. Erstes Beispiel: Zuschauerzahl mit Minutenverlauf. Präzisiert 0003. |
 | [0024](0024-zentraler-twitch-zugriff.md) | Alle Twitch-Anfragen über `lib/twitch-api.js`: Drosselung (3/s im Schnitt, Spitze 20, 200/min; die ersten 300 Anfragen nach dem Start frei), Token im Arbeitsspeicher, eine Erneuerung zur Zeit, vor Ablauf; `/token` mit `expires_at`. Folgt 0023. |
-| [0025](0025-chat-bruecke-fuer-lokale-verbraucher.md) | Chat-Brücke für lokale Verbraucher (RimWorld-Mod, CoinFlip): Ereignisstrom `/api/chat/stream` mit angemeldeten Befehlen und Präfixen, Senden über `/api/chat/send` mit eigener Chat-Funktion; aktive Chatter und Kategorie als Leseendpunkte. Folgt 0023. |
+| [0025](0025-chat-bruecke-fuer-lokale-verbraucher.md) | Chat-Brücke für lokale Verbraucher (RimWorld-Mod, CoinFlip): Ereignisstrom `/api/chat/stream` mit angemeldeten Befehlen und Präfixen, Senden über `/api/chat/send` mit eigener Chat-Funktion; aktive Chatter und Kategorie als Leseendpunkte. Nachtrag 20.11.2026: Ereignisse `raid` und `poll_result`, Abstimmung starten über `/api/twitch/poll/start` (Scope `channel:manage:polls`). Folgt 0023. |
 
 ### Effekte und Home Assistant
 | ADR | Worum es geht |

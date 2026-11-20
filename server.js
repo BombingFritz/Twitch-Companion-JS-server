@@ -18,6 +18,7 @@ const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/predi
 const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
 const { predictionResultMessage, pollResultMessage, createResultAnnouncer } = require('./lib/result-messages');
 const chatBridge = require('./lib/chat-bridge');
+const consumerPolls = require('./lib/consumer-polls');
 require('dotenv').config();
 
 const app = express();
@@ -88,6 +89,10 @@ const CHAT_ACTIVE_PATH = '/api/chat/active';
 const CHAT_ACTIVE_WINDOW_MS = 60 * 60 * 1000;     // wer in dieser Zeit geschrieben hat, zählt als aktiv
 const CHAT_ACTIVE_MAX = 2000;                     // Obergrenze der Liste im Arbeitsspeicher
 const CHANNEL_INFO_PATH = '/api/twitch/channel';
+// Abstimmung im Auftrag eines Verbrauchers (Spec chat-bruecke.md, Teil C, Issue #81); braucht channel:manage:polls in SCOPES
+const POLL_START_PATH = '/api/twitch/poll/start';
+const POLL_START_MIN_GAP_MS = 5000;               // höchstens ein Startversuch je 5 s, damit Wiederholungen Twitch nicht fluten
+const POLL_REQUEST_MAX_AGE_MS = 2 * 60 * 60 * 1000;   // offene Aufträge ohne Endstand so lange merken (Abstimmung höchstens 30 min)
 // Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): je Zeile ein Schalter, Vorgabe an
 // (Nutzer, 14.11.2026). Aus nur, solange ein älteres Widget seine Zeile noch selbst sendet.
 const CHAT_RESULTS_FILE = './chat_results.json';
@@ -1390,6 +1395,7 @@ app.get('/callback', async (req, res) => {
     };
 
     saveTokens(tokens);
+    consumerPollScopeMissing = false;   // neue Anmeldung: Startversuch für Abstimmungen wieder bei Twitch (Teil C)
     console.log('Tokens gespeichert');
     console.log(`Token läuft ab in: ${Math.floor(response.data.expires_in / 3600)} Stunden`);
 
@@ -1495,6 +1501,14 @@ function notifyPrivacyChange(userId, userLogin, isPrivate) {
   if (isPrivate) activeChatters.remove(userId);   // Teil B: fällt sofort aus der Liste der aktiven Chatter
   const data = { userId: String(userId), userLogin: userLogin || null, private: Boolean(isPrivate), at: new Date().toISOString() };
   for (const client of chatBridgeClients) writeChatBridgeEvent(client, 'privacy', data);
+}
+
+// Teil D (#80): eingehender Raid an alle verbundenen Verbraucher; doppelte Zustellung filtert isDuplicateMessage vorher (ADR 0009)
+function notifyRaidToBridge(evt, messageId) {
+  if (!chatBridgeClients.length) return;
+  const data = chatBridge.raidEvent(evt, messageId);
+  for (const client of chatBridgeClients) writeChatBridgeEvent(client, 'raid', data);
+  console.log(`[Chat-Brücke] Raid von @${data.fromLogin} an ${chatBridgeClients.length} Verbraucher gemeldet`);
 }
 
 app.get(CHAT_BRIDGE_STREAM_PATH, (req, res) => {
@@ -1655,12 +1669,69 @@ const pollTracker = createPollTracker({
       ? '[Abstimmung] keine Abstimmung bekannt – Status: WAITING'
       : `[Abstimmung] „${s.title}“ – Status: ${s.status}`);
     pollAnnouncer.observe(s);
+    deliverConsumerPollResult(s);
   },
   onError: err => logIfChanged('poll', `[Abstimmung] Abruf bei Twitch gescheitert, letzter Stand bleibt: ${err.response?.data?.message || err.message}`, 'warn'),
 });
 
 app.get(POLL_PATH, (req, res) => {
   res.json(pollTracker.snapshot());
+});
+
+// ── Abstimmung im Auftrag eines lokalen Verbrauchers (Spec chat-bruecke.md, Teil C, Issue #81) ──
+// Der Server legt die Twitch-Abstimmung an und meldet den Endstand einmal als poll_result an die Verbindungen
+// des startenden Verbrauchers im Ereignisstrom. Aufträge nur im Arbeitsspeicher; nach einem Neustart verloren.
+const consumerPollRequests = consumerPolls.createPollRequests({ maxAgeMs: POLL_REQUEST_MAX_AGE_MS });
+let consumerPollLastStart = 0;
+let consumerPollScopeMissing = false;   // Twitch meldete fehlenden Scope; bis zur nächsten Anmeldung nicht erneut fragen
+
+function deliverConsumerPollResult(snapshot) {
+  const client = consumerPollRequests.takeFinal(snapshot);
+  if (!client) return;
+  const targets = chatBridgeClients.filter(c => c.client === client);
+  const data = consumerPolls.resultEvent(snapshot);
+  for (const target of targets) writeChatBridgeEvent(target, 'poll_result', data);
+  console.log(targets.length
+    ? `[Abstimmung] Ergebnis an ${client} gemeldet (${snapshot.status})`
+    : `[Abstimmung] Ergebnis für ${client} verworfen: nicht verbunden (${snapshot.status})`);
+}
+
+function rejectPollStart(res, status, reason, error, extra = {}) {
+  return res.status(status).json({ ok: false, reason, error, ...extra });
+}
+
+app.post(POLL_START_PATH, express.json({ limit: CHAT_BRIDGE_JSON_LIMIT }), async (req, res) => {
+  if (!isLocalWidgetRequest(req, POLL_START_PATH)) return rejectPollStart(res, 403, 'forbidden', 'Nur für lokale Aufrufe über localhost oder 127.0.0.1');
+  if (!req.is('application/json')) return rejectPollStart(res, 415, 'invalid', 'Content-Type application/json erwartet');
+  const start = consumerPolls.validateStart(req.body);
+  if (start.error) return rejectPollStart(res, 400, 'invalid', start.error);
+  const tokens = loadTokens();
+  if (!tokens) return rejectPollStart(res, 503, 'not_logged_in', 'Broadcaster nicht angemeldet');
+  if (consumerPollScopeMissing) return rejectPollStart(res, 403, 'missing_scope', 'Dem Broadcaster-Token fehlt channel:manage:polls (SCOPES ergänzen, /login neu)');
+  const current = pollTracker.snapshot();
+  const endsMs = Date.parse(current.endsAt);
+  if (pollTracker.isOpen() && !(endsMs < Date.now())) {
+    return rejectPollStart(res, 409, 'poll_active', 'Es läuft schon eine Abstimmung', { activePollId: current.pollId, endsAt: current.endsAt || null });
+  }
+  const since = Date.now() - consumerPollLastStart;
+  if (since < POLL_START_MIN_GAP_MS) return rejectPollStart(res, 429, 'too_fast', 'höchstens ein Startversuch je 5 Sekunden', { retryAfterMs: POLL_START_MIN_GAP_MS - since });
+  consumerPollLastStart = Date.now();
+  try {
+    await getValidAccessToken();
+    const response = await twitchApi.post('/polls', consumerPolls.helixBody(tokens.broadcaster_id, start));
+    const created = response.data?.data?.[0];
+    if (!created || !created.id) return rejectPollStart(res, 502, 'twitch_error', 'Twitch hat keine Abstimmung zurückgegeben');
+    consumerPollRequests.add(created.id, start.client);
+    pollTracker.applyHelix(created);   // offen gesehen, auch wenn channel.poll.begin ausbleibt; Kontrolle läuft
+    const s = pollTracker.snapshot();
+    console.log(`[Abstimmung] ${start.client} startet „${start.title}“ (${start.choices.length} Optionen, ${start.durationS} s${start.channelPointsPerVote ? `, Zusatzstimme ${start.channelPointsPerVote} Kanalpunkte` : ''})`);
+    res.json({ ok: true, pollId: created.id, startedAt: created.started_at || null, endsAt: s.pollId === created.id ? s.endsAt : null });
+  } catch (err) {
+    const c = consumerPolls.classifyCreateError(err);
+    if (c.reason === 'missing_scope') consumerPollScopeMissing = true;
+    console.warn(`[Abstimmung] Start für ${start.client} abgelehnt (${c.reason}): ${c.error}`);   // höchstens alle 5 s
+    rejectPollStart(res, c.status, c.reason, c.error);
+  }
 });
 
 // ── Zuschauerzahl (ADR 0023): Der Server fragt Twitch im festen Takt, Widgets bekommen nur den letzten Stand ──
@@ -2283,6 +2354,7 @@ function connectEventSub(reconnectUrl = null) {
           streamSession.onRaidOut();
         } else {
           stats.count('raids');
+          notifyRaidToBridge(evt, msg.metadata.message_id);   // sofort, die Begrüßung wartet womöglich in der Warteschlange
           enqueueRaidEvent(evt);
         }
       }

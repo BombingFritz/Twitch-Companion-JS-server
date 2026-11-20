@@ -38,3 +38,20 @@
 - Der Server sieht, welcher `client` verbunden ist (Log). Name und Version in der Webkonsole folgen mit #70.
 - Verpasste Nachrichten werden nicht nachgeliefert. Ein neues `hello` zeigt dem Verbraucher den Neustart.
 - Ein Verbraucher, der `!` als Präfix anmeldet, bekommt alle übrigen Befehle; Überschneidungen mit künftigen Server-Befehlen kommen in `SERVER_CHAT_COMMANDS`.
+
+## Nachtrag 20.11.2026: Abstimmung starten und Raid melden (#81, #80)
+**Auftrag des Nutzers:** Ergebnis und Raid als Ereignis im vorhandenen Strom; Ablehnung mit Grund, wenn schon eine Abstimmung offen ist.
+
+**Entscheidung:**
+- Der Strom trägt neben Chat auch Ereignisse des Kanals: `raid` an alle, `poll_result` nur an den startenden Verbraucher. Verbraucher ignorieren Ereignisse, die sie nicht kennen; neue kommen ohne neue Anmeldung dazu.
+- Verbraucher dürfen über den Server eine Twitch-Abstimmung anlegen (`POST /api/twitch/poll/start`). Damit spricht weiter nur der Server mit Twitch (ADR 0023), mit Drosselung (ADR 0024). Der Server bricht nie eine laufende Abstimmung ab.
+- Dafür braucht der Broadcaster-Token `channel:manage:polls` und eine neue Anmeldung.
+
+Von Claude festgelegt, nicht einzeln zur Wahl gestellt: Adresse, Felder, `reason`-Werte, Ablehnen statt Kürzen, 5 s zwischen Startversuchen, Aufträge nur im Arbeitsspeicher. Spec `chat-bruecke.md`, Teil C und D.
+
+**Verworfen:**
+- **Ergebnis an alle Verbraucher:** Nur der Starter kann es zuordnen.
+- **Eigene Anmeldung für `raid`:** Ohne Daten, die über den Raid hinausgehen, ist sie unnötiger Aufwand; der Raid ist öffentlich.
+- **Verbraucher legen die Abstimmung selbst an:** Das bräuchte den Token beim Verbraucher (ADR 0023).
+
+**Konsequenz:** Ein abgegriffener Broadcaster-Token (`/token` für Widgets) könnte nun auch Abstimmungen anlegen. Das wiegt weniger als die schon vorhandenen Rechte zum Schreiben im Chat und für Shoutouts; die Frage nach weniger Rechten für Widgets bleibt bei #57.
