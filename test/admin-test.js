@@ -961,9 +961,10 @@ async function chatBruecke() {
   check('B14 Fremder Host: 403', r.status === 403, String(r.status));
   const ov = JSON.parse((await request(OVERVIEW)).body);
   check('B15 Chat-Absender: rimworld Vorgabe Bot, coinflip Broadcaster', ov.chat_senders.find(x => x.feature === 'rimworld').sender === 'bot' && ov.chat_senders.find(x => x.feature === 'coinflip').sender === 'broadcaster');
+  check('B15a Übersicht nennt die verbundenen Verbraucher mit Zeitpunkt', JSON.stringify(ov.chat_bridge.clients.map(c => c.client)) === '["rimworld","coinflip"]' && ov.chat_bridge.clients.every(c => !Number.isNaN(Date.parse(c.connectedAt))), JSON.stringify(ov.chat_bridge));
   rim.close(); coin.close();
   await sleep(100);
-  check('B16 Trennen wird protokolliert', logs.some(l => l.startsWith('[Chat-Brücke] rimworld getrennt')));
+  check('B16 Trennen wird protokolliert, Übersicht danach leer', logs.some(l => l.startsWith('[Chat-Brücke] rimworld getrennt')) && JSON.parse((await request(OVERVIEW)).body).chat_bridge.clients.length === 0);
 
   // Teil B: aktive Chatter und Kategorie (#79)
   const act = JSON.parse((await request('/api/chat/active')).body);

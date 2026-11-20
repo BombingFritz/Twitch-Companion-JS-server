@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Ereignisstrom `GET /api/chat/stream`: angemeldete Befehle (`commands`) oder Präfixe (`prefixes`), Nachrichten aus dem eigenen Kanal mit Abzeichen und `!privat`-Kennzeichen, Ereignis `privacy` beim Umschalten. Ohne Bots, fremden geteilten Chat und die eigenen Befehle des Servers.
   - Senden über `POST /api/chat/send` mit den neuen Chat-Funktionen `rimworld` (Vorgabe Bot) und `coinflip` (Vorgabe Broadcaster), höchstens eine Nachricht je Sekunde und Funktion.
   - Nur lokal, ohne Token. Neu `lib/chat-bridge.js`.
+  - Webkonsole: Karte und Licht „Chat-Brücke“ unter „Optionale Module“ zeigen, welcher Verbraucher seit wann verbunden ist (`chat_bridge` in `/api/admin/overview`).
 - Aktive Chatter und Kategorie für lokale Verbraucher (Issue #79, Teil B der Spec `chat-bruecke.md`):
   - `GET /api/chat/active`: wer in den letzten 60 Minuten im eigenen Kanal geschrieben hat, mit Abzeichen. Ohne Broadcaster, Bots, fremden geteilten Chat und `!privat`; nur im Arbeitsspeicher, höchstens 2000 Einträge.
   - `GET /api/twitch/channel`: Kategorie mit Zeitpunkt der letzten Änderung, ob live. Fragt Twitch nicht.

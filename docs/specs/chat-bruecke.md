@@ -61,6 +61,8 @@ Von Claude festgelegt, nicht einzeln zur Wahl gestellt:
 
 **Log:** Verbinden und Trennen je eine Zeile mit `client`, ohne Nachrichtentext. Der Text kann personenbezogen sein.
 
+**Webkonsole** (Wunsch aus dem ersten Test mit der Mod, 20.11.2026): Übersicht, Gruppe „Optionale Module“, Karte und Licht „Chat-Brücke“. Grün, sobald ein Verbraucher verbunden ist, mit `client` und Uhrzeit der Verbindung; sonst „keiner verbunden“ und nur nicht aktiv. Dafür liefert `/api/admin/overview` zusätzlich `chat_bridge: {clients: [{client, connectedAt}]}`.
+
 ### `POST /api/chat/send`
 - JSON `{feature, message}`, höchstens 2 KB; `Content-Type: application/json`, sonst 415.
 - `feature`: eine Chat-Funktion der Brücke, `rimworld` oder `coinflip`. Sonst 400.
@@ -120,7 +122,7 @@ Von Claude festgelegt, nicht einzeln zur Wahl gestellt:
 - Keine Nachlieferung verpasster Nachrichten.
 - Keine Flüstern.
 - Keine Auswertung der Befehle im Server; die bleibt beim Verbraucher.
-- Kein Schalter in der Webkonsole außer „Chat-Absender“. Name und Version der Verbraucher in der Webkonsole folgen mit #70.
+- Kein Schalter in der Webkonsole außer „Chat-Absender“. Die Version der Verbraucher folgt mit #70.
 
 ## Berührte Funktionen/Dateien
 `server.js`:

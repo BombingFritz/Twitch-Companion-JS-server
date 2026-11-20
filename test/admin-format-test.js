@@ -35,7 +35,9 @@ if (section) {
   const lights = changes => { context.d = { ...healthy, ...changes }; return JSON.parse(vm.runInContext('JSON.stringify(moduleLights(d))', context)); };
   const level = (name, changes) => lights(changes).find(m => m.name === name).level;
   const names = lights({}).map(m => m.name).join(',');
-  check('L1 Die fünf Module in der gewünschten Reihenfolge', names === 'HA-Effekte,UBOAT-Soldbuch,BdU-Chat,Intro-Topics,Sub-Goal', names);
+  check('L1 Die sechs Module in der gewünschten Reihenfolge', names === 'HA-Effekte,UBOAT-Soldbuch,BdU-Chat,Intro-Topics,Chat-Brücke,Sub-Goal', names);
+  check('L1a Chat-Brücke: ohne Verbraucher nur nicht aktiv, mit Verbraucher grün', level('Chat-Brücke', {}) === 'off' && level('Chat-Brücke', { chat_bridge: { clients: [] } }) === 'off'
+    && level('Chat-Brücke', { chat_bridge: { clients: [{ client: 'rimworld', connectedAt: '2026-11-20T20:00:00Z' }] } }) === 'ok');
   check('L2 Alles eingerichtet: grün', ['HA-Effekte', 'UBOAT-Soldbuch', 'BdU-Chat', 'Intro-Topics'].every(n => level(n, {}) === 'ok'));
   check('L3 Sub-Goal hat kein Licht', level('Sub-Goal', {}) === null);
   check('L4 HA-Effekte: kein Webhook ist ein Fehler', level('HA-Effekte', { ha_webhook_configured: false }) === 'bad');

@@ -1505,7 +1505,7 @@ app.get(CHAT_BRIDGE_STREAM_PATH, (req, res) => {
   if (sub.error) return res.status(400).json({ error: sub.error });
   res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'Connection': 'keep-alive' });
   res.write('retry: 5000\n\n');
-  const client = { res, ...sub };
+  const client = { res, ...sub, connectedAt: Date.now() };
   const bot = loadBotConfig();
   writeChatBridgeEvent(client, 'hello', { server: 'twitch-companion-js-server', version: APP_VERSION, client: sub.client, commands: sub.commands, prefixes: sub.prefixes, botLogin: bot ? bot.bot_login : null });
   client.ping = setInterval(() => res.write(': ping\n\n'), CHAT_BRIDGE_PING_MS);
@@ -1918,6 +1918,8 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     twitch_api: twitchApi.stats(),
     chat_senders: chatSenderList(),
     chat_results: chatResultList(),
+    // Chat-Brücke (ADR 0025): wer gerade verbunden ist, für das Licht in der Webkonsole (Name und Version folgen mit #70)
+    chat_bridge: { clients: chatBridgeClients.map(c => ({ client: c.client, connectedAt: new Date(c.connectedAt).toISOString() })) },
     recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
       type: e.type,
       count: e.count,
