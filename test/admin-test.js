@@ -35,8 +35,11 @@ const chatSent = [];   // an Twitch gesendete Chatnachrichten (Attrappe)
 let fakeStream = null, fakeStreamRequests = 0, fakeGoalRequests = 0;   // Antwort und Zahl der Anfragen an helix/streams (Attrappe)
 let fakePrediction = null, fakePredictionRequests = 0;                 // ebenso für helix/predictions
 let fakePoll = null, fakePollRequests = 0;                             // und helix/polls
+const pollCreates = []; let fakePollCreate = null;                     // POST helix/polls: Bodies und Antwort (Funktion, darf werfen)
 const fakeAxios = {
   post: async (url, body) => {
+    if (url.includes('helix/polls')) { pollCreates.push(body); if (fakePollCreate) return fakePollCreate(body); }
+    if (url.includes('oauth2/token') && scenario === 'abstimmung-start') return { data: { access_token: SECRETS[1], refresh_token: SECRETS[2], expires_in: 99999 } };
     if (url.includes('helix/chat/messages')) chatSent.push(body);
     if (url.includes('eventsub/subscriptions')) subscribed.push(body.type === 'channel.raid' ? `channel.raid:${body.condition.from_broadcaster_user_id ? 'from' : 'to'}` : body.type);
     return { data: { data: [] } };
@@ -879,29 +882,31 @@ async function abstimmung() {
   check('V9 Nur Statuswechsel im Log', logs.filter(l => l.includes('[Abstimmung]')).length <= 5, logs.filter(l => l.includes('[Abstimmung]')).join(' | '));
 }
 
-// Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, Teil A, Issue #74)
+// Ereignisstrom der Chat-Brücke wie ein Programm ohne Origin; sammelt die Ereignisse
+const connect = query => new Promise((resolve, reject) => {
+  const events = [];
+  const req = http.get({ host: '127.0.0.1', port: PORT, path: `/api/chat/stream?${query}` }, res => {
+    let buf = '';
+    res.on('data', c => {
+      buf += c; let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = /^event: (\w+)$/m.exec(block), data = /^data: (.*)$/m.exec(block);
+        if (ev && data) events.push({ event: ev[1], data: JSON.parse(data[1]) });
+      }
+    });
+    resolve({ status: res.statusCode, events, close: () => req.destroy() });
+  });
+  req.on('error', reject);
+});
+const waitFor = async (cond, ms = 3000) => { const end = Date.now() + ms; while (!cond() && Date.now() < end) await sleep(25); return cond(); };
+
+// Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, Teil A, Issue #74; Raid Teil D, #80)
 async function chatBruecke() {
   await welcome();
   let n = 0;
   const chat = (login, id, text, extra = {}) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: 'channel.chat.message', message_id: `cb${++n}` },
     payload: { event: { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `m${n}`, message: { text }, badges: [], ...extra } } }));
-  // Ereignisstrom wie ein Programm ohne Origin; sammelt die Ereignisse
-  const connect = query => new Promise((resolve, reject) => {
-    const events = [];
-    const req = http.get({ host: '127.0.0.1', port: PORT, path: `/api/chat/stream?${query}` }, res => {
-      let buf = '';
-      res.on('data', c => {
-        buf += c; let i;
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          const block = buf.slice(0, i); buf = buf.slice(i + 2);
-          const ev = /^event: (\w+)$/m.exec(block), data = /^data: (.*)$/m.exec(block);
-          if (ev && data) events.push({ event: ev[1], data: JSON.parse(data[1]) });
-        }
-      });
-      resolve({ status: res.statusCode, events, close: () => req.destroy() });
-    });
-    req.on('error', reject);
-  });
   const chats = c => c.events.filter(e => e.event === 'chat').map(e => e.data.text);
 
   const rim = await connect('client=rimworld&prefixes=!,$');
@@ -981,6 +986,121 @@ async function chatBruecke() {
   check('B19 Kategorie mit Zeitpunkt der Änderung', ch.category === 'RimWorld' && !Number.isNaN(Date.parse(ch.categoryChangedAt)) && ch.updatedAt === ch.categoryChangedAt && ch.live === false, JSON.stringify(ch));
   r = await request('/api/chat/active', { Origin: 'https://fremd.example' });
   check('B20 Fremde Herkunft: 403; Abrufe nicht im HTTP-Protokoll', r.status === 403 && !logs.some(l => l.startsWith('[HTTP] GET /api/chat/active -> 200')) && !logs.some(l => l.startsWith('[HTTP] GET /api/twitch/channel -> 200')), String(r.status));
+
+  // Teil D (#80), am Ende, weil die Raid-Begrüßung danach selbst in den Chat schreibt.
+  // Eingehender Raid doppelt zugestellt, ausgehender Raid: an beide Verbraucher genau eine Meldung.
+  const rim2 = await connect('client=rimworld&prefixes=!');
+  const coin2 = await connect('client=coinflip&commands=flip');
+  await sleep(100);
+  const raid = (id, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: 'channel.raid', message_id: id }, payload: { event } }));
+  const incoming = { from_broadcaster_user_id: '77', from_broadcaster_user_login: 'raider', from_broadcaster_user_name: 'Raider', to_broadcaster_user_id: '4711', to_broadcaster_user_login: 'testkanal', viewers: 12 };
+  raid('raid-1', incoming);
+  raid('raid-1', incoming);
+  raid('raid-out', { from_broadcaster_user_id: '4711', from_broadcaster_user_login: 'testkanal', to_broadcaster_user_id: '88', to_broadcaster_user_login: 'freund', viewers: 5 });
+  await waitFor(() => rim2.events.some(e => e.event === 'raid') && coin2.events.some(e => e.event === 'raid'));
+  await sleep(150);
+  const raids = c => c.events.filter(e => e.event === 'raid').map(e => e.data);
+  const r1 = raids(rim2)[0] || {};
+  check('B21 Eingehender Raid: genau eine Meldung mit ID, Zeitpunkt, Kanal und Zuschauern, an alle Verbraucher',
+    raids(rim2).length === 1 && raids(coin2).length === 1 && r1.id === 'raid-1' && r1.fromId === '77' && r1.fromLogin === 'raider' && r1.fromName === 'Raider' && r1.viewers === 12 && !Number.isNaN(Date.parse(r1.at)),
+    JSON.stringify(raids(rim2)));
+  check('B22 Raid-Begrüßung läuft weiter, ausgehender Raid wird nicht gemeldet', logs.some(l => l.includes('Raid-Event von @raider in Warteschlange')) && logs.some(l => l.includes('Ausgehender Raid zu @freund')),
+    logs.filter(l => /Raid/.test(l)).slice(-5).join(' | '));
+  rim2.close(); coin2.close();
+}
+
+// Abstimmung im Auftrag eines Verbrauchers (Spec chat-bruecke.md, Teil C, Issue #81). Startversuche bei Twitch höchstens alle 5 s.
+async function abstimmungStart() {
+  await welcome();
+  let n = 0;
+  const send = (subType, event) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: subType, message_id: `ps${++n}` }, payload: { event } }));
+  const start = (body, headers = JSON_TYPE) => request('/api/twitch/poll/start', headers, 'POST', JSON.stringify(body));
+  const created = (id, body) => ({ id, broadcaster_id: '4711', title: body.title, status: 'ACTIVE', duration: body.duration, started_at: new Date().toISOString(), ended_at: null,
+    channel_points_voting_enabled: !!body.channel_points_voting_enabled, channel_points_per_vote: body.channel_points_per_vote || 0, bits_voting_enabled: false, bits_per_vote: 0,
+    choices: body.choices.map((c, i) => ({ id: `${id}-c${i}`, title: c.title, votes: 0, channel_points_votes: 0, bits_votes: 0 })) });
+  const twitchErr = (status, message) => Object.assign(new Error(`Request failed with status code ${status}`), { response: { status, data: { status, message } } });
+  const pollResults = c => c.events.filter(e => e.event === 'poll_result').map(e => e.data);
+  const rim = await connect('client=rimworld&prefixes=!');
+  const coin = await connect('client=coinflip&commands=flip');
+  await sleep(100);
+  const ask = { client: 'rimworld', title: 'Was kommt?', choices: ['Raid', 'Händler', 'Sonnenfinsternis'], durationS: 60 };
+
+  let r = await start({ ...ask, choices: ['nur eine'] });
+  const bad = [r, await start({ ...ask, title: 'x'.repeat(61) }), await start({ ...ask, durationS: 5 }), await start({ ...ask, client: undefined })];
+  check('P1 Ungültige Anfragen: 400 invalid mit Grund, nichts bei Twitch', bad.every(x => x.status === 400 && JSON.parse(x.body).reason === 'invalid' && JSON.parse(x.body).ok === false) && pollCreates.length === 0, bad.map(x => x.body).join(' | '));
+  r = await request('/api/twitch/poll/start', { 'Content-Type': 'text/plain' }, 'POST', 'x');
+  const foreign = await start(ask, { ...JSON_TYPE, Origin: 'https://fremd.example' });
+  check('P2 Ohne JSON 415, fremde Herkunft 403', r.status === 415 && foreign.status === 403 && pollCreates.length === 0, `${r.status} ${foreign.status}`);
+
+  fakePollCreate = body => ({ data: { data: [created('np1', body)] } });
+  r = await start({ ...ask, channelPointsPerVote: 3000 });
+  let d = JSON.parse(r.body);
+  const body1 = pollCreates[0] || {};
+  check('P3 Start: läuft mit ID und Ende, Twitch bekommt Titel, Optionen, Dauer und 3000 Kanalpunkte je Zusatzstimme',
+    r.status === 200 && d.ok === true && d.pollId === 'np1' && !Number.isNaN(Date.parse(d.endsAt)) && body1.broadcaster_id === '4711' && body1.duration === 60
+    && body1.choices.length === 3 && body1.channel_points_voting_enabled === true && body1.channel_points_per_vote === 3000, `${r.body} ${JSON.stringify(body1)}`);
+  const cur = JSON.parse((await request('/api/twitch/poll/current')).body);
+  check('P4 Stand am Endpunkt sofort ACTIVE, ohne auf channel.poll.begin zu warten', cur.pollId === 'np1' && cur.status === 'ACTIVE' && cur.channelPointsVoting.amountPerVote === 3000, JSON.stringify(cur));
+  r = await start(ask);
+  d = JSON.parse(r.body);
+  check('P5 Zweiter Start, während eine Abstimmung läuft: 409 poll_active, Twitch nicht gefragt', r.status === 409 && d.reason === 'poll_active' && d.activePollId === 'np1' && pollCreates.length === 1, r.body);
+
+  const evtBase = { id: 'np1', broadcaster_user_id: '4711', title: 'Was kommt?', started_at: cur.startedAt };
+  const evtChoices = votes => votes.map((v, i) => ({ id: `np1-c${i}`, title: ask.choices[i], votes: v, channel_points_votes: i === 1 ? 2 : 0, bits_votes: 0 }));
+  send('channel.poll.begin', { ...evtBase, choices: evtChoices([0, 0, 0]), ends_at: cur.endsAt });
+  send('channel.poll.progress', { ...evtBase, choices: evtChoices([1, 4, 2]), ends_at: cur.endsAt });
+  const chatBefore = chatSent.length;
+  send('channel.poll.end', { ...evtBase, choices: evtChoices([2, 5, 5]), status: 'completed', ended_at: new Date().toISOString() });
+  await waitFor(() => pollResults(rim).length > 0);
+  send('channel.poll.end', { ...evtBase, choices: evtChoices([2, 5, 5]), status: 'archived', ended_at: new Date().toISOString() });
+  await waitFor(() => chatSent.length > chatBefore);
+  await sleep(150);
+  const res1 = pollResults(rim)[0] || {};
+  check('P6 Ende: genau ein poll_result an den startenden Verbraucher, mit Stimmen und allen Gleichplatzierten',
+    pollResults(rim).length === 1 && res1.pollId === 'np1' && res1.status === 'COMPLETED' && res1.totalVotes === 12 && res1.choices[1].channelPointsVotes === 2
+    && JSON.stringify(res1.winners.map(w => w.title)) === '["Händler","Sonnenfinsternis"]', JSON.stringify(pollResults(rim)));
+  check('P7 Andere Verbraucher bekommen kein Ergebnis; Ergebniszeile im Chat wie bisher', pollResults(coin).length === 0 && chatSent.slice(chatBefore).filter(m => /Die Umfrage "Was kommt\?" wurde beendet/.test(m.message)).length === 1,
+    JSON.stringify(chatSent.slice(chatBefore)));
+
+  r = await start(ask);
+  d = JSON.parse(r.body);
+  check('P8 Neuer Versuch binnen 5 s: 429 too_fast mit retryAfterMs', r.status === 429 && d.reason === 'too_fast' && d.retryAfterMs > 0 && pollCreates.length === 1, r.body);
+  await sleep(d.retryAfterMs + 50);
+  fakePollCreate = () => { throw twitchErr(400, "The broadcaster already has a poll that's running; you may not create another poll until the current poll completes."); };
+  r = await start(ask);
+  d = JSON.parse(r.body);
+  check('P9 Fremde Abstimmung, die der Server nicht kannte: Twitch lehnt ab, 409 poll_active', r.status === 409 && d.reason === 'poll_active' && pollCreates.length === 2, r.body);
+
+  await sleep(5050);
+  fakePollCreate = body => ({ data: { data: [created('np2', body)] } });
+  r = await start(ask);
+  check('P10 Nächste Abstimmung startet', r.status === 200 && JSON.parse(r.body).pollId === 'np2', r.body);
+  send('channel.poll.end', { id: 'np2', broadcaster_user_id: '4711', title: 'Was kommt?', started_at: new Date().toISOString(), choices: evtChoices([1, 0, 0]).map(c => ({ ...c, id: c.id.replace('np1', 'np2') })), status: 'terminated', ended_at: new Date().toISOString() });
+  await waitFor(() => pollResults(rim).length > 1);
+  const res2 = pollResults(rim)[1] || {};
+  check('P11 In Twitch abgebrochen: poll_result mit Status TERMINATED', res2.pollId === 'np2' && res2.status === 'TERMINATED' && res2.winners.length === 1 && res2.winners[0].title === 'Raid', JSON.stringify(res2));
+
+  await sleep(5050);
+  rim.close();
+  await sleep(100);
+  fakePollCreate = body => ({ data: { data: [created('np3', body)] } });
+  r = await start(ask);
+  send('channel.poll.end', { id: 'np3', broadcaster_user_id: '4711', title: 'Was kommt?', started_at: new Date().toISOString(), choices: evtChoices([0, 0, 0]), status: 'completed', ended_at: new Date().toISOString() });
+  await waitFor(() => logs.some(l => l.startsWith('[Abstimmung] Ergebnis für rimworld verworfen: nicht verbunden')));
+  check('P12 Verbraucher nicht mehr verbunden: Abstimmung läuft, Ergebnis verworfen, kein Fehler', r.status === 200 && logs.some(l => l.startsWith('[Abstimmung] Ergebnis für rimworld verworfen: nicht verbunden')) && pollResults(coin).length === 0);
+
+  await sleep(5050);
+  const createsBefore = pollCreates.length;
+  fakePollCreate = () => { throw twitchErr(401, 'Missing scope: channel:manage:polls'); };
+  r = await start(ask);
+  d = JSON.parse(r.body);
+  const r2 = await start(ask);
+  const d2 = JSON.parse(r2.body);
+  check('P13 Ohne Scope channel:manage:polls: 403 missing_scope mit Hinweis auf /login', r.status === 403 && d.reason === 'missing_scope' && /\/login/.test(d.error), r.body);
+  check('P14 Danach sofort missing_scope, ohne Twitch erneut zu fragen', r2.status === 403 && d2.reason === 'missing_scope' && pollCreates.length === createsBefore + 2, `${r2.body} ${pollCreates.length - createsBefore}`);
+  check('P15 Log nennt Verbraucher und Titel, keine Secrets', logs.some(l => l.startsWith('[Abstimmung] rimworld startet „Was kommt?“ (3 Optionen, 60 s, Zusatzstimme 3000 Kanalpunkte)'))
+    && !logs.some(l => SECRETS.some(s => l.includes(s))));
+  coin.close();
 }
 
 // HTTP-Protokoll gestrafft (15.11.2026): erfolgreiche Widget-Abrufe nur mit "http debug on", Fehler und /token immer
@@ -1201,6 +1321,7 @@ async function ohneTokens() {
   else if (scenario === 'glueckspilz') await glueckspilz();
   else if (scenario === 'http-log') await httpLog();
   else if (scenario === 'chat-bruecke') await chatBruecke();
+  else if (scenario === 'abstimmung-start') await abstimmungStart();
   else await ablauf();
 
   console.log = realLog;

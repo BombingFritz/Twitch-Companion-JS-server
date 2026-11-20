@@ -58,6 +58,7 @@ const runs = [
   ['admin-test.js', ['glueckspilz']],
   ['admin-test.js', ['http-log']],
   ['admin-test.js', ['chat-bruecke']],
+  ['admin-test.js', ['abstimmung-start']],
   ['stats-test.js', []],
   ['topics-lib-test.js', []],
   ['topics-test.js', []],
@@ -70,6 +71,7 @@ const runs = [
   ['poll-test.js', []],
   ['result-messages-test.js', []],
   ['chat-bridge-test.js', []],
+  ['consumer-polls-test.js', []],
 ];
 
 let ok = 0, fail = 0;

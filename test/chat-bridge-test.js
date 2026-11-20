@@ -52,5 +52,12 @@ check('A5 Obergrenze: der am längsten stille fällt heraus', active.snapshot().
 active.remove('4');
 check('A6 Entfernen (!privat)', active.snapshot().chatters.map(c => c.login).join() === 'z5,z3');
 
+// Teil D: Raid-Ereignis (#80)
+const { raidEvent } = require(path.join(__dirname, '..', 'lib', 'chat-bridge'));
+const raid = raidEvent({ from_broadcaster_user_id: 77, from_broadcaster_user_login: 'raider', from_broadcaster_user_name: 'Raider', viewers: 12 }, 'msg-1', { now: () => Date.parse('2026-11-20T21:00:00Z') });
+check('R1 Raid-Ereignis: ID aus message_id, Zeitpunkt, Kanal, Zuschauer', JSON.stringify(raid) === '{"id":"msg-1","at":"2026-11-20T21:00:00.000Z","fromId":"77","fromLogin":"raider","fromName":"Raider","viewers":12}', JSON.stringify(raid));
+const raid2 = raidEvent({ from_broadcaster_user_id: '78', from_broadcaster_user_login: 'ohnename' }, null);
+check('R2 Ohne Anzeigename und Zahl: Login und 0', raid2.fromName === 'ohnename' && raid2.viewers === 0 && raid2.id === null, JSON.stringify(raid2));
+
 for (const r of results) console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${r.name}${r.ok ? '' : `  -> ${r.info}`}`);
 process.exit(results.every(r => r.ok) ? 0 : 1);
