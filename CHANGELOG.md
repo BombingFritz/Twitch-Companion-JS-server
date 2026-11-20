@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 ## [Unreleased]
 
 ### Added
+- Chat-Brücke für lokale Verbraucher (Issue #74, ADR 0025, Spec `chat-bruecke.md`, Teil A), zuerst für die RimWorld-Mod und CoinFlip:
+  - Ereignisstrom `GET /api/chat/stream`: angemeldete Befehle (`commands`) oder Präfixe (`prefixes`), Nachrichten aus dem eigenen Kanal mit Abzeichen und `!privat`-Kennzeichen, Ereignis `privacy` beim Umschalten. Ohne Bots, fremden geteilten Chat und die eigenen Befehle des Servers.
+  - Senden über `POST /api/chat/send` mit den neuen Chat-Funktionen `rimworld` (Vorgabe Bot) und `coinflip` (Vorgabe Broadcaster), höchstens eine Nachricht je Sekunde und Funktion.
+  - Nur lokal, ohne Token. Neu `lib/chat-bridge.js`.
+  - Webkonsole: Karte und Licht „Chat-Brücke“ unter „Optionale Module“ zeigen, welcher Verbraucher seit wann verbunden ist (`chat_bridge` in `/api/admin/overview`).
+- Aktive Chatter und Kategorie für lokale Verbraucher (Issue #79, Teil B der Spec `chat-bruecke.md`):
+  - `GET /api/chat/active`: wer in den letzten 60 Minuten im eigenen Kanal geschrieben hat, mit Abzeichen. Ohne Broadcaster, Bots, fremden geteilten Chat und `!privat`; nur im Arbeitsspeicher, höchstens 2000 Einträge.
+  - `GET /api/twitch/channel`: Kategorie mit Zeitpunkt der letzten Änderung, ob live. Fragt Twitch nicht.
+  - Damit kann die RimWorld-Mod Coins an plaudernde Zuschauer geben und nur bei RimWorld reagieren.
 - Webkonsole, Stufe 1: Statusseite unter `http://localhost:<PORT>/TwitchCompanionAdmin`, nur am Streaming-PC und nur zum Ansehen. Hauptseite mit Server, Twitch, Effekten, Modulen, Bot, BdU-Chat, UBOAT, Whitelist und Sub-Goal, Aktualisierung alle 5 s, Anzeige „Server nicht erreichbar“ und Hinweis auf einen neuen Serverprozess. Die letzten Effekte zeigen bei älteren Einträgen auch das Datum. Reiter für Live-Log, Einstellungen, Whitelist und Statistik sind angelegt und folgen nach und nach. Neu: `public/admin/`, `GET /api/admin/overview` (strenge Herkunftsprüfung, keine Tokens), Zeile in der Startanzeige (ADR 0018, Spec `webkonsole.md`).
 - Webkonsole, Stufe 2: Knöpfe „Server neu starten“ und „Server beenden“ in der Karte „Server“, je mit Rückfrage. Die Kopfzeile zeigt danach „Server beendet um HH:MM (PID …)“ oder „Neustart läuft …“ und warnt, wenn derselbe Prozess weiterläuft. Neu: `POST /api/admin/server/shutdown` und `/restart` (nur POST mit JSON und eigener Herkunft), `can_restart` in `/api/admin/overview`. `AuthServer.cmd` startet den Server bei Exit-Code 75 im selben Fenster neu; ohne das Skript ist der Neustart-Knopf ausgegraut (ADR 0018, Spec `webkonsole.md`).
 - Webkonsole: Einklappbare Gruppe „Optionale Module“ mit HA-Effekte, UBOAT-Soldbuch, BdU-Chat und Sub-Goal; eingeklappt nur Name und Licht (grün, grau, rot). Die Karte „Module“ entfällt, ihre Angaben stehen in den einzelnen Karten. Die Karte „Whitelist“ entfällt, die Whitelist bekommt einen eigenen Reiter. Neu: `ha_webhook_configured` in `/api/admin/overview`, ohne die Adresse (ADR 0018, Spec `webkonsole.md`).

@@ -43,6 +43,7 @@ BdU-Antworten (inkl. Warnung und Funkstille-Ansage) und Soldbuch-Antworten ersch
   - `raidstats`: `!raidstats`
   - `privacy`: Antwort auf `!privat`
   - `prediction`: Wett-Ergebnis und `poll`: Abstimmungs-Ergebnis (seit Schritt 3b, Spec `wetten-abstimmungen.md`)
+  - `rimworld`: RimWorld-Mod (Vorgabe Bot, Nutzer 20.11.2026) und `coinflip`: CoinFlip (Vorgabe Broadcaster), beide über die Chat-Brücke (Spec `chat-bruecke.md`, ADR 0025)
 - Vorgabe wie bisher (`CHAT_SENDER_DEFAULTS`): BdU und Soldbuch über den Bot, alles andere als Broadcaster.
 - Gespeichert in `chat_senders.json` (`{funktion: 'bot' | 'broadcaster'}`). Eine fehlende oder defekte Datei bzw. ein unbekannter Wert bedeutet: Vorgabe.
 - „Bot“ wirkt nur, wenn ein Bot eingerichtet ist; sonst sendet der Broadcaster. Rückfall bei HTTP-Fehler wie oben.

@@ -879,6 +879,110 @@ async function abstimmung() {
   check('V9 Nur Statuswechsel im Log', logs.filter(l => l.includes('[Abstimmung]')).length <= 5, logs.filter(l => l.includes('[Abstimmung]')).join(' | '));
 }
 
+// Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, Teil A, Issue #74)
+async function chatBruecke() {
+  await welcome();
+  let n = 0;
+  const chat = (login, id, text, extra = {}) => sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: 'channel.chat.message', message_id: `cb${++n}` },
+    payload: { event: { chatter_user_id: id, chatter_user_login: login, chatter_user_name: login, broadcaster_user_id: '4711', message_id: `m${n}`, message: { text }, badges: [], ...extra } } }));
+  // Ereignisstrom wie ein Programm ohne Origin; sammelt die Ereignisse
+  const connect = query => new Promise((resolve, reject) => {
+    const events = [];
+    const req = http.get({ host: '127.0.0.1', port: PORT, path: `/api/chat/stream?${query}` }, res => {
+      let buf = '';
+      res.on('data', c => {
+        buf += c; let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, i); buf = buf.slice(i + 2);
+          const ev = /^event: (\w+)$/m.exec(block), data = /^data: (.*)$/m.exec(block);
+          if (ev && data) events.push({ event: ev[1], data: JSON.parse(data[1]) });
+        }
+      });
+      resolve({ status: res.statusCode, events, close: () => req.destroy() });
+    });
+    req.on('error', reject);
+  });
+  const chats = c => c.events.filter(e => e.event === 'chat').map(e => e.data.text);
+
+  const rim = await connect('client=rimworld&prefixes=!,$');
+  const coin = await connect('client=coinflip&commands=flip,!flip');
+  await sleep(100);
+  const hello = rim.events.find(e => e.event === 'hello');
+  check('B1 Verbinden ohne Origin: hello mit Anmeldung', rim.status === 200 && hello && hello.data.client === 'rimworld' && JSON.stringify(hello.data.prefixes) === '["!","$"]' && hello.data.server === 'twitch-companion-js-server', JSON.stringify(rim.events));
+
+  chat('kalle', '7', '$beer');
+  chat('kalle', '7', '$beer 5');
+  chat('kalle', '7', 'hallo zusammen');
+  chat('anna', '8', '!bal');
+  chat('anna', '8', 'FLIP');
+  chat('anna', '8', '!BdU Lage?');
+  chat('derbdu', '99', '!bal Antwort des Bots');
+  chat('nightbot', '98', '!bal');
+  chat('fremd', '55', '$beer', { source_broadcaster_user_id: '999' });
+  chat('fritz', '4711', '!admin', { badges: [{ set_id: 'broadcaster' }] });
+  await sleep(150);
+  check('B2 Präfixe: $beer, $beer 5, !bal, !admin des Broadcasters; nicht Plaudern, Server-Befehle, Bots, fremder Chat',
+    JSON.stringify(chats(rim)) === '["$beer","$beer 5","!bal","!admin"]', JSON.stringify(chats(rim)));
+  check('B3 Zweite Verbindung bekommt nur ihre Befehle', JSON.stringify(chats(coin)) === '["FLIP"]', JSON.stringify(chats(coin)));
+  const beer = rim.events.find(e => e.event === 'chat');
+  const admin = rim.events.filter(e => e.event === 'chat').find(e => e.data.text === '!admin');
+  check('B4 Felder und Abzeichen', beer.data.userId === '7' && beer.data.userLogin === 'kalle' && beer.data.messageId && beer.data.private === false && admin.data.badges.broadcaster === true, JSON.stringify(beer.data));
+
+  chat('kalle', '7', '!privat');
+  await sleep(150);
+  chat('kalle', '7', '$beer');
+  await sleep(100);
+  const privacy = rim.events.find(e => e.event === 'privacy');
+  check('B5 !privat: Ereignis privacy an alle, Nachrichten danach mit private: true',
+    privacy && privacy.data.userId === '7' && privacy.data.private === true && coin.events.some(e => e.event === 'privacy')
+    && rim.events.filter(e => e.event === 'chat').pop().data.private === true, JSON.stringify(rim.events.slice(-2)));
+  check('B6 Kein Nachrichtentext im Log, Verbinden protokolliert', logs.some(l => l.startsWith('[Chat-Brücke] rimworld verbunden')) && !logs.some(l => l.includes('$beer 5')));
+
+  const send = (body, headers = JSON_TYPE) => request('/api/chat/send', headers, 'POST', JSON.stringify(body));
+  const before = chatSent.length;
+  let r = await send({ feature: 'rimworld', message: '  Kalle hat 120 Coins.  ' });
+  let d = JSON.parse(r.body);
+  check('B7 Senden: Antwort mit sent und Absender (ohne Bot: Broadcaster), Text gekürzt', r.status === 200 && d.ok === true && d.sent === true && d.sender === 'broadcaster'
+    && chatSent.length === before + 1 && chatSent[chatSent.length - 1].message === 'Kalle hat 120 Coins.', r.body);
+  r = await send({ feature: 'rimworld', message: 'zu schnell' });
+  d = JSON.parse(r.body);
+  check('B8 Zweite Nachricht binnen 1 s: 429 mit retryAfterMs, nichts gesendet', r.status === 429 && d.sent === false && d.retryAfterMs > 0 && chatSent.length === before + 1, r.body);
+  r = await send({ feature: 'coinflip', message: 'Andere Funktion darf sofort' });
+  check('B9 Abstand gilt je Funktion', r.status === 200 && JSON.parse(r.body).sent === true);
+  const bad = [await send({ feature: 'bdu', message: 'x' }), await send({ feature: 'rimworld', message: '   ' }), await send({ message: 'x' })];
+  check('B10 Unbekannte Funktion, leerer Text: 400', bad.every(x => x.status === 400), bad.map(x => x.status).join(','));
+  r = await request('/api/chat/send', { 'Content-Type': 'text/plain' }, 'POST', 'x');
+  check('B11 Ohne JSON: 415', r.status === 415, String(r.status));
+  r = await send({ feature: 'rimworld', message: 'x' }, { ...JSON_TYPE, Origin: 'https://fremd.example' });
+  check('B12 Fremde Herkunft: 403', r.status === 403, String(r.status));
+  r = await request('/api/chat/stream?client=rimworld');
+  check('B13 Ereignisstrom ohne Befehle und Präfixe: 400', r.status === 400, String(r.status));
+  r = await request('/api/chat/stream?client=x&prefixes=!', { Host: 'example.com' });
+  check('B14 Fremder Host: 403', r.status === 403, String(r.status));
+  const ov = JSON.parse((await request(OVERVIEW)).body);
+  check('B15 Chat-Absender: rimworld Vorgabe Bot, coinflip Broadcaster', ov.chat_senders.find(x => x.feature === 'rimworld').sender === 'bot' && ov.chat_senders.find(x => x.feature === 'coinflip').sender === 'broadcaster');
+  check('B15a Übersicht nennt die verbundenen Verbraucher mit Zeitpunkt', JSON.stringify(ov.chat_bridge.clients.map(c => c.client)) === '["rimworld","coinflip"]' && ov.chat_bridge.clients.every(c => !Number.isNaN(Date.parse(c.connectedAt))), JSON.stringify(ov.chat_bridge));
+  rim.close(); coin.close();
+  await sleep(100);
+  check('B16 Trennen wird protokolliert, Übersicht danach leer', logs.some(l => l.startsWith('[Chat-Brücke] rimworld getrennt')) && JSON.parse((await request(OVERVIEW)).body).chat_bridge.clients.length === 0);
+
+  // Teil B: aktive Chatter und Kategorie (#79)
+  const act = JSON.parse((await request('/api/chat/active')).body);
+  const ids = act.chatters.map(c => c.id);
+  check('B17 Aktive Chatter: anna (8) dabei; kalle (!privat), Broadcaster, Bots und fremder Chat nicht', ids.includes('8') && !ids.includes('7') && !ids.includes('4711') && !ids.includes('99') && !ids.includes('98') && !ids.includes('55')
+    && act.windowMinutes === 60 && !Number.isNaN(Date.parse(act.updatedAt)), JSON.stringify(act));
+  chat('stille', '12', 'nur plaudern, kein Befehl', { badges: [{ set_id: 'vip' }] });
+  await sleep(100);
+  const act2 = JSON.parse((await request('/api/chat/active')).body);
+  check('B18 Plaudern ohne Befehl zählt, zuletzt aktiv zuerst, Abzeichen', act2.chatters[0].id === '12' && act2.chatters[0].vip === true && act2.chatters[0].login === 'stille', JSON.stringify(act2.chatters[0]));
+  sockets[0].emit('message', JSON.stringify({ metadata: { message_type: 'notification', subscription_type: 'channel.update', message_id: 'cu1' }, payload: { event: { broadcaster_user_id: '4711', category_name: 'RimWorld' } } }));
+  await sleep(50);
+  const ch = JSON.parse((await request('/api/twitch/channel')).body);
+  check('B19 Kategorie mit Zeitpunkt der Änderung', ch.category === 'RimWorld' && !Number.isNaN(Date.parse(ch.categoryChangedAt)) && ch.updatedAt === ch.categoryChangedAt && ch.live === false, JSON.stringify(ch));
+  r = await request('/api/chat/active', { Origin: 'https://fremd.example' });
+  check('B20 Fremde Herkunft: 403; Abrufe nicht im HTTP-Protokoll', r.status === 403 && !logs.some(l => l.startsWith('[HTTP] GET /api/chat/active -> 200')) && !logs.some(l => l.startsWith('[HTTP] GET /api/twitch/channel -> 200')), String(r.status));
+}
+
 // HTTP-Protokoll gestrafft (15.11.2026): erfolgreiche Widget-Abrufe nur mit "http debug on", Fehler und /token immer
 async function httpLog() {
   const QUIET = ['/api/twitch/prediction/current', '/api/twitch/poll/current', '/api/twitch/stream', '/api/twitch/subcounter', '/api/privacy/optouts', '/api/stream/lucky'];
@@ -1096,6 +1200,7 @@ async function ohneTokens() {
   else if (scenario === 'ergebnis') await ergebnis();
   else if (scenario === 'glueckspilz') await glueckspilz();
   else if (scenario === 'http-log') await httpLog();
+  else if (scenario === 'chat-bruecke') await chatBruecke();
   else await ablauf();
 
   console.log = realLog;

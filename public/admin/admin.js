@@ -187,12 +187,20 @@ function topicsLight(d) {
   return { level: 'ok', hint: 'bereit' };
 }
 
+// Chat-Brücke (ADR 0025): grün, sobald ein Verbraucher (z. B. die RimWorld-Mod) verbunden ist; sonst nur nicht aktiv
+function chatBridgeLight(d) {
+  const clients = (d.chat_bridge && d.chat_bridge.clients) || [];
+  if (!clients.length) return { level: 'off', hint: 'kein Verbraucher verbunden' };
+  return { level: 'ok', hint: `verbunden: ${clients.map(c => c.client).join(', ')}` };
+}
+
 function moduleLights(d) {
   return [
     { name: 'HA-Effekte', ...effectsLight(d) },
     { name: 'UBOAT-Soldbuch', ...soldbuchLight(d) },
     { name: 'BdU-Chat', ...bduLight(d) },
     { name: 'Intro-Topics', ...topicsLight(d) },
+    { name: 'Chat-Brücke', ...chatBridgeLight(d) },
     { name: 'Sub-Goal', level: null, hint: '' },
   ];
 }
@@ -1325,6 +1333,16 @@ function topicsCard(d) {
   ));
 }
 
+// Verbundene Verbraucher der Chat-Brücke, je mit Uhrzeit der Verbindung
+function chatBridgeCard(d) {
+  const clients = (d.chat_bridge && d.chat_bridge.clients) || [];
+  return card('Chat-Brücke', rows(
+    row('Verbraucher', clients.length
+      ? indicator('ok', clients.map(c => `${c.client} (seit ${clock(c.connectedAt)} Uhr)`).join(', '))
+      : indicator('off', 'keiner verbunden')),
+  ));
+}
+
 function subgoalCard(d) {
   const goal = d.subgoal;
   if (goal.current === null || goal.current === undefined) {
@@ -1371,7 +1389,7 @@ function moduleLightList(d) {
 function optionalModules(d) {
   return el('section', { class: 'group' }, optionalToggle(), state.optionalCollapsed
     ? moduleLightList(d)
-    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), topicsCard(d), subgoalCard(d)));
+    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), topicsCard(d), chatBridgeCard(d), subgoalCard(d)));
 }
 
 function renderOverview(content, d) {
