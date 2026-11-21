@@ -46,6 +46,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0014](0014-bdu-chat-ueber-widget.md) | `!BdU`: Der Server prüft Limits, die KI-Antwort kommt vom Enigma-Widget. |
 | [0016](0016-uboat-crew-aus-spielstand.md) | `!soldbuch`: Crew-Daten aus dem UBOAT-Spielstand, Parser als eigenes Modul. |
 | [0017](0017-bot-account-derbdu.md) | Bot-Account „DerBdu“ sendet BdU- und Soldbuch-Antworten. Ändert den Absender aus 0014 und 0016. |
+| [0026](0026-stream-kartei-oeffentliche-website.md) | Stream-Kartei: Der Server veröffentlicht den letzten Stand der Spielfiguren als JSON im Zweig `data` von `StreamKartei` (GitHub Pages); eigenes Token nur für dieses Repository, keine Twitch-Namen, `!privat` zuerst. Ergänzt 0016 und 0022. |
 
 ### Statistik
 | ADR | Worum es geht |
@@ -62,7 +63,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 ## Herkunft
 
 - **Nachträglich festgehalten** aus vorhandenem Code und älterer Doku (Entscheidung lag schon vor, Begründung und Alternativen teils `[UNGEKLÄRT]`): 0001–0011; ausdrücklich „aus dem Code abgeleitet“ sind 0002 und 0007.
-- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0025. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
+- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0026. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
 
 ## Neues ADR anlegen
 

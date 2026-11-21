@@ -1,6 +1,6 @@
 # Spec: Stream-Kartei – Spieldaten auf einer öffentlichen Website
 
-**Status:** Entwurf (21.11.2026), noch nicht vereinbart und nicht umgesetzt. Issue #84. Stufe 1 (UBOAT-Crew) zuerst, RimWorld folgt als Stufe 2. Ein ADR folgt mit der Vereinbarung: Das ist der erste Datenfluss des Servers ins offene Internet, mit einem neuen Secret.
+**Status:** vereinbart (Nutzer, 21.11.2026), noch nicht umgesetzt. Issue #84, ADR 0026. Stufe 1 (UBOAT-Crew) zuerst, RimWorld folgt als Stufe 2.
 
 ## Ziel
 Zuschauer sind im Spiel mit Figuren verknüpft: UBOAT-Crew über `!soldbuch` (Spec `uboat-personalakte.md`), RimWorld-Pawns über die Mod (`BombingFritz/TwitchCompanion_RimWorld`). Den jeweils letzten Stand dieser Figuren sollen Zuschauer jederzeit auf einer Website ansehen können, auch wenn Stream und Server aus sind. Die Seite nennt, von wann der Stand ist.
@@ -18,7 +18,7 @@ Zuschauer sind im Spiel mit Figuren verknüpft: UBOAT-Crew über `!soldbuch` (Sp
 - **Kosten:** keine laufenden Zusatzkosten.
 - **Reihenfolge:** UBOAT zuerst.
 
-## Von Claude vorgeschlagen, noch zur Prüfung
+## Von Claude festgelegt, nicht einzeln zur Wahl gestellt (mit der Spec vereinbart)
 - Aufteilung:
   - Der Server veröffentlicht nur Daten (JSON nach festem Format).
   - Die Website ist ein eigener Verbraucher im Repository `StreamKartei` und baut nur die Darstellung.
