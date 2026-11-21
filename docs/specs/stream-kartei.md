@@ -1,4 +1,4 @@
-# Spec: Stream-Akten – Spieldaten auf einer öffentlichen Website
+# Spec: Stream-Kartei – Spieldaten auf einer öffentlichen Website
 
 **Status:** Entwurf (21.11.2026), noch nicht vereinbart und nicht umgesetzt. Issue #84. Stufe 1 (UBOAT-Crew) zuerst, RimWorld folgt als Stufe 2. Ein ADR folgt mit der Vereinbarung: Das ist der erste Datenfluss des Servers ins offene Internet, mit einem neuen Secret.
 
@@ -11,46 +11,46 @@ Zuschauer sind im Spiel mit Figuren verknüpft: UBOAT-Crew über `!soldbuch` (Sp
   - Wer `!privat` eingeschaltet hat, kann nicht mit einer Figur verknüpft werden.
   - Wer es später einschaltet, verschwindet sofort von der Website. Die Zuordnung bleibt gespeichert und gilt wieder, wenn er `!privat` ausschaltet.
 - **UBOAT:** die ganze Crew mit Spieldaten; Gefallene in einer Ehrentafel.
-- **Ort:** ein öffentliches Repository `BombingFritz/Stream-Akten` mit GitHub Pages für beide Spiele.
+- **Ort:** ein öffentliches Repository `BombingFritz/StreamKartei` mit GitHub Pages für beide Spiele.
   - Eine Startseite zur Auswahl des Spiels.
   - Je Spiel eine eigene Seite, die nur dieses Spiel zeigt.
-  - Das Repository legt der Nutzer an.
+  - Das Repository hat der Nutzer am 21.11.2026 angelegt; der Name `StreamKartei` gibt auch dem Modul den Namen „Stream-Kartei“.
 - **Kosten:** keine laufenden Zusatzkosten.
 - **Reihenfolge:** UBOAT zuerst.
 
 ## Von Claude vorgeschlagen, noch zur Prüfung
 - Aufteilung:
   - Der Server veröffentlicht nur Daten (JSON nach festem Format).
-  - Die Website ist ein eigener Verbraucher im Repository `Stream-Akten` und baut nur die Darstellung.
+  - Die Website ist ein eigener Verbraucher im Repository `StreamKartei` und baut nur die Darstellung.
 - Daten in einem eigenen Zweig `data` mit genau einem, jeweils ersetzten Commit:
   - kein Pages-Build je Update,
   - keine wachsende Historie,
   - alte Stände, auch ausgeblendete `!privat`-Figuren, bleiben nicht im Zweig.
 - Mindestabstand 10 min zwischen Veröffentlichungen; Ausnahme: Ausblenden nach `!privat` sofort.
 - Namen der `!privat`-Zuschauer zum Ausblenden über Twitch nachschlagen; ohne Ergebnis nicht veröffentlichen (siehe unten).
-- Modulname „Stream-Akten“, Adressen, Feldnamen.
+- Modulname „Stream-Kartei“, Adressen, Feldnamen.
 
 ## Aufbau
 ```
 Server (Streaming-PC) ──liest──> UBOAT-Spielstand (schon heute, lib/uboat-crew.js)
        │
-       └─GitHub-API (Token nur für Stream-Akten)──> Zweig „data“: index.json, uboat/crew.json
+       └─GitHub-API (Token nur für StreamKartei)──> Zweig „data“: index.json, uboat/crew.json
                                                          │
 Website (GitHub Pages, Zweig „main“) ──fetch──> raw.githubusercontent.com/…/data/…
 ```
 - Der Server nimmt von außen nichts an; er bleibt nur lokal erreichbar.
-- Die Website lädt die Daten im Browser des Zuschauers von `https://raw.githubusercontent.com/BombingFritz/Stream-Akten/data/<pfad>`. Dort erlaubt GitHub jede Herkunft (`Access-Control-Allow-Origin: *`). GitHub hält die Datei bis zu etwa 5 min im Cache.
+- Die Website lädt die Daten im Browser des Zuschauers von `https://raw.githubusercontent.com/BombingFritz/StreamKartei/data/<pfad>`. Dort erlaubt GitHub jede Herkunft (`Access-Control-Allow-Origin: *`). GitHub hält die Datei bis zu etwa 5 min im Cache.
 - Ist der Server aus, bleibt der letzte veröffentlichte Stand stehen.
 
 ## Einrichtung (einmalig, Nutzer)
-1. Öffentliches Repository `BombingFritz/Stream-Akten` anlegen, Pages aus Zweig `main` einschalten. Den Zweig `data` legt der Server selbst an.
+1. Öffentliches Repository `BombingFritz/StreamKartei` anlegen (erledigt am 21.11.2026) und Pages aus Zweig `main` einschalten (Stand 21.11.: noch aus). Den Zweig `data` legt der Server selbst an.
 2. Fein abgestuftes Token (GitHub, „Fine-grained personal access token“) anlegen:
-   - nur für das Repository `Stream-Akten`
+   - nur für das Repository `StreamKartei`
    - Recht „Contents: Read and write“, sonst nichts
    - Ablaufdatum höchstens 1 Jahr
 3. In `.env`:
-   - `STREAM_AKTEN_REPO=BombingFritz/Stream-Akten`
-   - `STREAM_AKTEN_TOKEN=<GITHUB_TOKEN>`
+   - `STREAM_KARTEI_REPO=BombingFritz/StreamKartei`
+   - `STREAM_KARTEI_TOKEN=<GITHUB_TOKEN>`
    - Ohne Token ist das Modul aus.
 4. Neustart.
 
@@ -62,7 +62,7 @@ Website (GitHub Pages, Zweig „main“) ──fetch──> raw.githubuserconten
   - Nach jedem erfolgreich eingelesenen Spielstand.
   - Wenn jemand `!privat` ein- oder ausschaltet.
   - Beim Start einmal: Der Server liest den veröffentlichten Stand und vergleicht ihn.
-- **Abstand:** Mindestens `STREAM_AKTEN_MIN_GAP_MS` (10 min) zwischen zwei Veröffentlichungen. Ändert sich der Inhalt in der Zeit, geht der neueste Stand nach Ablauf raus.
+- **Abstand:** Mindestens `STREAM_KARTEI_MIN_GAP_MS` (10 min) zwischen zwei Veröffentlichungen. Ändert sich der Inhalt in der Zeit, geht der neueste Stand nach Ablauf raus.
 - **Ausnahme `!privat`:** Ein Ausblenden nach `!privat` geht sofort raus, ohne auf den Abstand zu warten.
 - **Unabhängig vom Stream:** Es läuft, solange der Server läuft und das Modul an ist, auch offline. Die Kategorie spielt keine Rolle; die Website zeigt immer den letzten Spielstand.
 
@@ -90,17 +90,17 @@ Website (GitHub Pages, Zweig „main“) ──fetch──> raw.githubuserconten
 
 ### Steuerung
 - **Webkonsole, Reiter „Einstellungen“** (gemeinsamer Reiter für die Einstellungen aller Module, kein eigener Reiter):
-  - Schalter „Stream-Akten“
+  - Schalter „Stream-Kartei“
   - Repository
   - zuletzt veröffentlicht
   - letzter Fehler
   - Knopf „Jetzt veröffentlichen“: hält sich an den Abstand, nur wenn sich etwas geändert hat
-- **Übersicht, Gruppe „Optionale Module“:** Karte und Licht „Stream-Akten“.
+- **Übersicht, Gruppe „Optionale Module“:** Karte und Licht „Stream-Kartei“.
 - **Konsole:**
-  - `akten show`
-  - `akten publish`
-  - `akten activate|deactivate` (gespeichert in `modules.json`)
-- Ohne `STREAM_AKTEN_TOKEN` ist das Modul aus; Karte und Licht zeigen „nicht eingerichtet“.
+  - `kartei show`
+  - `kartei publish`
+  - `kartei activate|deactivate` (gespeichert in `modules.json`)
+- Ohne `STREAM_KARTEI_TOKEN` ist das Modul aus; Karte und Licht zeigen „nicht eingerichtet“.
 
 ## Datenformat (Vertrag mit der Website)
 Alle Zeitpunkte als ISO. `schemaVersion` steigt nur bei nicht rückwärtskompatiblen Änderungen. Neue Felder kommen ohne neue Version dazu; die Website ignoriert unbekannte Felder.
@@ -134,7 +134,7 @@ Alle Zeitpunkte als ISO. `schemaVersion` steigt nur bei nicht rückwärtskompati
   - Figuren von `!privat`-Zuschauern
 - Größe bei 29 Crewmitgliedern etwa 20 KB.
 
-## Website (Verbraucher, Repository `Stream-Akten`, eigene Session)
+## Website (Verbraucher, Repository `StreamKartei`, eigene Session)
 Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 - **Startseite:** Spiele aus `index.json` mit „Stand vom …“, Auswahl führt auf die Seite des Spiels.
 - **UBOAT-Seite:**
@@ -146,7 +146,7 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 - Keine Twitch-Anbindung, keine Cookies, kein Tracking.
 
 ## Stufe 2: RimWorld (Ausblick, eigenes Issue)
-- Die Mod liefert ihre Pawn-Liste lokal an den Server, etwa `POST /api/akten/rimworld` mit eigenem Format. Der Server veröffentlicht sie mit demselben Modul als `rimworld/pawns.json`.
+- Die Mod liefert ihre Pawn-Liste lokal an den Server, etwa `POST /api/kartei/rimworld` mit eigenem Format. Der Server veröffentlicht sie mit demselben Modul als `rimworld/pawns.json`.
 - Das Token liegt nur beim Server.
 - Die Mod sperrt das Verknüpfen von `!privat`-Zuschauern selbst; das Kennzeichen `private` hat sie aus der Chat-Brücke.
 - Inhalt und Felder entscheiden Mod und Nutzer; dafür legt die Mod eine Serveranforderung an.
@@ -177,12 +177,12 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 
 ## Berührte Funktionen/Dateien (voraussichtlich)
 - Neu:
-  - `lib/stream-akten.js`: Format, Hash, Takt, Ausblenden
+  - `lib/stream-kartei.js`: Format, Hash, Takt, Ausblenden
   - `lib/github-publisher.js`: Git-Data-API, Zweig ersetzen
-  - `test/stream-akten-test.js`
+  - `test/stream-kartei-test.js`
 - `server.js`:
   - Konstanten, Modulschalter
   - Auslöser nach dem Einlesen des Spielstands und in `handlePrivacyCommand`
   - `uboat map`-Prüfung, Konsolenbefehle, Overview, Webkonsole
-- `.env.example`: `STREAM_AKTEN_REPO`, `STREAM_AKTEN_TOKEN`.
+- `.env.example`: `STREAM_KARTEI_REPO`, `STREAM_KARTEI_TOKEN`.
 - Doku: DATENKATALOG (neuer öffentlicher Datenfluss), ARCHITEKTUR, Webkonsole-Spec, neues ADR.
