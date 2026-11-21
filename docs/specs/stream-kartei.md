@@ -43,7 +43,7 @@ Website (GitHub Pages, Zweig „main“) ──fetch──> raw.githubuserconten
 - Ist der Server aus, bleibt der letzte veröffentlichte Stand stehen.
 
 ## Einrichtung (einmalig, Nutzer)
-1. Öffentliches Repository `BombingFritz/StreamKartei` anlegen (erledigt am 21.11.2026) und Pages aus Zweig `main` einschalten (Stand 21.11.: noch aus). Den Zweig `data` legt der Server selbst an.
+1. Öffentliches Repository `BombingFritz/StreamKartei` anlegen und Pages aus Zweig `main` einschalten. Beides ist seit 21.11.2026 erledigt; die Adresse ist `https://bombingfritz.github.io/StreamKartei/`. Den Zweig `data` legt der Server selbst an.
 2. Fein abgestuftes Token (GitHub, „Fine-grained personal access token“) anlegen:
    - nur für das Repository `StreamKartei`
    - Recht „Contents: Read and write“, sonst nichts
@@ -154,12 +154,24 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 ## Später möglich, nicht Teil dieses Entwurfs
 - Daten zum U-Boot selbst (Typ, Name, Tonnage, Feindfahrten). Der Server liest sie heute nicht; sie müssten erst im Spielstand gefunden werden [UNGEKLÄRT].
 - `!soldbuch` antwortet mit einem Link auf die Website.
+- **Ehrentafel über alle Spielstände** (Wunsch Nutzer, 21.11.2026, späteres Ziel):
+  - Zusätzlich zu den Gefallenen des jetzigen Spielstands sammelt der Server alle Gefallenen fortlaufend, auch aus früheren Karrieren und Spielständen.
+  - Dafür eine eigene kleine Laufzeitdatei mit `load…()`/`save…()`, Eintrag im DATENKATALOG.
+  - Gleiche Person in mehreren Spielständen: Erkennung etwa an Name, Geburts- und Todesdatum [UNGEKLÄRT].
+  - Veröffentlicht als eigene Liste, z. B. `uboat/memorial.json`. Eingetragen wird nur, was der Server selbst gesehen hat; ältere Spielstände ließen sich einmalig nachlesen.
 - **Eigener Webhost:** Nicht nötig. GitHub Pages ist kostenlos. Eine eigene Adresse lässt sich später auf Pages legen; dann kostet nur die Domain. Durch das feste Datenformat bleibt ein Umzug einfach.
 
-## Offene Fragen
-- **`!soldbuch` für `!privat`-Zuschauer:** Heute antwortet es auch ihnen, weil sie selbst fragen. Vorschlag: so lassen; die Website blendet trotzdem aus. Alternativ antwortet es nicht mehr. [ZU ENTSCHEIDEN]
-- **Namensgleichheit ohne Absicht:** Heißt eine Figur zufällig wie ein `!privat`-Zuschauer, fehlt sie ebenfalls. Vorschlag: hinnehmen. [ZU ENTSCHEIDEN]
-- **Ablauf des Tokens:** Fein abgestufte Tokens laufen nach höchstens einem Jahr ab. Vorschlag: Die Webkonsole warnt 14 Tage vorher, wenn GitHub das Ablaufdatum liefert. [UNGEKLÄRT, ob die API es liefert]
+## Entschieden nach dem ersten Entwurf (Nutzer, 21.11.2026)
+- **`!soldbuch` für `!privat`-Zuschauer** antwortet weiter wie bisher, weil sie selbst fragen. Die Website blendet sie trotzdem aus.
+- **Namensgleichheit ohne Absicht:** Heißt eine Figur zufällig wie ein `!privat`-Zuschauer, fehlt sie ebenfalls. Das wird hingenommen.
+- **Ehrentafel über alle Spielstände** ist ein späteres Ziel, siehe „Später möglich“.
+
+## Ablauf des Tokens
+- Ein fein abgestuftes Token hat ein Ablaufdatum, das der Nutzer beim Anlegen wählt.
+- GitHub schickt bei Anfragen mit solchen Tokens den Antwort-Header `GitHub-Authentication-Token-Expiration` mit dem Ablaufzeitpunkt [bei der Umsetzung prüfen].
+- Der Server merkt sich den Wert im Arbeitsspeicher.
+- Ab 14 Tagen vor Ablauf zeigen die Webkonsole (Karte und Licht gelb) und `kartei show` eine Warnung.
+- Fehlt der Header, gibt es nur die Warnung bei 401.
 
 ## Akzeptanzkriterien (Stufe 1)
 - Mit Token und Repository legt der Server beim ersten Spielstand den Zweig `data` mit `index.json` und `uboat/crew.json` an. Die Website zeigt die Crew mit „Spielstand vom …“.
