@@ -8,7 +8,9 @@ const util = require('util');
 const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
-const { createUboatCrew } = require('./lib/uboat-crew');
+const { createUboatCrew, normalizeName: normalizeCrewName } = require('./lib/uboat-crew');
+const { createGithubPublisher } = require('./lib/github-publisher');
+const kartei = require('./lib/stream-kartei');
 const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats');
 const { createStreamSession } = require('./lib/stream-session');
 const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
@@ -34,6 +36,8 @@ const {
   HA_WEBHOOK_URL,
   CORS_ORIGINS,
   UBOAT_SAVES_DIR,
+  STREAM_KARTEI_REPO,
+  STREAM_KARTEI_TOKEN,
 } = process.env;
 
 const TOKEN_FILE = './tokens.json';
@@ -49,8 +53,17 @@ const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldu
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
 const STREAM_REPORTS_DIR = './stream_reports';             // je abgeschlossenem Stream eine .json und eine .txt (ADR 0019)
 const PRIVACY_FILE = './privacy_optouts.json';             // !privat: User-IDs mit Zeitpunkt (docs/DATENKATALOG.md)
-const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', topics: 'Intro-Topics' };   // per Konsole und Webkonsole schaltbare Module, Standard: an
-const MODULE_OFF_TEXT = { topics: 'Stream-Deck-Tasten werden ignoriert, das Widget blendet aus' };   // sonst: Befehle im Chat werden ignoriert
+const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', topics: 'Intro-Topics', kartei: 'Stream-Kartei' };   // per Konsole und Webkonsole schaltbare Module, Standard: an
+const MODULE_OFF_TEXT = { topics: 'Stream-Deck-Tasten werden ignoriert, das Widget blendet aus',
+  kartei: 'es wird nichts mehr hochgeladen, der letzte Stand bleibt online' };   // sonst: Befehle im Chat werden ignoriert
+
+// Stream-Kartei (ADR 0026, docs/specs/stream-kartei.md): letzter Stand der Spielfiguren auf einer öffentlichen Website
+const STREAM_KARTEI_BRANCH = 'data';                         // Zweig mit genau einem Commit, verwaltet nur der Server
+const STREAM_KARTEI_MIN_GAP_MS = 10 * 60 * 1000;            // höchstens eine Veröffentlichung je 10 min (Ausnahme: Ausblenden nach !privat)
+const STREAM_KARTEI_PRIVACY_CACHE_MS = 60 * 60 * 1000;      // Namen der !privat-Zuschauer so lange merken
+const STREAM_KARTEI_EXPIRY_WARN_MS = 14 * 24 * 60 * 60 * 1000;   // so lange vor Ablauf des Tokens warnen
+const STREAM_KARTEI_REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
+const ADMIN_KARTEI_PUBLISH_PATH = '/api/admin/kartei/publish';
 
 // Intro-Topics (ADR 0021, docs/specs/intro-topics.md) und Stream-Deck-Anbindung (ADR 0020, docs/specs/stream-deck.md)
 const TOPICS_FILE = './topics.json';              // Themenliste und Anzeige-Einstellungen; Fortschritt nur im Arbeitsspeicher
@@ -316,7 +329,7 @@ const logClients = new Set();     // offene Live-Log-Verbindungen
 let nextLogId = 1;
 
 function logRedactedValues() {
-  const values = [CLIENT_SECRET, HA_WEBHOOK_URL];
+  const values = [CLIENT_SECRET, HA_WEBHOOK_URL, STREAM_KARTEI_TOKEN];
   try {
     const url = new URL(HA_WEBHOOK_URL);
     if (!LOOPBACK_HOSTNAMES.includes(url.hostname)) values.push(url.host, url.hostname);
@@ -334,6 +347,7 @@ function sanitizeLogText(text) {
   return clean
     .replace(/((?:access_token|refresh_token|client_secret)["']?\s*[:=]\s*["']?)[^"'&\s,}]+/gi, `$1${LOG_REDACTED}`)
     .replace(/\b(Bearer|OAuth)\s+[\w.~+/=-]+/g, `$1 ${LOG_REDACTED}`)
+    .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}/g, LOG_REDACTED)   // GitHub-Tokens (Stream-Kartei)
     .replace(/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/g, LOG_PRIVATE_ADDRESS);
 }
 
@@ -1060,6 +1074,10 @@ function switchModule(key, on) {
   if (key === 'topics' && changed) topics.notifyEnabledChanged();
   if (key === 'uboat' && on && !uboatCrew) {
     console.log('[UBOAT] Hinweis: UBOAT_SAVES_DIR ist nicht gesetzt – das Soldbuch antwortet erst, wenn der Ordner in der .env steht (Neustart nötig)');
+  }
+  if (key === 'kartei' && on) {
+    if (!karteiConfigured) console.log('[Kartei] Hinweis: STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN sind nicht gesetzt – es wird nichts veröffentlicht (.env, Neustart nötig)');
+    else if (changed) requestKartei();
   }
   return changed;
 }
@@ -1991,6 +2009,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     chat_results: chatResultList(),
     // Chat-Brücke (ADR 0025): wer gerade verbunden ist, für das Licht in der Webkonsole (Name und Version folgen mit #70)
     chat_bridge: { clients: chatBridgeClients.map(c => ({ client: c.client, connectedAt: new Date(c.connectedAt).toISOString() })) },
+    kartei: karteiOverview(),   // Stream-Kartei (ADR 0026), ohne Token
     recent_effects: loadEventLog().slice(-ADMIN_RECENT_EFFECTS).reverse().map(e => ({
       type: e.type,
       count: e.count,
@@ -2134,6 +2153,14 @@ app.post(ADMIN_MODULES_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled muss true oder false sein' });
   const changed = switchModule(key, enabled);
   res.json({ ok: true, changed, modules: { ...moduleSwitches } });
+});
+
+// Stream-Kartei: „Jetzt veröffentlichen“ (hält Abstand und Änderungsprüfung ein, ADR 0026)
+app.post(ADMIN_KARTEI_PUBLISH_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
+  if (!karteiScheduler) return res.status(409).json({ error: 'Stream-Kartei ist nicht eingerichtet (STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN in .env)' });
+  if (!moduleSwitches.kartei) return res.status(409).json({ error: 'Stream-Kartei ist ausgeschaltet' });
+  requestKartei();
+  res.json({ ok: true, kartei: karteiOverview() });
 });
 
 app.post(ADMIN_CHAT_SENDER_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
@@ -2869,6 +2896,8 @@ async function handlePrivacyCommand(evt) {
   if (turnOn) privacyOptouts[userId] = new Date(now).toISOString();
   else delete privacyOptouts[userId];
   notifyPrivacyChange(userId, evt.chatter_user_login, turnOn);   // Chat-Brücke: Verbraucher löschen ggf. gespeicherte Daten
+  rememberPrivacyName(userId, evt.chatter_user_login, evt.chatter_user_name);
+  requestKartei({ urgent: turnOn });   // Stream-Kartei: Ausblenden sofort, Wiedereinblenden im normalen Takt
   try {
     savePrivacyOptouts(privacyOptouts);
   } catch (err) {
@@ -3298,9 +3327,132 @@ const uboatCrew = uboatSavesDir
     hiddenSkills: UBOAT_HIDDEN_SKILLS,
     settleMs: UBOAT_SAVE_SETTLE_MS,
     pollMs: UBOAT_POLL_MS,
-    freshMs: UBOAT_FRESH_MS
+    freshMs: UBOAT_FRESH_MS,
+    onLoad: () => requestKartei(),   // Stream-Kartei: neuer Spielstand
   })
   : null;
+
+// ═══════════════════════════════════════════════════════════════════
+// STREAM-KARTEI (ADR 0026, docs/specs/stream-kartei.md) – letzter Stand der UBOAT-Crew öffentlich im Zweig
+// „data“ von STREAM_KARTEI_REPO. Format und Takt in lib/stream-kartei.js, GitHub in lib/github-publisher.js.
+// ═══════════════════════════════════════════════════════════════════
+
+const karteiRepo = (STREAM_KARTEI_REPO || '').trim();
+const karteiConfigured = Boolean((STREAM_KARTEI_TOKEN || '').trim()) && STREAM_KARTEI_REPO_PATTERN.test(karteiRepo);
+const karteiPublisher = karteiConfigured
+  ? createGithubPublisher({ http: axios, repo: karteiRepo, token: STREAM_KARTEI_TOKEN.trim(), branch: STREAM_KARTEI_BRANCH })
+  : null;
+const karteiPrivacyNames = new Map();   // Twitch-ID -> {login, name, at}; nur im Arbeitsspeicher
+
+function rememberPrivacyName(userId, login, name) {
+  karteiPrivacyNames.set(String(userId), { login: login ? String(login).toLowerCase() : null, name: name || null, at: Date.now() });
+}
+
+// Login und Anzeigename aller !privat-Zuschauer; null, wenn das gerade nicht geht (dann nicht veröffentlichen)
+async function karteiPrivateNames() {
+  const ids = Object.keys(privacyOptouts);
+  const stale = ids.filter(id => { const e = karteiPrivacyNames.get(id); return !e || Date.now() - e.at > STREAM_KARTEI_PRIVACY_CACHE_MS; });
+  if (stale.length) {
+    if (!loadTokens()) return null;
+    try {
+      await getValidAccessToken();
+      for (let i = 0; i < stale.length; i += 100) {
+        const chunk = stale.slice(i, i + 100);
+        const res = await twitchApi.get(`/users?${chunk.map(id => `id=${encodeURIComponent(id)}`).join('&')}`);
+        const found = new Map((res.data?.data || []).map(u => [String(u.id), u]));
+        for (const id of chunk) { const u = found.get(id); rememberPrivacyName(id, u ? u.login : null, u ? u.display_name : null); }   // gelöschte Konten: ohne Namen
+      }
+    } catch (err) {
+      logIfChanged('kartei-privacy', `[Kartei] Namen der !privat-Zuschauer nicht abrufbar: ${err.response?.data?.message || err.message}`, 'warn');
+      return null;
+    }
+  }
+  return ids.map(id => karteiPrivacyNames.get(id)).filter(Boolean);
+}
+
+// Figuren der !privat-Zuschauer: nach denselben Regeln wie !soldbuch (Zuordnungsdatei, Login, Anzeigename)
+function karteiHiddenNames(privateNames) {
+  const map = loadUboatCrewMap();
+  const hidden = new Set();
+  for (const { login, name } of privateNames) {
+    for (const n of [login && map[login], login, name]) { const key = normalizeCrewName(n); if (key) hidden.add(key); }
+  }
+  return hidden;
+}
+
+async function buildKarteiData() {
+  if (!uboatCrew || !uboatCrew.hasData()) return { skip: 'noch kein UBOAT-Spielstand gelesen' };
+  const privateNames = await karteiPrivateNames();
+  if (!privateNames) return { skip: 'Namen der !privat-Zuschauer nicht ermittelbar' };
+  const hidden = karteiHiddenNames(privateNames);
+  return { data: kartei.buildUboatCrew(uboatCrew.getState(), { isHidden: m => hidden.has(normalizeCrewName(m.name)) }) };
+}
+
+const karteiScheduler = karteiPublisher
+  ? kartei.createKarteiScheduler({
+    minGapMs: STREAM_KARTEI_MIN_GAP_MS,
+    isEnabled: () => moduleSwitches.kartei,
+    build: buildKarteiData,
+    readRemoteHash: async () => {
+      const text = await karteiPublisher.readFile(kartei.UBOAT_PATH);
+      return text ? kartei.contentHash(JSON.parse(text)) : null;
+    },
+    publish: async data => {
+      const res = await karteiPublisher.publish(kartei.uboatFiles(data, new Date().toISOString()), `Stream-Kartei: UBOAT-Crew, Spielstand ${data.savedAt}`);
+      console.log(`[Kartei] UBOAT-Crew veröffentlicht (${data.crew.length} an Bord oder in Reserve, ${data.fallen.length} gefallen)${res.created ? ` – Zweig ${STREAM_KARTEI_BRANCH} angelegt` : ''}`);
+      karteiWarnExpiry();
+    },
+    log: (level, msg) => logIfChanged('kartei-state', msg, level),
+  })
+  : null;
+
+function requestKartei(options) {
+  if (karteiScheduler) karteiScheduler.request(options);
+}
+
+function karteiTokenExpiring() {
+  const at = karteiPublisher && Date.parse(karteiPublisher.tokenExpiresAt());
+  return Number.isFinite(at) && at - Date.now() <= STREAM_KARTEI_EXPIRY_WARN_MS;
+}
+
+function karteiWarnExpiry() {
+  if (!karteiTokenExpiring()) return;
+  logIfChanged('kartei-expiry', `[Kartei] Das GitHub-Token läuft am ${formatDateDe(karteiPublisher.tokenExpiresAt())} ab – bei GitHub erneuern und STREAM_KARTEI_TOKEN in der .env ersetzen`, 'warn');
+}
+
+function karteiOverview() {
+  const s = karteiScheduler ? karteiScheduler.snapshot() : null;
+  return {
+    configured: karteiConfigured,
+    repo: karteiConfigured ? karteiRepo : null,
+    site_url: karteiConfigured ? `https://${karteiRepo.split('/')[0].toLowerCase()}.github.io/${karteiRepo.split('/')[1]}/` : null,
+    last_published_at: s ? s.lastPublishedAt : null,
+    pending: s ? s.pending : false,
+    last_error: s ? s.lastError : null,
+    last_skip: s ? s.lastSkip : null,
+    auth_failed: s ? s.authFailed : false,
+    token_expires_at: karteiPublisher ? karteiPublisher.tokenExpiresAt() : null,
+    token_expiring: karteiTokenExpiring(),
+  };
+}
+
+// !privat-Zuschauer sind nicht verknüpfbar (Nutzer, 21.11.2026). true/false, null = unbekannt
+async function isPrivateLogin(login) {
+  const ids = Object.keys(privacyOptouts);
+  if (!ids.length) return false;
+  if (ids.some(id => (karteiPrivacyNames.get(id) || {}).login === login)) return true;
+  if (!loadTokens()) return null;
+  try {
+    await getValidAccessToken();
+    const res = await twitchApi.get(`/users?login=${encodeURIComponent(login)}`);
+    const user = res.data?.data?.[0];
+    if (!user) return false;
+    if (isPrivateUser(String(user.id))) { rememberPrivacyName(user.id, user.login, user.display_name); return true; }
+    return false;
+  } catch {
+    return null;
+  }
+}
 const uboatLastAnswerByUser = new Map();   // user_id -> Zeitpunkt der letzten Antwort
 let currentCategory = null;                // Twitch-Kategorie des eigenen Kanals, null = unbekannt
 let currentCategoryChangedAt = null;       // wann sich die Kategorie zuletzt geändert hat (ISO), für /api/twitch/channel
@@ -3451,6 +3603,16 @@ function printTopicsStatus() {
   console.log(`[Topics] Überschrift: „${state.display.title}“, Design: ${state.display.theme}, Hintergrund horizontal: ${state.display.background.horizontal}, vertikal: ${state.display.background.vertikal}`);
 }
 
+function printKarteiStatus() {
+  const o = karteiOverview();
+  if (!o.configured) { console.log('Stream-Kartei: nicht eingerichtet (STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN in .env)'); return; }
+  console.log(`Stream-Kartei: ${moduleStateLabel('kartei')}, Repository ${o.repo}, Website ${o.site_url}`);
+  console.log(`Zuletzt veröffentlicht: ${o.last_published_at ? new Date(o.last_published_at).toLocaleString('de-DE') : 'in diesem Serverlauf noch nicht'}${o.pending ? ' – Änderung wartet' : ''}`);
+  if (o.last_skip) console.log(`Zuletzt ausgelassen: ${o.last_skip}`);
+  if (o.last_error) console.log(`Letzter Fehler: ${o.last_error}${o.auth_failed ? ' (Token abgelehnt, kein neuer Versuch bis zum Neustart)' : ''}`);
+  if (o.token_expires_at) console.log(`Token läuft ab: ${formatDateDe(o.token_expires_at)}${o.token_expiring ? ' – bald erneuern!' : ''}`);
+}
+
 function printConsoleHelp() {
   console.log('');
   console.log('Verfügbare Konsolenbefehle:');
@@ -3473,6 +3635,8 @@ function printConsoleHelp() {
   console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
   console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
   console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
+  console.log(' kartei show|publish        - Stream-Kartei: Stand der Website bzw. jetzt veröffentlichen (nur bei Änderung, Abstand 10 min)');
+  console.log(' kartei activate|deactivate - Stream-Kartei ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' topics show                - Intro-Topics: Liste, Stand, Sichtbarkeit, verbundene Widgets');
   console.log(' topics next|back|toggle|reset - Intro-Topics bedienen (wie die Stream-Deck-Tasten)');
   console.log(' topics debug on|off        - Intro-Topics: Testmodus, zeigt Effekte und Tastendrücke im Log (bis Neustart)');
@@ -3687,6 +3851,22 @@ rl.on('line', async (input) => {
     return;
   }
 
+  if (cmd === 'kartei') {
+    const sub = (parts[1] || '').toLowerCase();
+    if (sub === 'show') { printKarteiStatus(); return; }
+    if (sub === 'publish') {
+      if (!karteiScheduler) { console.log('Stream-Kartei: nicht eingerichtet (STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN in .env)'); return; }
+      if (!moduleSwitches.kartei) { console.log(`Stream-Kartei: ${moduleStateLabel('kartei')}`); return; }
+      console.log('[Kartei] Veröffentlichung angestoßen (nur bei geändertem Inhalt, frühestens 10 min nach der letzten)');
+      requestKartei();
+      return;
+    }
+    if (sub === 'activate') { switchModule('kartei', true); return; }
+    if (sub === 'deactivate') { switchModule('kartei', false); return; }
+    console.log('Nutzung: kartei show | kartei publish | kartei activate | kartei deactivate');
+    return;
+  }
+
   if (cmd === 'uboat') {
     const sub = (parts[1] || '').toLowerCase();
     if (sub === 'show') {
@@ -3701,11 +3881,16 @@ rl.on('line', async (input) => {
     if (sub === 'map' && parts[2] && parts[3]) {
       const login = parts[2].replace(/^@/, '').toLowerCase();
       const name = parts.slice(3).join(' ');
+      // !privat-Zuschauer sind nicht verknüpfbar (Stream-Kartei, Nutzer 21.11.2026)
+      const isPrivate = await isPrivateLogin(login);
+      if (isPrivate) { console.log(`[UBOAT] @${login} hat !privat eingeschaltet – keine Zuordnung gespeichert`); return; }
       const map = loadUboatCrewMap();
       map[login] = name;
       saveUboatCrewMap(map);
       const known = uboatCrew && uboatCrew.getState().crew.some(m => m.name.toLowerCase() === name.toLowerCase());
-      console.log(`[UBOAT] @${login} → ${name} gespeichert${uboatCrew && !known ? ' (Hinweis: im gelesenen Spielstand gibt es kein Crewmitglied mit diesem Namen)' : ''}`);
+      console.log(`[UBOAT] @${login} → ${name} gespeichert${uboatCrew && !known ? ' (Hinweis: im gelesenen Spielstand gibt es kein Crewmitglied mit diesem Namen)' : ''}`
+        + `${isPrivate === null ? ' (Hinweis: !privat ließ sich gerade nicht prüfen; die Website blendet !privat-Zuschauer trotzdem aus)' : ''}`);
+      requestKartei();
       return;
     }
     if (sub === 'unmap' && parts[2]) {
@@ -3823,6 +4008,8 @@ app.listen(PORT_NUM, SERVER_HOST, (err) => {
   console.log(`Bot-Account: ${bot ? `${bot.bot_name || bot.bot_login} (${botFeatureLabels()})` : `nicht eingerichtet – http://localhost:${PORT_NUM}/login-bot (vorher /mod DerBdu im Chat)`}`);
   console.log(`BdU-Chat: ${moduleStateLabel('bdu')}`);
   console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}${moduleSwitches.uboat ? '' : ' – deaktiviert ("uboat activate" schaltet ein)'}`);
+  if (karteiConfigured) console.log(`Stream-Kartei: an (Repository ${karteiRepo}, Zweig ${STREAM_KARTEI_BRANCH})${moduleSwitches.kartei ? '' : ' – deaktiviert ("kartei activate" schaltet ein)'}`);
+  else if ((STREAM_KARTEI_TOKEN || '').trim() || karteiRepo) console.warn('Stream-Kartei: aus – STREAM_KARTEI_REPO (Form Besitzer/Name) und STREAM_KARTEI_TOKEN müssen beide gesetzt sein');
   console.log('═════════════════════════════════════════════');
   if (uboatCrew) uboatCrew.start();
 

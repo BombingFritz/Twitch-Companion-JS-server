@@ -61,6 +61,9 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!soldbuch` bekommt ein Zuscha
 - `uboat show`: Ordner, gelesener Spielstand mit Zeit und Spielversion, Kategorie, Crew mit Typ und Stufe, Zuordnungen.
 - `uboat reload`: neuesten Spielstand sofort einlesen.
 - `uboat map <login> <Name im Spiel>` / `uboat unmap <login>`: Zuordnung setzen bzw. entfernen.
+  - Seit der Stream-Kartei (ADR 0026, Nutzer 21.11.2026) lehnt `uboat map` Zuschauer mit `!privat` ab, mit Hinweis in der Konsole.
+  - Die Prüfung nutzt bekannte Namen oder `GET /users?login=`. Geht sie nicht, wird gespeichert, mit Hinweis.
+  - `!soldbuch` antwortet `!privat`-Zuschauern weiter, weil sie selbst fragen.
 - `uboat activate` / `uboat deactivate`: Soldbuch ein- bzw. ausschalten (bleibt nach Neustart, `/status` → `modules.uboat`). `uboat show` und die Kategorie-Meldung nennen den Schalter.
 
 ### Konstanten (oben in `server.js`)

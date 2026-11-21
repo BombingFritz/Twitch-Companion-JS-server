@@ -104,6 +104,20 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Ist `UBOAT_SAVES_DIR` nicht gesetzt, nennt die Zeile das; der Schalter bleibt bedienbar.
 - `POST /api/admin/modules` mit `{module: bdu|uboat, enabled: true|false}`: `{ok:true, changed, modules}`. 400 bei unbekanntem Modul oder wenn `enabled` kein Wahrheitswert ist; sonst dieselben Regeln wie die übrigen POST-Aktionen (403, 415, 413).
 - **Karte „Chat-Brücke“** in der Übersicht, Gruppe „Optionale Module“ (20.11.2026, Spec `chat-bruecke.md`, ADR 0025): verbundene Verbraucher mit `client` und Uhrzeit, Licht grün bei mindestens einem, sonst nur nicht aktiv. Feld `chat_bridge` in `/api/admin/overview`.
+- **Stream-Kartei** (21.11.2026, Spec `stream-kartei.md`, ADR 0026):
+  - **Modul-Schalter** „Stream-Kartei“ im Reiter „Einstellungen“. Darunter der Stand:
+    - Repository
+    - zuletzt veröffentlicht, wartende Änderung
+    - letzter Fehler oder Grund des Auslassens
+    - Ablauf des Tokens
+    - Knopf „Jetzt veröffentlichen“ (`POST /api/admin/kartei/publish`; nur bei Änderung, Abstand 10 min)
+    - Ohne Einrichtung nur der Hinweis auf `.env`.
+  - **Karte und Licht** in „Optionale Module“: Website-Link, Stand, Fehler, Token-Ablauf.
+    - aus: nicht eingerichtet, ausgeschaltet oder noch nicht veröffentlicht
+    - grün: veröffentlicht
+    - gelb: Fehler oder Token läuft binnen 14 Tagen ab
+    - rot: Token abgelehnt
+  - Feld `kartei` in `/api/admin/overview`, ohne Token.
 - **Karte „Ergebniszeilen im Chat“** (14.11.2026, Spec `wetten-abstimmungen.md`, Schritt 3b): je ein Schalter für das Wett- und das Abstimmungs-Ergebnis, Vorgabe an (seit 14.11.2026). Die Karte erklärt, was die Zeile ist (das Ergebnis schreibt der Server einmal in den Chat, Absender unter „Chat-Absender“) und wann man ausschaltet (nur solange ein älteres Widget selbst schreibt: Wetten-Widget vor 0.8.0, SpargelPoll vor 0.9.0). Je Zeile steht kurz, was sie nennt. Wirkung wie `results <zeile> on|off`, gespeichert in `chat_results.json`, über `POST /api/admin/chat/results`. Steht vor „Chat-Absender“.
 - **Karte „Chat-Absender“** (14.11.2026, Spec `bot-account.md`, „Absender je Funktion“):
   - je Chat-Funktion eine Auswahl Broadcaster/Bot, Zeilen nach `chat_senders` aus der Übersicht

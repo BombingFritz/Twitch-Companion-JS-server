@@ -30,7 +30,9 @@ const MODULE_SETTINGS = [
   { key: 'bdu', name: 'BdU-Chat', text: 'Beantwortet !BdU im Chat. Aus: Der Befehl wird still ignoriert, offene Anfragen werden verworfen.' },
   { key: 'uboat', name: 'UBOAT-Soldbuch', text: 'Beantwortet !soldbuch im Chat. Aus: Der Befehl wird still ignoriert, der Spielstand wird weiter eingelesen.' },
   { key: 'topics', name: 'Intro-Topics', text: 'Abhakbare Themenliste fürs Intro (CheckTalk-Widget), bedient per Stream Deck. Aus: Tasten werden ignoriert, das Widget blendet aus.' },
+  { key: 'kartei', name: 'Stream-Kartei', text: 'Veröffentlicht den letzten Stand der UBOAT-Crew auf der öffentlichen Website, höchstens alle 10 Minuten. Aus: Es wird nichts mehr hochgeladen, der letzte Stand bleibt online.' },
 ];
+const KARTEI_PUBLISH_URL = '/api/admin/kartei/publish';
 const TOPICS_URL = '/api/admin/topics';
 const TOPICS_MAX_ITEMS = 10;
 const TOPICS_MAX_TITLE = 60;
@@ -43,7 +45,7 @@ const ERROR_LOG_URL = '/api/admin/log/errors';
 const LOG_MAX_LINES = 2000;
 const LOG_MAX_ERRORS = 1000;
 const LOG_BOTTOM_TOLERANCE_PX = 24;
-const LIGHT_LABELS = { ok: 'funktioniert', bad: 'Fehler', off: 'nicht aktiv' };
+const LIGHT_LABELS = { ok: 'funktioniert', bad: 'Fehler', warn: 'Warnung', off: 'nicht aktiv' };
 const SERVER_ACTIONS = {
   restart: { url: '/api/admin/server/restart', label: 'Server neu starten', question: 'Server wirklich neu starten?', yes: 'Ja, neu starten', warnMs: 30000 },
   shutdown: { url: '/api/admin/server/shutdown', label: 'Server beenden', question: 'Server wirklich beenden?', yes: 'Ja, beenden', warnMs: 5000 },
@@ -194,6 +196,17 @@ function chatBridgeLight(d) {
   return { level: 'ok', hint: `verbunden: ${clients.map(c => c.client).join(', ')}` };
 }
 
+// Stream-Kartei (ADR 0026): grün nach einer Veröffentlichung, gelb bei Fehler oder bald ablaufendem Token
+function karteiLight(d) {
+  const k = d.kartei;
+  if (!k || !k.configured) return { level: 'off', hint: 'nicht eingerichtet' };
+  if (!d.modules.kartei) return { level: 'off', hint: 'ausgeschaltet' };
+  if (k.auth_failed) return { level: 'bad', hint: 'Token abgelehnt' };
+  if (k.last_error || k.token_expiring) return { level: 'warn', hint: k.last_error ? 'letzter Versuch gescheitert' : 'Token läuft bald ab' };
+  if (!k.last_published_at) return { level: 'off', hint: 'noch nicht veröffentlicht' };
+  return { level: 'ok', hint: 'veröffentlicht' };
+}
+
 function moduleLights(d) {
   return [
     { name: 'HA-Effekte', ...effectsLight(d) },
@@ -201,6 +214,7 @@ function moduleLights(d) {
     { name: 'BdU-Chat', ...bduLight(d) },
     { name: 'Intro-Topics', ...topicsLight(d) },
     { name: 'Chat-Brücke', ...chatBridgeLight(d) },
+    { name: 'Stream-Kartei', ...karteiLight(d) },
     { name: 'Sub-Goal', level: null, hint: '' },
   ];
 }
@@ -790,9 +804,48 @@ function updateSettings(d) {
   const uboatHint = settings.rows.uboat.hint;
   uboatHint.hidden = d.uboat_enabled;
   uboatHint.textContent = 'UBOAT_SAVES_DIR ist nicht gesetzt. Das Soldbuch antwortet erst, wenn der Ordner in der .env steht und der Server neu gestartet wurde.';
+  updateKarteiSetting(d);
   updateEffectSettings(d);
   updateSenderSettings(d);
   updateResultSettings(d);
+}
+
+// Stream-Kartei (ADR 0026): Stand und Knopf „Jetzt veröffentlichen“ unter dem Modul-Schalter
+function karteiStatusText(k) {
+  if (!k || !k.configured) return 'STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN sind nicht gesetzt. Es wird nichts veröffentlicht, bis beide in der .env stehen und der Server neu gestartet wurde.';
+  const parts = [`Repository ${k.repo}`, k.last_published_at ? `zuletzt veröffentlicht ${dateTime(k.last_published_at)}` : 'in diesem Serverlauf noch nicht veröffentlicht'];
+  if (k.pending) parts.push('Änderung wartet');
+  if (k.last_error) parts.push(`letzter Fehler: ${k.last_error}`);
+  else if (k.last_skip) parts.push(`ausgelassen: ${k.last_skip}`);
+  if (k.token_expires_at) parts.push(`Token läuft ab ${dateTime(k.token_expires_at)}${k.token_expiring ? ' – bald erneuern!' : ''}`);
+  return `${parts.join(' · ')}.`;
+}
+
+function updateKarteiSetting(d) {
+  const row = state.settings.rows.kartei;
+  const k = d.kartei;
+  if (!row.karteiText) {
+    row.karteiText = el('span');
+    row.karteiButton = el('button', { type: 'button', class: 'btn', text: 'Jetzt veröffentlichen' });
+    row.karteiButton.addEventListener('click', publishKartei);
+    row.hint.append(row.karteiText, ' ', row.karteiButton);
+  }
+  row.hint.hidden = false;
+  row.karteiText.textContent = karteiStatusText(k);
+  row.karteiButton.hidden = !(k && k.configured && d.modules.kartei && !k.auth_failed);
+}
+
+async function publishKartei() {
+  const button = state.settings.rows.kartei.karteiButton;
+  button.disabled = true;
+  try {
+    await postJson(KARTEI_PUBLISH_URL, {});
+    showSettingsMessage('Stream-Kartei: Veröffentlichung angestoßen (nur bei geändertem Inhalt, frühestens 10 Minuten nach der letzten).', false);
+  } catch (err) {
+    showSettingsMessage(`Stream-Kartei: ${err.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // Ergebniszeilen über den Server (Spec wetten-abstimmungen.md, Schritt 3b): Schalter je Zeile, anfangs aus
@@ -1343,6 +1396,20 @@ function chatBridgeCard(d) {
   ));
 }
 
+// Stream-Kartei (ADR 0026): Website, letzter Stand, Fehler; der Knopf sitzt im Reiter „Einstellungen“
+function karteiCard(d) {
+  const k = d.kartei || {};
+  const light = karteiLight(d);
+  if (!k.configured) return card('Stream-Kartei', rows(row('Modul', indicator('off', 'nicht eingerichtet'))));
+  return card('Stream-Kartei', rows(
+    switchRow(d.modules.kartei),
+    row('Website', el('a', { href: k.site_url, target: '_blank', rel: 'noopener', text: k.repo })),
+    row('Stand', indicator(light.level, k.last_published_at ? `veröffentlicht ${dateTime(k.last_published_at)}` : light.hint)),
+    k.last_error ? row('Fehler', el('span', { text: k.last_error })) : null,
+    k.token_expires_at ? row('Token bis', el('span', { text: `${dateTime(k.token_expires_at)}${k.token_expiring ? ' – bald erneuern' : ''}` })) : null,
+  ));
+}
+
 function subgoalCard(d) {
   const goal = d.subgoal;
   if (goal.current === null || goal.current === undefined) {
@@ -1389,7 +1456,7 @@ function moduleLightList(d) {
 function optionalModules(d) {
   return el('section', { class: 'group' }, optionalToggle(), state.optionalCollapsed
     ? moduleLightList(d)
-    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), topicsCard(d), chatBridgeCard(d), subgoalCard(d)));
+    : el('div', { class: 'grid' }, effectsCard(d), uboatCard(d), bduCard(d), topicsCard(d), chatBridgeCard(d), karteiCard(d), subgoalCard(d)));
 }
 
 function renderOverview(content, d) {

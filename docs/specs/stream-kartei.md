@@ -1,6 +1,6 @@
 # Spec: Stream-Kartei – Spieldaten auf einer öffentlichen Website
 
-**Status:** vereinbart (Nutzer, 21.11.2026), noch nicht umgesetzt. Issue #84, ADR 0026. Stufe 1 (UBOAT-Crew) zuerst, RimWorld folgt als Stufe 2.
+**Status:** vereinbart (Nutzer, 21.11.2026). Stufe 1 (UBOAT-Crew) ist umgesetzt im Branch `feature/stream-kartei` und mit Attrappen getestet; gegen das echte GitHub noch nicht geprüft. RimWorld folgt als Stufe 2. Issue #84, ADR 0026.
 
 ## Ziel
 Zuschauer sind im Spiel mit Figuren verknüpft: UBOAT-Crew über `!soldbuch` (Spec `uboat-personalakte.md`), RimWorld-Pawns über die Mod (`BombingFritz/TwitchCompanion_RimWorld`). Den jeweils letzten Stand dieser Figuren sollen Zuschauer jederzeit auf einer Website ansehen können, auch wenn Stream und Server aus sind. Die Seite nennt, von wann der Stand ist.
@@ -187,14 +187,20 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 - Das Token steht nie im Log, nicht im Live-Log und nicht in der Webkonsole.
 - Tests mit einer Attrappe der GitHub-API, keine Anfrage an GitHub im Test.
 
-## Berührte Funktionen/Dateien (voraussichtlich)
+## Berührte Funktionen/Dateien
 - Neu:
-  - `lib/stream-kartei.js`: Format, Hash, Takt, Ausblenden
-  - `lib/github-publisher.js`: Git-Data-API, Zweig ersetzen
-  - `test/stream-kartei-test.js`
+  - `lib/stream-kartei.js`: `buildUboatCrew`, `contentHash`, `uboatFiles`, `createKarteiScheduler`
+  - `lib/github-publisher.js`: `createGithubPublisher` (`publish`, `readFile`, `tokenExpiresAt`), `parseExpiration`
+  - `test/stream-kartei-test.js` (Modultest)
+  - `test/kartei-test.js` (Server mit Attrappen, Szenarien `an` und `ohne`)
+- `lib/uboat-crew.js`: Option `onLoad`, `normalizeName` exportiert.
 - `server.js`:
-  - Konstanten, Modulschalter
-  - Auslöser nach dem Einlesen des Spielstands und in `handlePrivacyCommand`
-  - `uboat map`-Prüfung, Konsolenbefehle, Overview, Webkonsole
+  - Konstanten `STREAM_KARTEI_*`, `ADMIN_KARTEI_PUBLISH_PATH`, Modul `kartei` in `MODULE_NAMES`
+  - `buildKarteiData`, `karteiPrivateNames`, `karteiHiddenNames`, `requestKartei`, `isPrivateLogin`, `karteiOverview`, `printKarteiStatus`
+  - Auslöser in `onLoad`, `handlePrivacyCommand`, `uboat map`, `switchModule`
+  - `POST /api/admin/kartei/publish`, `kartei` in `/api/admin/overview`
+  - Konsolenbefehle `kartei …`, Startanzeige
+  - Token in der Bereinigung des Live-Logs
+- `public/admin/admin.js`: Modul-Schalter mit Stand und Knopf, Karte und Licht „Stream-Kartei“.
 - `.env.example`: `STREAM_KARTEI_REPO`, `STREAM_KARTEI_TOKEN`.
-- Doku: DATENKATALOG (neuer öffentlicher Datenfluss), ARCHITEKTUR, Webkonsole-Spec, neues ADR.
+- Doku: DATENKATALOG, ARCHITEKTUR, Webkonsole-Spec, `uboat-personalakte.md` (Sperre in `uboat map`), CHANGELOG.

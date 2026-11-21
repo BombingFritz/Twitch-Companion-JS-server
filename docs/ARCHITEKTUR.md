@@ -50,9 +50,10 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToOutgoingRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToStreamOffline`, `subscribeToPolls`, `subscribeToPredictions`, `subscribeToShoutoutCreate`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification`, `describeSubEvent`, `describeSubNotice` (Protokollzusätze, ADR 0008); in `connectEventSub` intern `armKeepalive` (Zeitgeber für die Keepalive-Überwachung) |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`; mit `feature` über den Bot, wenn `chatSenders[feature]` „bot“ ist), `sendShoutout` |
 | Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
-| UBOAT-Soldbuch (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`); intern `normalizeName`, `STATUS_LABELS`, `WOUNDED_STATUS_LABELS`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
+| UBOAT-Soldbuch (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`; Option `onLoad` nach jedem eingelesenen Spielstand), `normalizeName` (auch für die Stream-Kartei); intern `STATUS_LABELS`, `WOUNDED_STATUS_LABELS`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
 | BdU-Chat (ADR 0014) | `handleBduCommand`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `isLocalWidgetRequest`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
 | Chat-Brücke (ADR 0025) | `lib/chat-bridge.js` (`parseSubscription`, `matches`, `isForwardable`, `chatEvent`); in `server.js` `chatBridgeClients`, `forwardChatToBridge` (zuerst im Chat-Handler), `notifyPrivacyChange` (aus `handlePrivacyCommand`), `chatBridgeExcludedLogins`; `SERVER_CHAT_COMMANDS`, `CHAT_BRIDGE_FEATURES` (Spec `chat-bruecke.md`) |
+| Stream-Kartei (ADR 0026) | `lib/stream-kartei.js` (`buildUboatCrew`, `contentHash`, `uboatFiles`, `createKarteiScheduler`: höchstens alle `STREAM_KARTEI_MIN_GAP_MS`, nur bei Änderung, dringend ohne Abstand, 401/403 sperren bis Neustart); `lib/github-publisher.js` (`createGithubPublisher`: `publish` ersetzt den Zweig `data` durch einen Commit ohne Vorgänger, `readFile`, `tokenExpiresAt`; eigener Client über `axios`, nicht `twitchApi`). In `server.js`: `buildKarteiData`, `karteiPrivateNames` (Login und Anzeigename der `!privat`-Zuschauer über `GET /users?id=`), `karteiHiddenNames`, `requestKartei` (aus `onLoad`, `handlePrivacyCommand`, `uboat map`, Modulschalter), `isPrivateLogin` (`uboat map` sperrt `!privat`), `karteiOverview`, `printKarteiStatus`; RAM: `karteiPrivacyNames`, Zustand des Schedulers (Spec `stream-kartei.md`) |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
 | Konsole | `printConsoleHelp`, `rl.on('line', …)` |
@@ -73,7 +74,7 @@ Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`
 | `effect_mode.json` | `{mode}` mit `auto` oder `off`; fehlt die Datei oder ist ungültig (auch das frühere `manual`): `auto` |
 | `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
 | `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
-| `modules.json` | `{bdu, uboat, topics}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an |
+| `modules.json` | `{bdu, uboat, topics, kartei}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an. `kartei` wirkt nur mit `STREAM_KARTEI_REPO` und `STREAM_KARTEI_TOKEN` |
 | `topics.json` | `{items: [{title}], display: {title, theme, background: {horizontal, vertikal}}, updated_at}` (Intro-Topics, ADR 0021); fehlt oder defekt: Standardwerte. Fortschritt und Sichtbarkeit nur im Arbeitsspeicher |
 | `bot.json` | `{bot_id, bot_login, bot_name, authorized_at}` (ADR 0017), keine Tokens; fehlt die Datei: kein Bot, alles als Broadcaster |
 | `chat_senders.json` | `{funktion: 'bot'|'broadcaster'}` je Chat-Funktion (Spec `bot-account.md`, „Absender je Funktion“); fehlt die Datei, ein Eintrag oder ist sie ungültig: Vorgabe (BdU und Soldbuch Bot, Rest Broadcaster) |
@@ -85,9 +86,11 @@ Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`
 
 Gelesen, nie geschrieben: der neueste `*.save` in `UBOAT_SAVES_DIR` und `..\Data Sheets\UBOAT - Locales.dat` (deutsche Namen).
 
+Außerhalb des PCs (Stream-Kartei, ADR 0026): Zweig `data` von `STREAM_KARTEI_REPO` mit `index.json` und `uboat/crew.json` (Format: Spec `stream-kartei.md`), genau ein Commit, bei jeder Veröffentlichung ersetzt. Keine lokale Datei dafür.
+
 ## 4. HTTP-Endpoints
 
-Alle GET außer `POST /api/bdu/answer` (ADR 0014), `POST /api/admin/server/…`, `POST /api/admin/whitelist/…`, `POST /api/admin/modules`, `POST /api/admin/effects/…`, `POST /api/admin/reports/delete` und `POST /api/admin/stream/close` (ADR 0018, ADR 0019). Alle Antworten mit `Cache-Control: no-store`.
+Alle GET außer `POST /api/bdu/answer` (ADR 0014), `POST /api/admin/server/…`, `POST /api/admin/whitelist/…`, `POST /api/admin/modules`, `POST /api/admin/kartei/publish`, `POST /api/admin/effects/…`, `POST /api/admin/reports/delete` und `POST /api/admin/stream/close` (ADR 0018, ADR 0019). Alle Antworten mit `Cache-Control: no-store`.
 
 Zugriffsschutz (ADR 0013):
 - Der Server lauscht nur auf `127.0.0.1` und `::1` (`SERVER_HOST`, `SERVER_HOST_V6`; ADR 0013, Nachtrag 14.11.2026). Andere Geräte im Heimnetz erreichen ihn nicht; Home Assistant bekommt nur Webhooks.
@@ -117,7 +120,8 @@ Zugriffsschutz (ADR 0013):
 | `POST /api/admin/whitelist/add` | JSON `{user}` (Name, `@Name` oder ID); `{ok:true, entry:{id, name}}` | 403 wie `POST /api/admin/server/…`; 415 ohne JSON; 400 ungültig; 404 Konto unbekannt; 409 schon gelistet; 413 zu groß; 502 Twitch nicht erreichbar |
 | `POST /api/admin/whitelist/remove` | JSON `{id}`; `{ok:true, id}` | 403 und 415 wie oben; 400 ungültige ID; 404 nicht gelistet; 413 zu groß |
 | `POST /api/admin/effects/mode` | JSON `{mode: auto/off}`; setzt den Modus, `{ok:true, mode}` | 403 und 415 wie die übrigen POST; 400 ungültiger Modus; 413 zu groß |
-| `POST /api/admin/modules` | JSON `{module: bdu/uboat, enabled: true/false}`; `{ok:true, changed, modules:{bdu, uboat}}` | 403 und 415 wie die übrigen POST; 400 unbekanntes Modul oder kein Wahrheitswert; 413 zu groß |
+| `POST /api/admin/modules` | JSON `{module: bdu/uboat/topics/kartei, enabled: true/false}`; `{ok:true, changed, modules:{bdu, uboat, topics, kartei}}` | 403 und 415 wie die übrigen POST; 400 unbekanntes Modul oder kein Wahrheitswert; 413 zu groß |
+| `POST /api/admin/kartei/publish` | JSON `{}`; stößt die Stream-Kartei an (nur bei geändertem Inhalt, Abstand 10 min) → `{ok:true, kartei}` (ADR 0026) | 403 und 415 wie die übrigen POST; 409 nicht eingerichtet oder ausgeschaltet |
 | `POST /api/admin/chat/sender` | JSON `{feature, sender: bot/broadcaster}`; `{ok:true, changed, chat_senders:[{feature, name, sender}]}` (Spec `bot-account.md`) | 403 und 415 wie die übrigen POST; 400 bei unbekannter Funktion oder unbekanntem Absender |
 | `POST /api/admin/chat/results` | JSON `{line: prediction/poll, enabled: true/false}`; `{ok:true, changed, chat_results:[{line, name, enabled}]}` (Spec `wetten-abstimmungen.md`, Schritt 3b) | 403 und 415 wie die übrigen POST; 400 bei unbekannter Zeile oder wenn `enabled` kein Wahrheitswert ist |
 | `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
@@ -165,6 +169,7 @@ Zugriffsschutz (ADR 0013):
 | `uboat reload` | UBOAT: neuesten Spielstand sofort einlesen |
 | `uboat map <login> <Name im Spiel>` | UBOAT: Zuordnung in `uboat_crew_map.json` setzen (Name darf Leerzeichen enthalten) |
 | `uboat unmap <login>` | UBOAT: Zuordnung entfernen |
+| `kartei show` / `kartei publish` / `kartei activate` / `kartei deactivate` | Stream-Kartei (ADR 0026): Stand (Repository, Website, letzte Veröffentlichung, wartende Änderung, Fehler, Ablauf des Tokens), Veröffentlichung anstoßen (nur bei Änderung, Abstand 10 min), ein- bzw. ausschalten (gespeichert in `modules.json`) |
 | `uboat activate` / `uboat deactivate` | UBOAT-Soldbuch ein- bzw. ausschalten, gespeichert in `modules.json`. Deaktiviert: `!soldbuch` wird still ignoriert; der Spielstand wird weiter eingelesen, `/api/uboat/crew` bleibt aktuell. Ohne `UBOAT_SAVES_DIR` bleibt das Soldbuch trotz `activate` aus |
 | `bot show` | Bot-Account: Name und ID, Funktionen über den Bot, letzter Sendefehler; ohne Bot Einrichtungshinweis |
 | `bot remove` | `bot.json` löschen, danach sendet wieder der Broadcaster (Freigabe bei Twitch bleibt bis zum Entzug durch das Bot-Konto) |
@@ -295,6 +300,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 | `BDU_WARNING_TEXT` | „Funkverkehr einschränken, Feind peilt ein!“ | Warnung bei Limit-Verstoß |
 | `CHAT_MAX_CHARS` | 500 | Twitch-Längengrenze in `sendChatMessage` |
 | `BOT_SCOPES` | `user:bot user:write:chat` | Freigabe des Bot-Kontos über `/login-bot` (ADR 0017) |
+| `STREAM_KARTEI_BRANCH`, `STREAM_KARTEI_MIN_GAP_MS`, `STREAM_KARTEI_PRIVACY_CACHE_MS`, `STREAM_KARTEI_EXPIRY_WARN_MS` | `data`, 10 min, 1 h, 14 Tage | Stream-Kartei (ADR 0026): Zweig der Daten, Abstand der Veröffentlichungen, Merkzeit der `!privat`-Namen, Warnung vor Ablauf des Tokens |
 | `CHAT_SENDERS_FILE` / `CHAT_FEATURES` / `CHAT_SENDER_DEFAULTS` | `./chat_senders.json` / `bdu`, `uboat`, `raid`, `whitelist`, `raidstats`, `privacy`, `prediction`, `poll`, `rimworld`, `coinflip` / `{bdu: 'bot', uboat: 'bot'}` | Absender je Chat-Funktion (Spec `bot-account.md`): ohne Eintrag gilt die Vorgabe, sonst Broadcaster; ersetzt `BOT_FEATURES` |
 | `CHAT_RESULTS_FILE` / `CHAT_RESULT_LINES` | `./chat_results.json` / `prediction`, `poll` | Ergebniszeilen für Wette und Abstimmung über den Server, je Zeile an/aus, Vorgabe an seit 14.11.2026 (Spec `wetten-abstimmungen.md`, Schritt 3b) |
 | `LOGIN_STATE_TTL_MS` / `APP_TOKEN_REFRESH_MARGIN_MS` | 600000 / 300000 | Gültigkeit eines begonnenen Logins (`state`, Broadcaster und Bot); App-Token so lange vor Ablauf erneuern |
@@ -344,4 +350,4 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 ## 9. Umgebungsvariablen
 
-`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft), `UBOAT_SAVES_DIR` (optional; Saves-Ordner von UBOAT, `%VARIABLE%` wird aufgelöst; leer = UBOAT-Soldbuch aus). Vorlage: `.env.example`.
+`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS` (optional, kommagetrennt; leer = Standard, `*` = jede Herkunft), `UBOAT_SAVES_DIR` (optional; Saves-Ordner von UBOAT, `%VARIABLE%` wird aufgelöst; leer = UBOAT-Soldbuch aus), `STREAM_KARTEI_REPO` und `STREAM_KARTEI_TOKEN` (optional, nur zusammen; `Besitzer/Name` des Website-Repositorys und ein fein abgestuftes GitHub-Token nur dafür mit „Contents: Read and write“; leer = Stream-Kartei aus, ADR 0026). Vorlage: `.env.example`.
