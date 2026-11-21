@@ -35,7 +35,13 @@ if (section) {
   const lights = changes => { context.d = { ...healthy, ...changes }; return JSON.parse(vm.runInContext('JSON.stringify(moduleLights(d))', context)); };
   const level = (name, changes) => lights(changes).find(m => m.name === name).level;
   const names = lights({}).map(m => m.name).join(',');
-  check('L1 Die sechs Module in der gewünschten Reihenfolge', names === 'HA-Effekte,UBOAT-Soldbuch,BdU-Chat,Intro-Topics,Chat-Brücke,Sub-Goal', names);
+  check('L1 Die sieben Module in der gewünschten Reihenfolge', names === 'HA-Effekte,UBOAT-Soldbuch,BdU-Chat,Intro-Topics,Chat-Brücke,Stream-Kartei,Sub-Goal', names);
+  // Stream-Kartei (ADR 0026): nicht eingerichtet aus, nach Veröffentlichung grün, Fehler oder bald ablaufendes Token gelb, abgelehntes Token rot
+  const k = extra => ({ modules: { ...healthy.modules, kartei: true }, kartei: { configured: true, last_published_at: '2026-11-21T10:00:00Z', ...extra } });
+  check('L1b Stream-Kartei: Lichter je Zustand', level('Stream-Kartei', {}) === 'off' && level('Stream-Kartei', k({})) === 'ok'
+    && level('Stream-Kartei', k({ last_error: 'HTTP 502' })) === 'warn' && level('Stream-Kartei', k({ token_expiring: true })) === 'warn'
+    && level('Stream-Kartei', k({ auth_failed: true })) === 'bad' && level('Stream-Kartei', { ...k({}), modules: { ...healthy.modules, kartei: false } }) === 'off'
+    && level('Stream-Kartei', k({ last_published_at: null })) === 'off');
   check('L1a Chat-Brücke: ohne Verbraucher nur nicht aktiv, mit Verbraucher grün', level('Chat-Brücke', {}) === 'off' && level('Chat-Brücke', { chat_bridge: { clients: [] } }) === 'off'
     && level('Chat-Brücke', { chat_bridge: { clients: [{ client: 'rimworld', connectedAt: '2026-11-20T20:00:00Z' }] } }) === 'ok');
   check('L2 Alles eingerichtet: grün', ['HA-Effekte', 'UBOAT-Soldbuch', 'BdU-Chat', 'Intro-Topics'].every(n => level(n, {}) === 'ok'));

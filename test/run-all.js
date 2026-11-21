@@ -72,6 +72,9 @@ const runs = [
   ['result-messages-test.js', []],
   ['chat-bridge-test.js', []],
   ['consumer-polls-test.js', []],
+  ['stream-kartei-test.js', []],
+  ['kartei-test.js', ['an']],
+  ['kartei-test.js', ['ohne']],
 ];
 
 let ok = 0, fail = 0;
