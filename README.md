@@ -9,7 +9,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 1. Node.js installieren, mindestens Version 18 (Vorgabe von Express 5).
 2. Abhängigkeiten installieren: `npm install` (liest `package.json` und `package-lock.json`).
 3. `.env` anlegen: `cp .env.example .env`, Werte eintragen. `REDIRECT_URI` muss exakt der Twitch-Developer-Console entsprechen.
-4. Syntax prüfen: `npm run check` (entspricht `node --check server.js`). Optional alle Tests: `npm test` (Attrappen statt Twitch und Home Assistant, eigenes temporäres Verzeichnis, rührt die Laufzeitdateien nicht an; etwa 3 Minuten)
+4. Syntax prüfen: `npm run check` (entspricht `node --check server.js`). Optional alle Tests: `npm test` (Attrappen statt Twitch und Home Assistant, eigenes temporäres Verzeichnis, rührt die Laufzeitdateien nicht an; etwa 4 Minuten)
 5. Starten: `npm start` (entspricht `node server.js`), unter Windows alternativ per Doppelklick auf `AuthServer.cmd` (eigenes Konsolenfenster, bleibt nach einem Absturz offen, nur so geht der Neustart aus der Webkonsole; so startet auch das Stream-Deck-Skript den Server)
 6. Einmalig anmelden: `http://localhost:3000/login` im Browser öffnen.
 7. Prüfen: `http://localhost:3000/TwitchCompanionAdmin` (Webkonsole) oder `http://localhost:3000/status`
@@ -17,7 +17,11 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 ## Features
 
 - OAuth2 mit Auto-Refresh (Login nur am Streaming-PC), Token-Ausgabe an Widgets (`/token` mit Token, Client-ID und Broadcaster-ID; nur lokal und für erlaubte Widget-Herkünfte, siehe ADR 0013)
-- Predictions-API und Sub-Goal-Counter für Widgets
+- Wette, Abstimmung, Sub-Goal und Zuschauerzahl für Widgets: der Server führt den Stand über EventSub, die Widgets lesen den letzten Stand mit Zeitstempel, ohne selbst Twitch zu fragen (ADR 0023, 0024, Spec `docs/specs/wetten-abstimmungen.md`)
+- Ergebniszeilen von Wette und Abstimmung im Chat, je Zeile abschaltbar (`results <prediction|poll> on|off` oder Webkonsole)
+- Stream-Statistik: Ablauf, Zahlen und Zuschauerverlauf je Stream, Bericht je Stream in `stream_reports/`, Glückspilz des Abends aus den Wetten, Reiter „Statistik“ in der Webkonsole (ADR 0019, Spec `docs/specs/statistik.md`)
+- Intro-Topics: abhakbare Themenliste fürs Intro, angezeigt vom CheckTalk-Widget, bedient per Stream Deck, Konsole (`topics`) oder Webkonsole (ADR 0020, 0021, Spec `docs/specs/intro-topics.md`)
+- Chat-Brücke für lokale Verbraucher wie die RimWorld-Mod und CoinFlip: Chatbefehle und eingehende Raids empfangen, Nachrichten senden, aktive Chatter und Kategorie lesen, Abstimmungen starten (ADR 0025, Spec `docs/specs/chat-bruecke.md`)
 - Raid-Begrüßung mit Warteschlange, Quartals-Leaderboard, `!raidstats`
 - Shoutouts über die Helix-API (Raid ab 3 Zuschauern, Whitelist nur an Streamer, die in den letzten 40 Tagen aktiv waren)
 - Effekt-Queue, in der Webkonsole oder per Konsole ein- und ausschaltbar, mit optionalem Home-Assistant-Webhook (Hooks lassen sich zusätzlich selbst auslösen, z. B. per Stream-Deck-Multi-Aktion, siehe `docs/specs/effekt-queue.md`)
@@ -25,10 +29,10 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet von DerBdu bzw. ohne Bot als „FT vom BdU: …“ (ADR 0014, 0017)
 - UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
 - Stream-Kartei: öffentliche Website mit der UBOAT-Crew (Soldbücher mit Lebenslauf, Orden, Leistungen und Feindfahrten je Person), Boot, Karriere, Versenkungen und Ehrentafel, auch wenn Stream und Server aus sind (optional über `STREAM_KARTEI_REPO`/`STREAM_KARTEI_TOKEN`, ADR 0026, Spec `docs/specs/stream-kartei.md`). Feindfahrten je Person und Lebensläufe hält der Server selbst nach, auch über Umbenennungen; ältere Spielstände liest `uboat nachlesen` nach (erst Vorschau, dann `uboat nachlesen übernehmen`)
-- Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu (ADR 0017)
+- Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu. Der Absender ist je Chat-Funktion einstellbar (Bot oder Broadcaster, `bot sender` oder Webkonsole) (ADR 0017, Spec `docs/specs/bot-account.md`)
 - `!privat`: Zuschauer erscheinen auf eigenen Wunsch in der Stream-Statistik nur noch als „anonymer Schlaumeier“, auch rückwirkend; derselbe Befehl schaltet zurück. Widgets erhalten die Liste über `/api/privacy/optouts` (ADR 0022)
-- Modul-Schalter: BdU-Chat und Soldbuch in der Webkonsole oder per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten
-- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: Statusseite nur am Streaming-PC mit Knöpfen zum Beenden und Neustarten des Servers, Live-Log mit Fehlerprotokoll, Whitelist-Verwaltung, Effekte an/aus, Modul-Schaltern und Statistik zur laufenden Server-Instanz, weitere Bereiche folgen (ADR 0018, 0019)
+- Modul-Schalter: BdU-Chat, UBOAT-Soldbuch, Intro-Topics und Stream-Kartei in der Webkonsole oder per Konsole ein- und ausschalten (`bdu|uboat|topics|kartei activate|deactivate`), bleibt nach Neustart erhalten
+- Webkonsole `http://localhost:3000/TwitchCompanionAdmin`: nur am Streaming-PC. Übersicht mit Knöpfen zum Beenden und Neustarten des Servers und „Streamlog beenden“; Reiter Live-Log mit Fehlerprotokoll, Einstellungen (Effekte an/aus, Modul-Schalter, Chat-Absender, Ergebniszeilen), Whitelist, Statistik mit Stream-Berichten und Topics. Weitere Bereiche folgen (ADR 0018, 0019, Spec `docs/specs/webkonsole.md`)
 
 ## Dokumentation
 
@@ -37,6 +41,8 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) – Ist-Zustand
 - [docs/adr/](docs/adr/) – Architekturentscheidungen, nach Themen geordnet in [docs/adr/README.md](docs/adr/README.md)
 - [docs/specs/](docs/specs/) – Feature-Specs
+- [docs/DATENKATALOG.md](docs/DATENKATALOG.md) – welche Daten wozu gespeichert oder weitergegeben werden
+- [docs/FAHRPLAN.md](docs/FAHRPLAN.md) – Reihenfolge über mehrere Repositories
 - [docs/BUGS.md](docs/BUGS.md) – Fehlerhistorie
 - [test/](test/) – Tests mit Attrappen, Start mit `npm test`; laufen auch automatisch bei jedem Pull Request (GitHub Actions)
 - [docs/OFFEN.md](docs/OFFEN.md) – offene Punkte
