@@ -89,6 +89,11 @@ function setup(dirName, saveOpts) {
   check('D13 !privat: Akte fehlt mit der Figur, Boot und Versenkungen bleiben', !JSON.stringify(hidden).includes('Eisernes Kreuz 2. Klasse')
     && !hidden.crew.some(m => m.name === 'Fritz Unsinkbar') && hidden.sinkings.length === 2 && hidden.boat && hidden.boat.name === 'U-68');
   check('D14 Keine Warnung beim Einlesen', !logs.some(l => l.startsWith('warn')), logs);
+  const kobold = st.crew.find(m => m.name === 'Kobold');
+  const alpakaOut = data.crew.find(m => m.name === 'Alpaka');
+  check('D15 Nicht aufgedeckter Charakterzug fehlt, Fähigkeit bleibt; aufgedeckter Zug bleibt', kobold.traits.length === 0 && JSON.stringify(kobold.skills) === '["Hart im Nehmen"]'
+    && JSON.stringify(alpakaOut.traits) === '["Ängstlich"]', { traits: kobold.traits, skills: kobold.skills, alpaka: alpakaOut.traits });
+  check('D16 Soldbuch verrät den verborgenen Zug nicht', !/Ängstlich/.test(crew.formatAkte(kobold)) && /Hart im Nehmen/.test(crew.formatAkte(kobold)), crew.formatAkte(kobold));
   fs.rmSync(root, { recursive: true, force: true });
 }
 

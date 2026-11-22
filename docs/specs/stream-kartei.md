@@ -126,6 +126,7 @@ Alle Zeitpunkte als ISO. `schemaVersion` steigt nur bei nicht rückwärtskompati
 - `savedAt`: Änderungszeit des gelesenen Spielstands. `publishedAt`: Zeitpunkt der Veröffentlichung.
 - Weitere Felder seit Stufe 1b: siehe „Akte, Boot und Karriere“.
 - `crew`: alle mit Status an Bord oder in Reserve, Felder wie bei `/api/uboat/crew` (Spec `uboat-personalakte.md`).
+- `traits` und `skills` enthalten nur, was im Spiel aufgedeckt ist (Feld `hidden`, Nutzer 22.11.2026). `traits` ist daher oft leer.
 - `fallen`: alle mit Todesdatum, für die Ehrentafel.
 - Sortierung: Kommandant, Offiziere, Matrosen; innerhalb nach Name.
 - **Nicht enthalten:**
