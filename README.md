@@ -24,6 +24,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 - Event-Log (Follow/Sub/Gift) und Konsolenbefehle
 - BdU-Chat `!BdU <Text>`: Funksprüche aus dem Chat, beantwortet vom Enigma-Widget (KI), gepostet von DerBdu bzw. ohne Bot als „FT vom BdU: …“ (ADR 0014, 0017)
 - UBOAT-Soldbuch `!soldbuch`: Zuschauer erhalten die Daten ihres Crewmitglieds aus dem neuesten UBOAT-Spielstand, nur in der Kategorie UBOAT (optional über `UBOAT_SAVES_DIR`, ADR 0016)
+- Stream-Kartei: öffentliche Website mit der UBOAT-Crew (Soldbücher mit Lebenslauf, Orden, Leistungen und Feindfahrten je Person), Boot, Karriere, Versenkungen und Ehrentafel, auch wenn Stream und Server aus sind (optional über `STREAM_KARTEI_REPO`/`STREAM_KARTEI_TOKEN`, ADR 0026, Spec `docs/specs/stream-kartei.md`). Feindfahrten je Person und Lebensläufe hält der Server selbst nach, auch über Umbenennungen; ältere Spielstände liest `uboat nachlesen` nach (erst Vorschau, dann `uboat nachlesen übernehmen`)
 - Bot-Account „DerBdu“: sendet BdU- und Soldbuch-Nachrichten mit „Chat Bot“-Abzeichen; einmalig `/mod DerBdu` und `http://localhost:3000/login-bot` als DerBdu (ADR 0017)
 - `!privat`: Zuschauer erscheinen auf eigenen Wunsch in der Stream-Statistik nur noch als „anonymer Schlaumeier“, auch rückwirkend; derselbe Befehl schaltet zurück. Widgets erhalten die Liste über `/api/privacy/optouts` (ADR 0022)
 - Modul-Schalter: BdU-Chat und Soldbuch in der Webkonsole oder per Konsole ein- und ausschalten (`bdu activate|deactivate`, `uboat activate|deactivate`), bleibt nach Neustart erhalten

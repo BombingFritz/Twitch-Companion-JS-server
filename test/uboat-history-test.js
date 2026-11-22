@@ -120,9 +120,37 @@ const saves = {
   check('R7 Nachlesen ohne die alten Dateien: Verlauf bleibt, umbenannte Person wird verbunden', alp2 && JSON.stringify(alp2.names) === '["Erich Vossmann","Alpaka"]'
     && JSON.stringify(alp2.patrols) === '[1,3]' && p2.find(p => p.name === 'F4bi').background !== null && !p2.some(p => p.name === 'Erich Vossmann'),
     p2.map(p => `${p.names.join('>')}[${p.patrols}]`));
-  // Bekannte Grenze: Typ und Eigenschaften ändern sich stark und dazwischen fehlt jeder Spielstand -> zwei Personen
-  check('R8 Ohne Zwischenstand bei Beförderung und Umbenennung: getrennt (bekannte Grenze)', p2.length === 5 && p2.some(p => p.name === 'Binggeli') && p2.some(p => p.name === 'Binggeli4'),
-    p2.map(p => p.names.join('>')));
+  // Beförderung und Umbenennung ohne Zwischenstand: Geburtszeitpunkt und Charakterzug (Seewolf) bleiben -> eine Person
+  check('R8 Beförderung und Umbenennung ohne Zwischenstand: über den Charakterzug verbunden', p2.length === 4
+    && JSON.stringify(p2.find(p => p.name === 'Binggeli4').names) === '["Binggeli","Binggeli4"]', p2.map(p => p.names.join('>')));
+}
+
+// --- Feste Merkmale entscheiden (Nutzer, 22.11.2026): Charakterzug vor Typ vor Fähigkeiten ---
+{
+  const key = 'U-68|1941-08-01';
+  // Zwei Matrosen mit gleichem Geburtszeitpunkt; beide werden umbenannt
+  const a = { name: 'Anton', type: 0, born: '1912-03-03', statuses: ['SeaWolf', 'Sailor', 'Tough'] };
+  const b = { name: 'Bruno', type: 0, born: '1912-03-03', statuses: ['AnxiousPersonality', 'Sailor', 'Tough', 'Runner', 'DiverSkill', 'Merchant'] };
+  const s1 = fx.buildSave({ crew: [a, b], career: career(1, '1941-08-05') });
+  // Bruno verlässt das Boot; Anton heißt jetzt Antje und hat Fähigkeiten dazubekommen, die eher zu Bruno passen
+  // (Ähnlichkeit aller Eigenschaften: zu Bruno 0,71, zu Anton 0,5). Der gleiche Charakterzug (Seewolf) entscheidet.
+  const s2 = fx.buildSave({ crew: [{ ...a, name: 'Antje', statuses: ['SeaWolf', 'Sailor', 'Tough', 'Runner', 'DiverSkill', 'Merchant'] }], career: career(2, '1941-08-21') });
+  const h = H.emptyHistory();
+  H.observe(h, parseSave(s1)); H.observe(h, parseSave(s2));
+  const ps = h.campaigns[key].persons;
+  check('M1 Charakterzug schlägt Fähigkeiten: Anton -> Antje, nicht Bruno', ps.length === 2
+    && JSON.stringify(ps.find(p => p.name === 'Antje').names) === '["Anton","Antje"]' && ps.some(p => JSON.stringify(p.names) === '["Bruno"]'),
+    ps.map(p => p.names.join('>')));
+  // Anderer Geburtszeitpunkt: nie dieselbe Person, auch bei gleichen Eigenschaften
+  const s3 = fx.buildSave({ crew: [{ ...a, name: 'Fremder', born: '1915-01-01' }], career: career(2, '1941-08-21') });
+  H.observe(h, parseSave(s3));
+  check('M2 Anderer Geburtszeitpunkt: neue Person', h.campaigns[key].persons.length === 3 && h.campaigns[key].persons.some(p => JSON.stringify(p.names) === '["Fremder"]'));
+  // Übergang: Datei der ersten Fassung (figures nach Namen) wird übernommen
+  const old = H.normalize({ version: 1, campaigns: { [key]: { patrols: { 1: '1941-08-05' }, figures: { Anton: { background: BG, patrols: [1] } } } } });
+  H.observe(old, parseSave(s1));
+  const anton = old.campaigns[key].persons.find(p => p.name === 'Anton');
+  check('M3 Erste Fassung (figures) übernommen, Geburtszeitpunkt ergänzt, Fahrten und Lebenslauf bleiben', anton && anton.birth && JSON.stringify(anton.patrols) === '[1]'
+    && anton.background && anton.background.key === BG.key && old.campaigns[key].persons.length === 2, old.campaigns[key].persons);
 }
 
 // --- Crew mit Verlauf: Ausgabe, Nachlesen über den Ordner ---
