@@ -1,6 +1,6 @@
 # Spec: Stream-Kartei – Spieldaten auf einer öffentlichen Website
 
-**Status:** vereinbart (Nutzer, 21.11.2026). Stufe 1 (UBOAT-Crew) ist umgesetzt im Branch `feature/stream-kartei` und mit Attrappen getestet; gegen das echte GitHub noch nicht geprüft. RimWorld folgt als Stufe 2. Issue #84, ADR 0026.
+**Status:** vereinbart (Nutzer, 21.11.2026). Stufe 1 (UBOAT-Crew) ist auf `main` und real abgenommen (#84). Stufe 1b (Akte, Boot und Karriere, Issue #87): Umfang vom Nutzer am 22.11.2026 entschieden, umgesetzt im Branch `feature/kartei-uboat-akte`. RimWorld folgt als Stufe 2. ADR 0026.
 
 ## Ziel
 Zuschauer sind im Spiel mit Figuren verknüpft: UBOAT-Crew über `!soldbuch` (Spec `uboat-personalakte.md`), RimWorld-Pawns über die Mod (`BombingFritz/TwitchCompanion_RimWorld`). Den jeweils letzten Stand dieser Figuren sollen Zuschauer jederzeit auf einer Website ansehen können, auch wenn Stream und Server aus sind. Die Seite nennt, von wann der Stand ist.
@@ -124,6 +124,7 @@ Alle Zeitpunkte als ISO. `schemaVersion` steigt nur bei nicht rückwärtskompati
 }
 ```
 - `savedAt`: Änderungszeit des gelesenen Spielstands. `publishedAt`: Zeitpunkt der Veröffentlichung.
+- Weitere Felder seit Stufe 1b: siehe „Akte, Boot und Karriere“.
 - `crew`: alle mit Status an Bord oder in Reserve, Felder wie bei `/api/uboat/crew` (Spec `uboat-personalakte.md`).
 - `fallen`: alle mit Todesdatum, für die Ehrentafel.
 - Sortierung: Kommandant, Offiziere, Matrosen; innerhalb nach Name.
@@ -132,7 +133,52 @@ Alle Zeitpunkte als ISO. `schemaVersion` steigt nur bei nicht rückwärtskompati
   - Dateiname und Ordner des Spielstands
   - interne Schlüssel (`type`, `characterClass`, `status`)
   - Figuren von `!privat`-Zuschauern
-- Größe bei 29 Crewmitgliedern etwa 20 KB.
+- Größe bei 29 Crewmitgliedern etwa 20 KB, mit Stufe 1b etwa 40 KB.
+
+### Akte, Boot und Karriere (Stufe 1b, Issue #87)
+Entscheidung des Nutzers (22.11.2026): alle fünf Bereiche auf die Website. Feldnamen und Einheiten hat Claude festgelegt. Alle Felder sind neu und rückwärtskompatibel; `schemaVersion` bleibt 1. Ein Feld, das der Spielstand nicht hergibt, ist `null` bzw. eine leere Liste.
+
+**Je Eintrag in `crew` und `fallen` zusätzlich:**
+```json
+{ "background": "Eduard Helmig stammt aus einer Seefahrerfamilie …",
+  "decorationNames": ["Eisernes Kreuz 2. Klasse", "U-Boot-Kriegsabzeichen"],
+  "accomplishments": [ { "kind": "Sunk Ship Freighter", "text": "Versenkung von Frachter \"Samythian\"." } ] }
+```
+- `background`: Lebenslauf als deutscher Spieltext. Im Spielstand steht der Name bei der Anwerbung; eingesetzt wird der heutige Name. Nicht jede Figur hat einen (beobachtet: 24 von 29). Absätze als `\n`; die Kodierung `_x000D_` der Spieltexte entfernt der Server.
+- `decorationNames`: Orden mit deutschem Namen, in der Reihenfolge des Spielstands. `decorations` bleibt die Anzahl.
+- `accomplishments`: Leistungen in der Reihenfolge des Spielstands, ohne Datum.
+  - `text`: deutscher Spieltext.
+  - `kind`: Art zum Gruppieren, englischer Schlüssel des Spiels, z. B. `Sunk Ship Freighter`, `Sunk Ship Participation`, `Torpedo Course`, `Assignment Completed`, `Medical`. Weitere Arten sind möglich.
+
+**Neu auf oberster Ebene:**
+```json
+{
+  "boat": { "name": "U-68", "typeLabel": "Typ IXC", "commissioned": "1939-08-01", "tonnageSunk": 209034,
+            "merchantShipsSunk": 29, "warshipsSunk": 2, "aircraftShotDown": 0 },
+  "career": { "startDate": "1941-08-01", "currentPatrol": 3, "torpedoesFired": 51, "torpedoHits": 35, "farthestTorpedoHitM": 1555,
+              "deckGunShots": 60, "deckGunHits": 42, "flakShots": 270, "flakHits": 134, "distanceTravelled": 17314,
+              "fuelConsumedLitres": 89052, "maximumDepthM": 204, "hoursUnderWater": 61.3, "hoursAtSea": 1057.4, "casualties": 0 },
+  "plaques": [ { "boat": "U-38", "port": "Hafen von Wilhelmshaven" } ],
+  "sinkings": [ { "name": "Gilbert Stuart", "grt": 7775, "kindLabel": "Frachter", "cargoLabel": "Werkzeuge", "convoy": "Geleitzug 148",
+                  "destination": "Liverpool", "patrol": 1, "date": "1941-08-07", "damagedOnly": false } ]
+}
+```
+- `boat`: das Boot der Karriere, Werte aus dem Spielstand. `tonnageSunk` in BRT.
+- `career`: Zahlen der Karriere.
+  - `startDate`: Beginn der Karriere im Spiel. `currentPatrol`: Nummer des laufenden bzw. letzten Auftrags.
+  - Längen in Metern (`…M`), Treibstoff in Litern, Zeiten in Stunden, eine Nachkommastelle.
+  - `hoursAtSea`: Zeit auf See bis zum letzten Einlaufen, ohne die laufende Fahrt.
+  - `distanceTravelled`: Einheit noch offen, vermutlich Kilometer oder Seemeilen [UNGEKLÄRT: mit der Anzeige im Spiel vergleichen]. Bis zur Klärung zeigt die Website die Zahl ohne Einheit oder gar nicht.
+  - `casualties`: Zahl der Verluste der Karriere.
+- `plaques`: Gedenktafeln mit Boot und Hafen [UNGEKLÄRT: Bedeutung im Spiel; beobachtet U-38 in Wilhelmshaven und U-68 in Brest].
+- `sinkings`: versenkte (oder nur beschädigte) Schiffe in der Reihenfolge des Spielstands.
+  - `kindLabel`: Schiffsart, abgeleitet aus den Leistungen der Crew; sonst `null`.
+  - `cargoLabel`: Ladung. `convoy`: „Geleitzug <Nummer>“ oder `null` bei Einzelfahrern. `destination`: Zielhafen.
+  - `patrol`: Nummer des Auftrags. `date`: Datum aus dem Ereignis zu Geleitzug oder Einzelfahrer, sonst `null`.
+  - `name` und `grt` können `null` sein (beobachtet: ein Schiff ohne Namen).
+- **`!privat`:** Die Akte einer Figur fehlt mit der Figur. Boot, Karriere, Gedenktafeln und Versenkungen gehören zu keinem Zuschauer und bleiben.
+- **Auch in `/api/uboat/crew`:** Die Crew-Einträge haben dort dieselben neuen Felder (`background`, `decorationNames`, `accomplishments`).
+- **Später:** Feindfahrten aus `patrol`, `date` und den Ereignissen zusammensetzen (Nutzer, 22.11.2026).
 
 ## Website (Verbraucher, Repository `StreamKartei`, eigene Session)
 Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
@@ -142,6 +188,7 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
   - Ehrentafel
   - Kopf mit „Spielstand vom …“ und „veröffentlicht …“
   - Ist der Stand älter als 7 Tage, ein Hinweis, dass länger nicht gespielt wurde
+  - Stufe 1b: je Figur Lebenslauf, Orden und Leistungen; dazu Boot, Karriere und die Liste der Versenkungen
 - Ohne Daten oder bei Ladefehler: freundlicher Hinweis statt leerer Seite.
 - Keine Twitch-Anbindung, keine Cookies, kein Tracking.
 
@@ -152,7 +199,7 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 - Inhalt und Felder entscheiden Mod und Nutzer; dafür legt die Mod eine Serveranforderung an.
 
 ## Später möglich, nicht Teil dieses Entwurfs
-- Daten zum U-Boot selbst (Typ, Name, Tonnage, Feindfahrten). Der Server liest sie heute nicht; sie müssten erst im Spielstand gefunden werden [UNGEKLÄRT].
+- Daten zum U-Boot selbst: seit Stufe 1b in `boat`, `career` und `sinkings`. Feindfahrten als eigene Liste folgen später.
 - `!soldbuch` antwortet mit einem Link auf die Website.
 - **Ehrentafel über alle Spielstände** (Wunsch Nutzer, 21.11.2026, späteres Ziel):
   - Zusätzlich zu den Gefallenen des jetzigen Spielstands sammelt der Server alle Gefallenen fortlaufend, auch aus früheren Karrieren und Spielständen.
@@ -194,6 +241,11 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
   - `test/stream-kartei-test.js` (Modultest)
   - `test/kartei-test.js` (Server mit Attrappen, Szenarien `an` und `ohne`)
 - `lib/uboat-crew.js`: Option `onLoad`, `normalizeName` exportiert.
+- Stufe 1b (Issue #87):
+  - `lib/uboat-save.js`: `characterDetails`, `career`, `list`, `object`, `findObject`, `locString`, `dateTime`, strenge Feldprüfung `fitsCode`; `parseLocales` mit `texts`, neu `localize`
+  - `lib/uboat-crew.js`: `toMember` mit Akte, `toCareer`, `state.career`
+  - `lib/stream-kartei.js`: `buildUboatCrew` mit Akte, `boat`, `career`, `plaques`, `sinkings`
+  - `test/uboat-fixture.js` (Akte und Karriere wie im Spielstand), neu `test/uboat-akte-test.js`, `test/stream-kartei-test.js` F6
 - `server.js`:
   - Konstanten `STREAM_KARTEI_*`, `ADMIN_KARTEI_PUBLISH_PATH`, Modul `kartei` in `MODULE_NAMES`
   - `buildKarteiData`, `karteiPrivateNames`, `karteiHiddenNames`, `requestKartei`, `isPrivateLogin`, `karteiOverview`, `printKarteiStatus`
