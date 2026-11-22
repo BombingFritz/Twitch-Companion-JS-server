@@ -189,7 +189,10 @@ Entscheidungen des Nutzers (22.11.2026):
 - Die Nummer der Feindfahrt ist `assignmentIndex` des Spielstands (bestätigt: der Stand vom 18.11.2026 ist die 3. Feindfahrt).
 
 Beobachtet im Spielstand (Patch 21):
-- Das Spiel löscht `backgroundStory` einer Figur, sobald sie Aufträge abgeschlossen hat (Alpaka, Lumpenhund: vorher vorhanden, danach leer).
+- Offiziere verlieren ihren Lebenslauf (`backgroundStory`); wer schon als Offizier hinzukam, etwa bei einem Neubeginn, hatte nie einen (Nutzer, 22.11.2026).
+  - In den 19 Spielständen der U-68-Kampagne hatten fünf Figuren nie einen Lebenslauf, darunter der Kommandant und Offiziere, die seit Fahrt 1 an Bord sind. Die Matrosen haben ihren alle noch. Ein später angeworbener Offizier (Eduard Helmig) hat seinen im neuesten Stand noch.
+  - Die erste Beobachtung „gelöscht nach den ersten Aufträgen“ (Alpaka, Lumpenhund) verglich nach Namen und verwechselte umbenannte Personen. Sie ist damit überholt.
+- Das Spiel verwendet Lebenslauf-Vorlagen mehrfach; zwei Figuren können denselben Text haben (Nutzer bestätigt).
 - „Auftrag abgeschlossen“ ist keine Feindfahrt: Der Kommandant bekam 2 je Fahrt, andere Offiziere 1. Matrosen bekommen keine Leistungen.
 - `currentPatrolStartDate` ändert sich mit jedem Auslaufen. `lastDockTicks` liegt auf See nicht nach diesem Start, im Hafen nach der Rückkehr dahinter.
 
@@ -224,7 +227,15 @@ Von Claude festgelegt:
 - **Nachlesen:** `uboat nachlesen` liest alle Spielstände im Ordner, die zur Kampagne des gelesenen Stands gehören, nacheinander. Zwischen den Dateien gibt der Server die Ereignisschleife frei; je Datei dauert es etwa 1 s.
   - Die Kampagne wird dabei vom ältesten Spielstand an neu aufgebaut, damit Umbenennungen in zeitlicher Reihenfolge erkannt werden. Was der bisherige Verlauf darüber hinaus weiß, etwa aus gelöschten Spielständen, bleibt erhalten und wird nach denselben Regeln zugeordnet.
   - Die Vorschau zeigt jede Datei mit Fahrtnummer und „auf See“ bzw. „im Hafen“, dann je Person die Fahrten, frühere Namen und ob ein Lebenslauf dazukommt.
-  - Vorschau am echten Ordner (22.11.2026, nur gelesen): 19 Spielstände; 17 Personen umbenannt erkannt, z. B. Erich Vossmann → Alpaka, Alpaka → F4bi, Helmut Behrens → Lumpenhund → Lumpenhund82, Binggeli → Binggeli4, Günter Thimm → CombatWombat.
+  - Vorschau am echten Ordner (22.11.2026, nur gelesen): 19 Spielstände; 17 Personen umbenannt erkannt, z. B. Erich Vossmann → Alpaka, Alpaka → F4bi, Helmut Behrens → Lumpenhund → Lumpenhund82, Binggeli → Binggeli4, Günter Thimm → CombatWombat. Vom Nutzer geprüft und übernommen: 26 Figuren ergänzt.
+  - Grenze: Gelesen wird jede Datei der Kampagne, auch Sicherungen. Ein Mod-Backup (`U-boat Customizer - Backup.save`, nicht weitergespielt) brachte eine zweite Figur „Eduard Helmig“ mit anderem Geburtszeitpunkt in den Verlauf. Sie zählt keine Fahrt, weil sie nur im Hafen vorkommt, und erscheint nicht auf der Website, weil die nur die aktuelle Crew zeigt.
+- **Kontrolle einer Person** (Wunsch Nutzer 22.11.2026: Die Vorschau zeigt den Lebenslauf nicht): `uboat verlauf <Name>` zeigt in der Konsole je passender Person
+  - heutigen Namen, frühere Namen, Geburtsdatum, Typ und Status bzw. „nicht im aktuellen Spielstand“
+  - Feindfahrten an Bord mit Nummern und Anzahl
+  - den Lebenslauf, wie ihn Soldbuch und Website zeigen, mit Quelle („steht im Spielstand“ oder „gesichert, im Spielstand nicht mehr vorhanden“) oder „keiner“
+  - Suche ohne Rücksicht auf Groß- und Kleinschreibung über heutige und frühere Namen, erst genau, sonst als Teil des Namens. Mehrere Treffer erscheinen alle, z. B. `uboat verlauf Alpaka` zeigt Alpaka und F4bi (früher Alpaka).
+  - Solange eine Vorschau offen ist, liest der Befehl aus ihr und sagt das; sonst aus dem gespeicherten Verlauf. Er speichert nichts.
+  - Nur in der Konsole (und damit im Live-Log der Webkonsole); frühere Namen gehen weiterhin nicht auf die Website.
 - **Übergang:** Die erste Fassung (PR #90) führte die Datei nach Namen (`figures`). Solche Einträge werden übernommen; den Geburtszeitpunkt ergänzt der nächste Spielstand.
   - Erst `uboat nachlesen übernehmen` schreibt; `verwerfen` verwirft. Was seit der Vorschau aus neuen Spielständen dazukam, bleibt erhalten.
 - **Ausgabe:** `patrols` je Eintrag in `crew` und `fallen` (Anzahl; `null` ohne Verlauf der Kampagne), auch in `/api/uboat/crew`. `background` nutzt den gesicherten Lebenslauf.
@@ -301,6 +312,7 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
   - `lib/uboat-crew.js`: Option `history`, `patrols`, gesicherter Lebenslauf, `rebuild`, `scanCampaignSaves`
   - `server.js`: `UBOAT_HISTORY_FILE`, `loadUboatHistory`/`saveUboatHistory`, `uboatHistoryScan`, `uboatHistoryApply`, Konsole `uboat nachlesen …`
   - Tests: neu `test/uboat-history-test.js`, `uboat-test` K4/K5, Fixture mit Fahrtstart und letztem Anlegen
+  - Kontrolle einer Person: `lib/uboat-history.js` `findPersons`, `birthDate`; `lib/uboat-crew.js` `personDetails`; `server.js` `uboatHistoryShow`, Konsole `uboat verlauf <Name>`; Tests `uboat-history-test` S1–S6, `uboat-test` Szenario `verlauf` (H1–H12) und K6
 - `server.js`:
   - Konstanten `STREAM_KARTEI_*`, `ADMIN_KARTEI_PUBLISH_PATH`, Modul `kartei` in `MODULE_NAMES`
   - `buildKarteiData`, `karteiPrivateNames`, `karteiHiddenNames`, `requestKartei`, `isPrivateLogin`, `karteiOverview`, `printKarteiStatus`

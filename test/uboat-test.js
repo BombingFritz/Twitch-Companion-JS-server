@@ -1,6 +1,6 @@
 // UBOAT-Soldbuch (!soldbuch, ADR 0016): Parser, Zuordnung, Kategorie, Cooldown, Verwundung, neuer und defekter Spielstand,
 // Endpoint, /status, Konsole. Attrappen: ws, axios, readline. Eigenes Arbeitsverzeichnis, erzeugte Spielstände (test/uboat-fixture.js).
-// Aufruf: node uboat-test.js <server.js> <szenario: an | aus>
+// Aufruf: node uboat-test.js <server.js> <szenario: an | aus | verlauf>
 const Module = require('module'), path = require('path'), fs = require('fs'), os = require('os'), http = require('http');
 const { EventEmitter } = require('events');
 const fx = require('./uboat-fixture');
@@ -15,7 +15,15 @@ fs.mkdirSync(path.join(workDir, 'UBOAT', 'Data Sheets'));
 fs.writeFileSync(path.join(workDir, 'UBOAT', 'Data Sheets', 'UBOAT - Locales.dat'), fx.buildLocales(fx.DEFAULT_LOCALES));
 fs.writeFileSync(path.join(savesDir, 'Alt.save'), fx.buildSave({ crew: [{ name: 'Kobold', type: 0, level: 9 }] }));
 fs.utimesSync(path.join(savesDir, 'Alt.save'), new Date(Date.now() - 3600e3), new Date(Date.now() - 3600e3));
-fs.writeFileSync(path.join(savesDir, 'Versenkung.save'), fx.buildSave({ crew: fx.DEFAULT_CREW }));
+if (scenario === 'verlauf') {
+  // Kampagne U-68: älterer Stand auf Feindfahrt 1 (Kobold noch mit Lebenslauf), neuester auf Feindfahrt 2
+  const koboldBg = fx.AKTE_CREW.map(c => (c.name === 'Kobold' ? { ...c, background: { key: 'UI/RecruitmentUI/Backgrounds/Story 7', args: ['Karl Klein'] } } : c));
+  fs.writeFileSync(path.join(savesDir, 'Frueher.save'), fx.buildSave({ crew: koboldBg, career: { ...fx.DEFAULT_CAREER, assignmentIndex: 1, patrolStart: '1941-08-05' } }));
+  fs.utimesSync(path.join(savesDir, 'Frueher.save'), new Date(Date.now() - 1800e3), new Date(Date.now() - 1800e3));
+  fs.writeFileSync(path.join(savesDir, 'Versenkung.save'), fx.buildSave({ crew: fx.AKTE_CREW, career: fx.DEFAULT_CAREER }));
+} else {
+  fs.writeFileSync(path.join(savesDir, 'Versenkung.save'), fx.buildSave({ crew: fx.DEFAULT_CREW }));
+}
 fs.writeFileSync(path.join(workDir, '.env'), `CLIENT_ID=<CLIENT_ID>\nCLIENT_SECRET=<CLIENT_SECRET>\nREDIRECT_URI=http://localhost:${PORT}/callback\nPORT=${PORT}\nSCOPES=chat:read\n`
   + (scenario === 'aus' ? '' : `UBOAT_SAVES_DIR=${savesDir}\n`));
 fs.writeFileSync(path.join(workDir, 'tokens.json'), JSON.stringify({ access_token: 'fake', refresh_token: 'fake', broadcaster_id: '1', broadcaster_name: 'test',
@@ -183,6 +191,41 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     rl.emit('line', 'uboat nachlesen übernehmen'); await sleep(50);
     check('K4 uboat nachlesen ohne Kampagne: Hinweis; übernehmen ohne Vorschau: Hinweis', has(/Kein Spielstand mit Kampagne gelesen/) && has(/Keine Vorschau – erst "uboat nachlesen"/));
     check('K5 Ohne Kampagne kein Verlauf geschrieben', !fs.existsSync(path.join(workDir, 'uboat_crew_history.json')));
+    rl.emit('line', 'uboat verlauf Kobold'); await sleep(50);
+    check('K6 uboat verlauf ohne Kampagne: Hinweis', logs.filter(l => /Kein Spielstand mit Kampagne gelesen/.test(l)).length === 2);
+  }
+
+  // Konsole "uboat verlauf <Name>": frühere Namen, Feindfahrten, Lebenslauf; aus der Vorschau, sonst dem Verlauf
+  if (scenario === 'verlauf') {
+    const after = mark => logs.slice(mark);
+    const run = async line => { const mark = logs.length; rl.emit('line', line); await waitFor(() => logs.length > mark, 5000, 20); await sleep(50); return after(mark); };
+    let out = await run('uboat verlauf alpaka');
+    check('H1 Treffer unabhängig von Groß-/Kleinschreibung, aus dem gespeicherten Verlauf',
+      out[0] === '[UBOAT] Verlauf „alpaka“ (gespeicherter Verlauf, Kampagne U-68|1941-08-01): 1 Person', out.join(' | '));
+    check('H2 Kopfzeile mit Geburtsdatum, Typ und Status', /^ {2}Alpaka – geboren \d\d\.\d\d\.1910; Offizier, an Bord$/.test(out[1] || ''), out[1]);
+    check('H3 Feindfahrten an Bord aus dem Verlauf', out[2] === '    Feindfahrten an Bord: 2 (1)', out[2]);
+    check('H4 Lebenslauf aus dem Spielstand, mit heutigem Namen', out[3] === '    Lebenslauf (steht im Spielstand): Alpaka stammt aus Kiel und liest gern.', out[3]);
+    out = await run('uboat verlauf Fritz Unsinkbar');
+    check('H5 Name mit Leerzeichen; ohne Lebenslauf: Hinweis auf Offiziere', out.some(l => l === '    Lebenslauf: keiner, weder im Spielstand noch im Verlauf (Offiziere haben im Spiel oft keinen)'), out.join(' | '));
+    out = await run('uboat verlauf Hanspeter');
+    check('H6 Mehrere passende Personen: alle', /: 2 Personen$/.test(out[0] || '') && out.some(l => l.startsWith('  Hans Peter – ')) && out.some(l => l.startsWith('  Hanspeter – ')), out.join(' | '));
+    out = await run('uboat verlauf Zwergwild');
+    check('H7 Teil des Namens; Reserve ohne Feindfahrt', out.some(l => l.startsWith('  Zwergwildsau – ') && /in Reserve$/.test(l)) && out.includes('    Feindfahrten an Bord: keine'), out.join(' | '));
+    out = await run('uboat verlauf Niemand');
+    check('H8 Kein Treffer: Hinweis', /^\[UBOAT\] Verlauf: niemand mit Namen „Niemand“ \(gespeicherter Verlauf/.test(out[0] || ''), out.join(' | '));
+    out = await run('uboat verlauf');
+    check('H9 Ohne Namen: Nutzung nennt uboat verlauf <Name>', out.some(l => /^Nutzung: .*uboat verlauf <Name>/.test(l)), out.join(' | '));
+    out = await run('uboat nachlesen');
+    await waitFor(() => has(/Prüfen und mit "uboat nachlesen übernehmen"/), 10000, 50);
+    out = await run('uboat verlauf Kobold');
+    check('H10 Offene Vorschau: Feindfahrten und gesicherter Lebenslauf aus der Vorschau',
+      /Vorschau, noch nicht übernommen/.test(out[0] || '') && out.includes('    Feindfahrten an Bord: 1, 2 (2)')
+      && out.includes('    Lebenslauf (gesichert, im Spielstand nicht mehr vorhanden): Kobold stammt aus Kiel und liest gern.'), out.join(' | '));
+    const saved = JSON.parse(fs.readFileSync('uboat_crew_history.json', 'utf8'));
+    check('H11 Anzeigen der Vorschau speichert nichts', JSON.stringify(saved.campaigns['U-68|1941-08-01'].persons.find(p => p.name === 'Kobold').patrols) === '[2]');
+    await run('uboat nachlesen verwerfen');
+    out = await run('uboat verlauf Kobold');
+    check('H12 Nach dem Verwerfen wieder aus dem gespeicherten Verlauf', /gespeicherter Verlauf/.test(out[0] || '') && out.includes('    Feindfahrten an Bord: 2 (1)'), out.join(' | '));
   }
 
   console.log = realLog;

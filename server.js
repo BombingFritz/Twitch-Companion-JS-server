@@ -3386,6 +3386,36 @@ function uboatHistoryApply() {
   if (uboatCrew) uboatCrew.rebuild();   // Crew mit Verlauf neu aufbauen; stößt die Stream-Kartei an
 }
 
+// Kontrolle einer Person: frühere Namen, Feindfahrten, Lebenslauf (Wunsch des Nutzers, 22.11.2026).
+// Liest aus der Vorschau, solange eine offen ist, sonst aus dem gespeicherten Verlauf. Nur lokal in der Konsole,
+// frühere Namen gehen nicht auf die Website.
+function uboatHistoryShow(query) {
+  if (!uboatCrew) { console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)'); return; }
+  const campaign = uboatCrew.getState().campaign;
+  if (!campaign) { console.log('[UBOAT] Kein Spielstand mit Kampagne gelesen – erst "uboat reload"'); return; }
+  const fromPreview = Boolean(uboatHistoryPreview && uboatHistoryPreview.campaign === campaign);
+  const h = fromPreview ? uboatHistoryPreview.history : uboatHistory;
+  const hits = uboatHistoryLib.findPersons(h, campaign, query, normalizeCrewName);
+  const where = fromPreview ? 'Vorschau, noch nicht übernommen' : 'gespeicherter Verlauf';
+  if (!hits.length) { console.log(`[UBOAT] Verlauf: niemand mit Namen „${query}“ (${where}, Kampagne ${campaign})`); return; }
+  console.log(`[UBOAT] Verlauf „${query}“ (${where}, Kampagne ${campaign}): ${hits.length} ${hits.length === 1 ? 'Person' : 'Personen'}`);
+  for (const p of hits) {
+    const d = uboatCrew.personDetails(p.name, p.birth, p.background);
+    const former = p.names.filter(n => n !== p.name);
+    const born = uboatHistoryLib.birthDate(p.birth);
+    const head = [
+      former.length ? `früher ${former.join(', ')}` : null,
+      born ? `geboren ${formatDateDe(born)}` : null,
+      d.member ? [d.member.typeLabel, d.member.statusLabel].filter(Boolean).join(', ') : 'nicht im aktuellen Spielstand',
+    ].filter(Boolean).join('; ');
+    console.log(`  ${p.name} – ${head}`);
+    console.log(`    Feindfahrten an Bord: ${p.patrols.length ? `${p.patrols.join(', ')} (${p.patrols.length})` : 'keine'}`);
+    const src = { save: 'steht im Spielstand', kept: 'gesichert, im Spielstand nicht mehr vorhanden' }[d.backgroundSource];
+    if (!d.background) console.log('    Lebenslauf: keiner, weder im Spielstand noch im Verlauf (Offiziere haben im Spiel oft keinen)');
+    else console.log(`    Lebenslauf (${src}): ${d.background.replace(/\s*\n\s*/g, ' / ')}`);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // STREAM-KARTEI (ADR 0026, docs/specs/stream-kartei.md) – letzter Stand der UBOAT-Crew öffentlich im Zweig
 // „data“ von STREAM_KARTEI_REPO. Format und Takt in lib/stream-kartei.js, GitHub in lib/github-publisher.js.
@@ -3689,6 +3719,7 @@ function printConsoleHelp() {
   console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
   console.log(' uboat nachlesen            - UBOAT: ältere Spielstände der Kampagne lesen (Feindfahrten, Lebensläufe), nur Vorschau');
   console.log(' uboat nachlesen übernehmen - UBOAT: Vorschau in den Verlauf speichern (… verwerfen: Vorschau verwerfen)');
+  console.log(' uboat verlauf <Name>       - UBOAT: frühere Namen, Feindfahrten und Lebenslauf einer Person (aus der Vorschau, sonst dem Verlauf)');
   console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
   console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' kartei show|publish        - Stream-Kartei: Stand der Website bzw. jetzt veröffentlichen (nur bei Änderung, Abstand 10 min)');
@@ -3972,7 +4003,11 @@ rl.on('line', async (input) => {
       if (what === 'übernehmen' || what === 'uebernehmen') { uboatHistoryApply(); return; }
       if (what === 'verwerfen') { console.log(uboatHistoryPreview ? '[UBOAT] Vorschau verworfen' : '[UBOAT] Keine Vorschau'); uboatHistoryPreview = null; return; }
     }
-    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login> | uboat nachlesen [übernehmen|verwerfen] | uboat activate | uboat deactivate');
+    if (sub === 'verlauf' && parts[2]) {
+      uboatHistoryShow(parts.slice(2).join(' '));
+      return;
+    }
+    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login> | uboat nachlesen [übernehmen|verwerfen] | uboat verlauf <Name> | uboat activate | uboat deactivate');
     return;
   }
 
