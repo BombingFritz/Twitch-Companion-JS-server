@@ -33,6 +33,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - `lib/uboat-save.js` liest dafür Listen, Verweise, Spieltexte mit Argumenten und Datumsstrukturen; deutsche Texte aus `UBOAT - Locales.dat`. Einlesen eines echten Spielstands etwa 0,8 s statt 0,6 s.
 - Stream-Kartei, Stufe 1c (Issue #87): Feindfahrten je Person und gesicherte Lebensläufe.
   - Neue Laufzeitdatei `uboat_crew_history.json`: je Kampagne die Fahrten, in denen eine Figur auf See an Bord war, und der Lebenslauf, bevor das Spiel ihn löscht. Neu `lib/uboat-history.js`.
+  - Umbenennungen werden erkannt; Fahrten und Lebenslauf gehen mit der Person. Feste Merkmale entscheiden: gleicher Geburtszeitpunkt ist Pflicht, dann zählen Charakterzug und Typ, die Fähigkeiten nur zum Feinentscheid. Einträge der ersten Fassung (nach Namen) werden übernommen.
   - `patrols` je Person in `uboat/crew.json` und `/api/uboat/crew`.
   - Konsole `uboat nachlesen`: ältere Spielstände der Kampagne als Vorschau; erst `uboat nachlesen übernehmen` speichert.
 - Eingehende Raids an lokale Verbraucher (Issue #80, Teil D): Ereignis `raid` mit ID, Zeitpunkt, raidendem Kanal und Zuschauerzahl an alle verbundenen Verbraucher, genau einmal je Raid. Begrüßung und Statistik unverändert.

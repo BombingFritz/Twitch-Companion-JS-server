@@ -76,6 +76,83 @@ const saves = {
   check('P3 Nichts Neues: leere Liste', H.preview(pv.history, [parseSave(saves.p1See)]).diff.length === 0);
 }
 
+// --- Umbenennungen (beobachtet in der U-68-Kampagne: Erich Vossmann -> Alpaka, früheres Alpaka -> F4bi, Binggeli Matrose -> Offizier -> Binggeli4) ---
+{
+  const key = 'U-68|1941-08-01';
+  const vossmann = { name: 'Erich Vossmann', type: 1, cls: 'Radioman', born: '1913-04-02', statuses: ['AnxiousPersonality', 'Officer', 'Radioman', 'Spanish Speaker'] };
+  const altAlpaka = { name: 'Alpaka', type: 0, born: '1887-06-01', status: 0, statuses: ['SeaWolf', 'Sailor', 'Merchant'], background: BG };
+  const binggeli = { name: 'Binggeli', type: 0, born: '1910-12-24', statuses: ['SeaWolf', 'Sailor', 'Merchant'] };
+  const fritz = { name: 'Fritz Unsinkbar', type: 2, cls: 'Leader', born: '1910-05-01', statuses: ['Skipper', 'Leader'] };
+  const s1 = fx.buildSave({ crew: [fritz, vossmann, altAlpaka, binggeli], career: career(1, '1941-08-05') });
+  // Fahrt 2: Binggeli ist Offizier geworden (neue Fähigkeiten)
+  const binggeliOff = { ...binggeli, type: 1, cls: 'Leader', statuses: ['SeaWolf', 'Merchant', 'Officer', 'Leader'] };
+  const s2 = fx.buildSave({ crew: [fritz, vossmann, altAlpaka, binggeliOff], career: career(2, '1941-08-21') });
+  // Fahrt 3: Umbenennungen mit weitergegebenem Namen; Vossmann hat eine Fähigkeit dazubekommen
+  const s3 = fx.buildSave({ crew: [fritz, { ...vossmann, name: 'Alpaka', statuses: [...vossmann.statuses, 'Propeller Recognition'] },
+    { ...altAlpaka, name: 'F4bi', background: undefined }, { ...binggeliOff, name: 'Binggeli4' }], career: career(3, '1941-10-21') });
+  const h = H.emptyHistory();
+  for (const s of [s1, s2, s3]) H.observe(h, parseSave(s));
+  const camp = h.campaigns[key];
+  const byName = n => camp.persons.find(p => p.name === n);
+  check('R1 Umbenennung erkannt, Fahrten bleiben: Alpaka (früher Erich Vossmann) 3 Fahrten', byName('Alpaka') && JSON.stringify(byName('Alpaka').names) === '["Erich Vossmann","Alpaka"]'
+    && JSON.stringify(byName('Alpaka').patrols) === '[1,2,3]', byName('Alpaka'));
+  check('R2 Weitergegebener Name: früheres Alpaka heißt F4bi, Lebenslauf geht mit', byName('F4bi') && JSON.stringify(byName('F4bi').names) === '["Alpaka","F4bi"]'
+    && byName('F4bi').background && byName('F4bi').background.key === BG.key && byName('F4bi').patrols.length === 0, byName('F4bi'));
+  check('R3 Matrose wird Offizier, dann umbenannt: eine Person', byName('Binggeli4') && JSON.stringify(byName('Binggeli4').names) === '["Binggeli","Binggeli4"]'
+    && JSON.stringify(byName('Binggeli4').patrols) === '[1,2,3]' && camp.persons.length === 4, camp.persons.map(p => p.names.join('>')));
+  check('R4 figureOf über heutigen Namen', H.figureOf(h, key, 'Alpaka').patrols === 3 && H.figureOf(h, key, 'F4bi').background !== null);
+  // Reihenfolge beim Nachlesen: Der neueste Stand ist schon im Verlauf (Serverstart), danach kommen die älteren
+  const late = H.emptyHistory();
+  H.observe(late, parseSave(s3));
+  const pv = H.preview(late, [s1, s2, s3].map(s => parseSave(s)));
+  const lc = pv.history.campaigns[key];
+  check('R5 Nachlesen baut die Kampagne in zeitlicher Reihenfolge neu auf: Ketten bleiben verbunden', lc.persons.length === 4
+    && JSON.stringify(lc.persons.find(p => p.name === 'Alpaka').names) === '["Erich Vossmann","Alpaka"]' && lc.persons.find(p => p.name === 'Binggeli4').patrols.length === 3,
+    lc.persons.map(p => `${p.names.join('>')}[${p.patrols}]`));
+  const alpDiff = pv.diff.find(d => d.name === 'Alpaka');
+  check('R6 Vorschau nennt frühere Namen und neue Fahrten', alpDiff && JSON.stringify(alpDiff.names) === '["Erich Vossmann","Alpaka"]' && JSON.stringify(alpDiff.newPatrols) === '[1,2]', alpDiff);
+  // Was nur der alte Verlauf kennt (Spielstand gelöscht), bleibt beim Nachlesen
+  const known = H.emptyHistory();
+  H.observe(known, parseSave(s1));
+  const pv2 = H.preview(known, [parseSave(s3)]);
+  const p2 = pv2.history.campaigns[key].persons;
+  const alp2 = p2.find(p => p.name === 'Alpaka');
+  check('R7 Nachlesen ohne die alten Dateien: Verlauf bleibt, umbenannte Person wird verbunden', alp2 && JSON.stringify(alp2.names) === '["Erich Vossmann","Alpaka"]'
+    && JSON.stringify(alp2.patrols) === '[1,3]' && p2.find(p => p.name === 'F4bi').background !== null && !p2.some(p => p.name === 'Erich Vossmann'),
+    p2.map(p => `${p.names.join('>')}[${p.patrols}]`));
+  // Beförderung und Umbenennung ohne Zwischenstand: Geburtszeitpunkt und Charakterzug (Seewolf) bleiben -> eine Person
+  check('R8 Beförderung und Umbenennung ohne Zwischenstand: über den Charakterzug verbunden', p2.length === 4
+    && JSON.stringify(p2.find(p => p.name === 'Binggeli4').names) === '["Binggeli","Binggeli4"]', p2.map(p => p.names.join('>')));
+}
+
+// --- Feste Merkmale entscheiden (Nutzer, 22.11.2026): Charakterzug vor Typ vor Fähigkeiten ---
+{
+  const key = 'U-68|1941-08-01';
+  // Zwei Matrosen mit gleichem Geburtszeitpunkt; beide werden umbenannt
+  const a = { name: 'Anton', type: 0, born: '1912-03-03', statuses: ['SeaWolf', 'Sailor', 'Tough'] };
+  const b = { name: 'Bruno', type: 0, born: '1912-03-03', statuses: ['AnxiousPersonality', 'Sailor', 'Tough', 'Runner', 'DiverSkill', 'Merchant'] };
+  const s1 = fx.buildSave({ crew: [a, b], career: career(1, '1941-08-05') });
+  // Bruno verlässt das Boot; Anton heißt jetzt Antje und hat Fähigkeiten dazubekommen, die eher zu Bruno passen
+  // (Ähnlichkeit aller Eigenschaften: zu Bruno 0,71, zu Anton 0,5). Der gleiche Charakterzug (Seewolf) entscheidet.
+  const s2 = fx.buildSave({ crew: [{ ...a, name: 'Antje', statuses: ['SeaWolf', 'Sailor', 'Tough', 'Runner', 'DiverSkill', 'Merchant'] }], career: career(2, '1941-08-21') });
+  const h = H.emptyHistory();
+  H.observe(h, parseSave(s1)); H.observe(h, parseSave(s2));
+  const ps = h.campaigns[key].persons;
+  check('M1 Charakterzug schlägt Fähigkeiten: Anton -> Antje, nicht Bruno', ps.length === 2
+    && JSON.stringify(ps.find(p => p.name === 'Antje').names) === '["Anton","Antje"]' && ps.some(p => JSON.stringify(p.names) === '["Bruno"]'),
+    ps.map(p => p.names.join('>')));
+  // Anderer Geburtszeitpunkt: nie dieselbe Person, auch bei gleichen Eigenschaften
+  const s3 = fx.buildSave({ crew: [{ ...a, name: 'Fremder', born: '1915-01-01' }], career: career(2, '1941-08-21') });
+  H.observe(h, parseSave(s3));
+  check('M2 Anderer Geburtszeitpunkt: neue Person', h.campaigns[key].persons.length === 3 && h.campaigns[key].persons.some(p => JSON.stringify(p.names) === '["Fremder"]'));
+  // Übergang: Datei der ersten Fassung (figures nach Namen) wird übernommen
+  const old = H.normalize({ version: 1, campaigns: { [key]: { patrols: { 1: '1941-08-05' }, figures: { Anton: { background: BG, patrols: [1] } } } } });
+  H.observe(old, parseSave(s1));
+  const anton = old.campaigns[key].persons.find(p => p.name === 'Anton');
+  check('M3 Erste Fassung (figures) übernommen, Geburtszeitpunkt ergänzt, Fahrten und Lebenslauf bleiben', anton && anton.birth && JSON.stringify(anton.patrols) === '[1]'
+    && anton.background && anton.background.key === BG.key && old.campaigns[key].persons.length === 2, old.campaigns[key].persons);
+}
+
 // --- Crew mit Verlauf: Ausgabe, Nachlesen über den Ordner ---
 (async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'uboat-verlauf-'));
