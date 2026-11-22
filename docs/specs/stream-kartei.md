@@ -144,7 +144,7 @@ Entscheidung des Nutzers (22.11.2026): alle fünf Bereiche auf die Website. Feld
   "decorationNames": ["Eisernes Kreuz 2. Klasse", "U-Boot-Kriegsabzeichen"],
   "accomplishments": [ { "kind": "Sunk Ship Freighter", "text": "Versenkung von Frachter \"Samythian\"." } ] }
 ```
-- `background`: Lebenslauf als deutscher Spieltext. Im Spielstand steht der Name bei der Anwerbung; eingesetzt wird der heutige Name. Nicht jede Figur hat einen (beobachtet: 24 von 29).
+- `background`: Lebenslauf als deutscher Spieltext. Im Spielstand steht der Name bei der Anwerbung; eingesetzt wird der heutige Name. Nicht jede Figur hat einen (beobachtet: 24 von 29). Absätze als `\n`; die Kodierung `_x000D_` der Spieltexte entfernt der Server.
 - `decorationNames`: Orden mit deutschem Namen, in der Reihenfolge des Spielstands. `decorations` bleibt die Anzahl.
 - `accomplishments`: Leistungen in der Reihenfolge des Spielstands, ohne Datum.
   - `text`: deutscher Spieltext.

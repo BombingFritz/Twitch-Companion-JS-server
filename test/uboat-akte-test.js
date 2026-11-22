@@ -60,7 +60,7 @@ function setup(dirName, saveOpts) {
   const st = crew.getState();
   const fritz = st.crew.find(m => m.name === 'Fritz Unsinkbar');
   const alpaka = st.crew.find(m => m.name === 'Alpaka');
-  check('D1 Lebenslauf deutsch, heutiger Name statt Name bei der Anwerbung', alpaka.background === 'Alpaka stammt aus Kiel und liest gern.', alpaka.background);
+  check('D1 Lebenslauf deutsch, heutiger Name statt Name bei der Anwerbung, ohne _x000D_', alpaka.background === 'Alpaka stammt aus Kiel und liest gern.', alpaka.background);
   check('D2 Orden deutsch', JSON.stringify(fritz.decorationNames) === '["Eisernes Kreuz 2. Klasse","U-Boot-Kriegsabzeichen"]', fritz.decorationNames);
   check('D3 Leistungen deutsch mit Art', JSON.stringify(fritz.accomplishments) === JSON.stringify([
     { kind: 'Sunk Ship Freighter', text: 'Versenkung von Frachter "Samythian".' },

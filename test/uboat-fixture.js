@@ -183,7 +183,7 @@ const DEFAULT_LOCALES = {
   skills: { Tough: 'Hart im Nehmen', Leader: 'Befehlshaber', Radioman: 'Funker', 'Spanish Speaker': 'Spanischsprachig', 'Sensitive Hearing': 'Gutes Gehör', Authority: 'Autorität', Skipper: 'Kommandant', Runner: 'Läufer' },
   traits: { SeaWolf: 'Seewolf', AnxiousPersonality: 'Ängstlich', Weak: 'Gesundheitsprobleme' },
   texts: {
-    'UI/RecruitmentUI/Backgrounds/Story 7': '{0} stammt aus Kiel und liest gern.',
+    'UI/RecruitmentUI/Backgrounds/Story 7': '{0} stammt aus Kiel und liest gern._x000D__x000D__x000D_',   // wie im Spiel: CR als _x000D_
     'UI/Accomplishments/Sunk Ship Freighter': 'Versenkung von Frachter "{0}".',
     'UI/Accomplishments/Torpedo Course': 'Torpedo Ziellösung "{0}" {1}.',
     'UI/Accomplishments/Assignment Completed': 'Auftrag abgeschlossen.',
