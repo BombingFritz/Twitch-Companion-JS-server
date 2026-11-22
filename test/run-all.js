@@ -73,6 +73,7 @@ const runs = [
   ['chat-bridge-test.js', []],
   ['consumer-polls-test.js', []],
   ['stream-kartei-test.js', []],
+  ['uboat-akte-test.js', []],
   ['kartei-test.js', ['an']],
   ['kartei-test.js', ['ohne']],
 ];

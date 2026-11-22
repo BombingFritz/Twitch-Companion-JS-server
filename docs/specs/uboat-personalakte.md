@@ -54,7 +54,8 @@ Zuschauer sind im Spiel UBOAT Crewmitglieder. Mit `!soldbuch` bekommt ein Zuscha
 - `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben. `loadUboatCrewMap()`/`saveUboatCrewMap()`. Fehlt die Datei: leer. Laufzeitdatei, nicht im Repository.
 
 ### Endpoint `GET /api/uboat/crew`
-`{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew: [{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, born, decorations, died, traits, skills, status, statusLabel, wounded, woundLabel}]}` (`statusLabel`: „an Bord“, „in Reserve“, „gefallen“ oder `null`; `born`/`died`: `JJJJ-MM-TT` oder `null`; `woundLabel`: „verwundet“, „im Krankenhaus“ oder `null`). `active`: Kategorie ist UBOAT. Herkunftsprüfung wie alle Endpoints (ADR 0013); keine Twitch-Daten, kein Token.
+`{enabled, active, category, source, savedAt, loadedAt, gameVersion, crew: [{name, type, typeLabel, characterClass, classLabel, level, experiencePoints, experiencePointsFromLastPatrol, born, decorations, died, traits, skills, status, statusLabel, wounded, woundLabel, background, decorationNames, accomplishments}]}` (`statusLabel`: „an Bord“, „in Reserve“, „gefallen“ oder `null`; `born`/`died`: `JJJJ-MM-TT` oder `null`; `woundLabel`: „verwundet“, „im Krankenhaus“ oder `null`). `active`: Kategorie ist UBOAT. Herkunftsprüfung wie alle Endpoints (ADR 0013); keine Twitch-Daten, kein Token.
+- Seit Stream-Kartei Stufe 1b (Issue #87): `background` (Lebenslauf, deutsch, oder `null`), `decorationNames` (Orden, deutsch), `accomplishments` (`[{kind, text}]`). Bedeutung wie in Spec `stream-kartei.md`, Abschnitt „Akte, Boot und Karriere“. `!soldbuch` nutzt sie nicht. Boot und Karriere stehen nur in der Stream-Kartei.
 
 ### Status und Konsole
 - `/status`: `uboat_enabled`, `uboat_active`, `uboat_save`, `uboat_saved_at`.
