@@ -3336,7 +3336,7 @@ let uboatHistory = loadUboatHistory();
 let uboatHistoryPreview = null;   // Nachlesen: Vorschau bis "uboat nachlesen übernehmen" (nur im Arbeitsspeicher)
 const uboatHistoryAdapter = {
   observe(res) { if (uboatHistoryLib.observe(uboatHistory, res)) saveUboatHistory(uboatHistory); },
-  figure(key, name) { return uboatHistoryLib.figureOf(uboatHistory, key, name); },
+  figure(key, name, birthTicks) { return uboatHistoryLib.figureOf(uboatHistory, key, name, birthTicks); },
 };
 
 const uboatCrew = uboatSavesDir
@@ -3365,11 +3365,14 @@ async function uboatHistoryScan() {
     const k = s.res.career;
     console.log(`  ${formatDateDe(new Date(s.mtimeMs))}  ${s.name}  – Feindfahrt ${k.assignmentIndex}${k.atSea ? ', auf See' : ', im Hafen (zählt nicht)'}`);
   }
-  const camp = pv.history.campaigns[scan.campaign] || { patrols: {}, figures: {} };
+  const camp = pv.history.campaigns[scan.campaign] || { patrols: {}, persons: [] };
   console.log(`  Feindfahrten: ${Object.entries(camp.patrols).map(([n, d]) => `${n} (ab ${d || '?'})`).join(', ') || '–'}`);
   if (!pv.diff.length) { console.log('[UBOAT] Nichts Neues gegenüber dem Verlauf – nichts zu übernehmen'); uboatHistoryPreview = null; return; }
-  console.log('[UBOAT] Würde übernommen (Name: Feindfahrten an Bord; + neu; L = Lebenslauf gesichert):');
-  for (const d of pv.diff) console.log(`  ${d.name}: ${d.patrols.join(', ') || '–'}${d.newPatrols.length ? ` (+${d.newPatrols.join(', ')})` : ''}${d.newBackground ? ' L' : ''}`);
+  console.log('[UBOAT] Würde übernommen (Name [früher …]: Feindfahrten an Bord; + neu; L = Lebenslauf gesichert):');
+  for (const d of pv.diff) {
+    const former = d.names.filter(n => n !== d.name);
+    console.log(`  ${d.name}${former.length ? ` [früher ${former.join(', ')}]` : ''}: ${d.patrols.join(', ') || '–'}${d.newPatrols.length ? ` (+${d.newPatrols.join(', ')})` : ''}${d.newBackground ? ' L' : ''}`);
+  }
   console.log('[UBOAT] Prüfen und mit "uboat nachlesen übernehmen" speichern oder mit "uboat nachlesen verwerfen" verwerfen');
 }
 

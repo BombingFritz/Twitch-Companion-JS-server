@@ -195,7 +195,13 @@ Beobachtet im Spielstand (Patch 21):
 
 Von Claude festgelegt:
 - **Kampagne:** `<startScenarioId>|<startDate>`, z. B. `U-68|1941-08-01`. Getrennter Verlauf je Kampagne.
-- **Figur:** Name im Spiel. Eine umbenannte Figur beginnt neu (bekannte Grenze).
+- **Person statt Name** (Wunsch Nutzer 22.11.2026: „Umbenennungen sollten erkannt und mitverfolgt werden“; Figuren werden oft nach Zuschauern umbenannt, Namen auch weitergegeben):
+  - Gleiche Person: gleicher Name und gleicher genauer Geburtszeitpunkt (`birthDateTicks`).
+  - Umbenennung: Ein neuer Name gehört zu einer Person mit gleichem Geburtszeitpunkt und Typ, deren Eigenschaften (alle Zustände, auch verborgene) zu mindestens 50 % übereinstimmen (Jaccard). Die ähnlichsten Paare kommen zuerst.
+  - Der Typ wird nachgeführt, weil Matrosen Offiziere werden können.
+  - Beobachtet in der U-68-Kampagne: Mehrere Figuren teilen sich einen Geburtszeitpunkt, mit Typ und Eigenschaften sind sie in jedem Spielstand eindeutig. Gleiche Person 0,7 bis 1, andere höchstens 0,4.
+  - Grenze: Ändern sich Typ und Eigenschaften stark und fehlt jeder Spielstand dazwischen, entstehen zwei Personen.
+  - Frühere Namen stehen nur im Verlauf und in der Vorschau, nicht auf der Website (sie können Zuschauernamen sein).
 - **Feindfahrt gezählt,** wenn die Figur in einem Spielstand mit dieser Nummer auf See an Bord ist (Status „an Bord“, nicht gefallen). Spielstände im Hafen zählen nicht, weil dort die Besatzung für die nächste Fahrt wechseln kann. Die laufende Feindfahrt zählt mit.
   - Grenze: Gibt es zu einer Fahrt keinen Spielstand auf See mit der Figur an Bord, fehlt sie.
 - **Lebenslauf:** Der erste gesehene bleibt gesichert. Fehlt er im Spielstand, gilt der gesicherte, mit dem heutigen Namen.
@@ -203,11 +209,14 @@ Von Claude festgelegt:
   ```json
   { "version": 1, "campaigns": { "U-68|1941-08-01": {
       "patrols": { "1": "1941-08-05", "2": "1941-08-21", "3": "1941-10-21" },
-      "figures": { "Alpaka": { "background": { "key": "UI/RecruitmentUI/Backgrounds/Story 7", "args": ["…"] }, "patrols": [3] } } } } }
+      "persons": [ { "id": 2, "name": "Alpaka", "names": ["Erich Vossmann", "Alpaka"], "birth": "604187784010622523", "type": 1,
+                     "statuses": ["AnxiousPersonality", "Officer", "…"], "background": null, "patrols": [1, 2, 3] } ] } } }
   ```
   - Geschrieben nur bei Änderung; wenige KB.
 - **Nachlesen:** `uboat nachlesen` liest alle Spielstände im Ordner, die zur Kampagne des gelesenen Stands gehören, nacheinander. Zwischen den Dateien gibt der Server die Ereignisschleife frei; je Datei dauert es etwa 1 s.
-  - Die Vorschau zeigt jede Datei mit Fahrtnummer und „auf See“ bzw. „im Hafen“, dann je Figur die Fahrten und ob ein Lebenslauf dazukommt.
+  - Die Kampagne wird dabei vom ältesten Spielstand an neu aufgebaut, damit Umbenennungen in zeitlicher Reihenfolge erkannt werden. Was der bisherige Verlauf darüber hinaus weiß, etwa aus gelöschten Spielständen, bleibt erhalten und wird nach denselben Regeln zugeordnet.
+  - Die Vorschau zeigt jede Datei mit Fahrtnummer und „auf See“ bzw. „im Hafen“, dann je Person die Fahrten, frühere Namen und ob ein Lebenslauf dazukommt.
+  - Vorschau am echten Ordner (22.11.2026, nur gelesen): 19 Spielstände; 16 Personen umbenannt erkannt, z. B. Erich Vossmann → Alpaka, Alpaka → F4bi, Helmut Behrens → Lumpenhund → Lumpenhund82, Binggeli → Binggeli4.
   - Erst `uboat nachlesen übernehmen` schreibt; `verwerfen` verwirft. Was seit der Vorschau aus neuen Spielständen dazukam, bleibt erhalten.
 - **Ausgabe:** `patrols` je Eintrag in `crew` und `fallen` (Anzahl; `null` ohne Verlauf der Kampagne), auch in `/api/uboat/crew`. `background` nutzt den gesicherten Lebenslauf.
 
