@@ -74,6 +74,7 @@ Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`
 | `effect_mode.json` | `{mode}` mit `auto` oder `off`; fehlt die Datei oder ist ungültig (auch das frühere `manual`): `auto` |
 | `whitelist_checks.json` | Array, max. 500 Einträge: `{timestamp, userId, userName, result: live\|inaktiv\|unklar, shoutout, lastActiveAt, lastLiveAt, game, error?}` (ADR 0015) |
 | `uboat_crew_map.json` | `{ "<twitch_login>": "<Name im Spiel>" }`, Login in Kleinbuchstaben (ADR 0016); fehlt die Datei: leer |
+| `uboat_crew_history.json` | Verlauf je UBOAT-Kampagne (`"<Szenario>\|<Startdatum>"`): Startdatum je Feindfahrt, je Name im Spiel gesicherter Lebenslauf (Schlüssel und Argumente) und Nummern der Feindfahrten an Bord (Stream-Kartei 1c, `lib/uboat-history.js`); geschrieben nur bei Änderung; fehlt oder defekt: leer |
 | `modules.json` | `{bdu, uboat, topics, kartei}` je `true`/`false` (Modul-Schalter); fehlt die Datei, ein Eintrag oder ist sie ungültig: Modul an. `kartei` wirkt nur mit `STREAM_KARTEI_REPO` und `STREAM_KARTEI_TOKEN` |
 | `topics.json` | `{items: [{title}], display: {title, theme, background: {horizontal, vertikal}}, updated_at}` (Intro-Topics, ADR 0021); fehlt oder defekt: Standardwerte. Fortschritt und Sichtbarkeit nur im Arbeitsspeicher |
 | `bot.json` | `{bot_id, bot_login, bot_name, authorized_at}` (ADR 0017), keine Tokens; fehlt die Datei: kein Bot, alles als Broadcaster |
@@ -168,6 +169,7 @@ Zugriffsschutz (ADR 0013):
 | `uboat show` | UBOAT: Ordner, gelesener Spielstand mit Stand und Spielversion, Kategorie, Crew mit Zuordnungen, Zuordnungen ohne passendes Crewmitglied |
 | `uboat reload` | UBOAT: neuesten Spielstand sofort einlesen |
 | `uboat map <login> <Name im Spiel>` | UBOAT: Zuordnung in `uboat_crew_map.json` setzen (Name darf Leerzeichen enthalten) |
+| `uboat nachlesen` / `uboat nachlesen übernehmen` / `uboat nachlesen verwerfen` | UBOAT: ältere Spielstände der laufenden Kampagne nacheinander lesen und als Vorschau zeigen (Feindfahrten je Person, Lebensläufe); erst `übernehmen` schreibt `uboat_crew_history.json` (Stream-Kartei 1c) |
 | `uboat unmap <login>` | UBOAT: Zuordnung entfernen |
 | `kartei show` / `kartei publish` / `kartei activate` / `kartei deactivate` | Stream-Kartei (ADR 0026): Stand (Repository, Website, letzte Veröffentlichung, wartende Änderung, Fehler, Ablauf des Tokens), Veröffentlichung anstoßen (nur bei Änderung, Abstand 10 min), ein- bzw. ausschalten (gespeichert in `modules.json`) |
 | `uboat activate` / `uboat deactivate` | UBOAT-Soldbuch ein- bzw. ausschalten, gespeichert in `modules.json`. Deaktiviert: `!soldbuch` wird still ignoriert; der Spielstand wird weiter eingelesen, `/api/uboat/crew` bleibt aktuell. Ohne `UBOAT_SAVES_DIR` bleibt das Soldbuch trotz `activate` aus |

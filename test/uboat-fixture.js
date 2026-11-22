@@ -41,6 +41,7 @@ const CAREER_DATA_ORDER = [
   ['totalDeckGunShotsFired', td(13)], ['totalDeckGunHits', td(13)], ['totalFlakShotsFired', td(13)], ['totalFlakHits', td(13)],
   ['casualties', td(4, [td(0)])], ['playerShipInfos', td(4, [td(0)])], ['commemorativePlaqueInfos', td(4, [td(0)])],
   ['tonnageSunk', td(13)], ['assignmentIndex', td(13)], ['pacifiedEntities', td(4, [td(0)])], ['notableEvents', td(4, [td(0)])],
+  ['currentPatrolStartDate', td(1)], ['lastDockTicks', td(15)],
 ];
 const SHIP = 'UBOAT.Game.Sandbox.PlayerShipInfo';
 const SHIP_DATA_ORDER = [['Name', td(7)], ['Type', td(7)], ['TonnageSunk', td(13)], ['MerchantShipsSunk', td(13)], ['WarshipsSunk', td(13)], ['AircraftShotDown', td(13)], ['CommisionedDate', td(1)]];
@@ -161,6 +162,8 @@ function buildSave({ version = '2026.1 Patch 21', crew = [], career = null } = {
       totalDeckGunShotsFired: i32(k.deckGunShots || 0), totalDeckGunHits: i32(k.deckGunHits || 0), totalFlakShotsFired: i32(k.flakShots || 0), totalFlakHits: i32(k.flakHits || 0),
       casualties: objList([]), playerShipInfos: objList(ship), commemorativePlaqueInfos: objList(plaques),
       tonnageSunk: i32(1234), assignmentIndex: i32(k.assignmentIndex || 1), pacifiedEntities: objList(sinkings), notableEvents: objList(events),
+      // Feindfahrt seit patrolStart; zuletzt angelegt am lastDock (auf See: nicht nach dem Start, im Hafen: danach)
+      currentPatrolStartDate: k.patrolStart ? dateStruct(k.patrolStart) : Buffer.alloc(0), lastDockTicks: i64(ticks(k.lastDock || k.patrolStart)),
     };
     // Präfix 33 Byte wie im Spielstand (Ereignis-Abonnenten)
     parts.push(objHead(CAREER, CAREER_DATA_ORDER, Buffer.concat([u8(1), ...Array.from({ length: 8 }, (_, i) => i32(5000 + i))])));
@@ -202,6 +205,7 @@ const DEFAULT_LOCALES = {
 const DEFAULT_CAREER = {
   startDate: '1941-08-01', scenario: 'U-68', torpedoesFired: 12, torpedoHits: 8, farthestHit: 1555.4, distance: 4321.6, fuel: 9876.4,
   maxDepth: 204.4, hoursUnderWater: 61.25, hoursAtSea: 100.04, deckGunShots: 6, deckGunHits: 4, flakShots: 20, flakHits: 9, assignmentIndex: 2,
+  patrolStart: '1941-08-21',
   ship: { name: 'U-68', type: 'Type IXC (Player)', tonnage: 15000, merchant: 2, warships: 0, aircraft: 0, commissioned: '1939-08-01' },
   plaques: [{ boat: 'U-68', port: 'Port of Brest' }],
   sinkings: [

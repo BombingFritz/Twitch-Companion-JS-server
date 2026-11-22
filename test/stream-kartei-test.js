@@ -21,8 +21,8 @@ const results = []; const check = (name, cond, info = '') => results.push({ name
     data.schemaVersion === 1 && data.game === 'uboat' && data.savedAt === '2026-11-21T10:00:00.000Z' && data.gameVersion === '2026.1 Patch 21' && !('publishedAt' in data));
   const json = JSON.stringify(data);
   check('F5 Kein Dateiname, keine internen Schlüssel', !json.includes('Geheim.save') && !/"type"|"characterClass"|"status"|"wounded"/.test(json), json.slice(0, 300));
-  check('F6 Felder je Person wie in der Spec (mit Akte, Stufe 1b)', JSON.stringify(Object.keys(data.crew[0])) === '["name","typeLabel","classLabel","level","experiencePoints","experiencePointsFromLastPatrol","born","decorations","statusLabel","woundLabel","traits","skills","background","decorationNames","accomplishments"]'
-    && JSON.stringify(Object.keys(data.fallen[0])) === '["name","typeLabel","classLabel","level","born","died","decorations","traits","skills","background","decorationNames","accomplishments"]'
+  check('F6 Felder je Person wie in der Spec (mit Akte, Stufe 1b)', JSON.stringify(Object.keys(data.crew[0])) === '["name","typeLabel","classLabel","level","experiencePoints","experiencePointsFromLastPatrol","born","decorations","statusLabel","woundLabel","traits","skills","patrols","background","decorationNames","accomplishments"]'
+    && JSON.stringify(Object.keys(data.fallen[0])) === '["name","typeLabel","classLabel","level","born","died","decorations","traits","skills","patrols","background","decorationNames","accomplishments"]'
     && JSON.stringify(Object.keys(data)) === '["schemaVersion","game","savedAt","gameVersion","crew","fallen","boat","career","plaques","sinkings"]', Object.keys(data));
 
   const files = kartei.uboatFiles(data, '2026-11-21T10:05:00.000Z');

@@ -181,6 +181,36 @@ Entscheidung des Nutzers (22.11.2026): alle fünf Bereiche auf die Website. Feld
 - **Auch in `/api/uboat/crew`:** Die Crew-Einträge haben dort dieselben neuen Felder (`background`, `decorationNames`, `accomplishments`).
 - **Später:** Feindfahrten aus `patrol`, `date` und den Ereignissen zusammensetzen (Nutzer, 22.11.2026).
 
+### Feindfahrten je Person und gesicherter Lebenslauf (Stufe 1c, Issue #87)
+Entscheidungen des Nutzers (22.11.2026):
+- Feindfahrten je Person sind „der wichtigste Datenpunkt zu den Matrosen“. Das Spiel zählt sie nicht je Person, also hält der Server sie nach.
+- Lebensläufe sichern, bevor das Spiel sie löscht.
+- Ältere Spielstände nachlesen ist erlaubt, aber erst nach Bestätigung durch den Nutzer übernehmen, damit sich keine Fehler einschleichen.
+- Die Nummer der Feindfahrt ist `assignmentIndex` des Spielstands (bestätigt: der Stand vom 18.11.2026 ist die 3. Feindfahrt).
+
+Beobachtet im Spielstand (Patch 21):
+- Das Spiel löscht `backgroundStory` einer Figur, sobald sie Aufträge abgeschlossen hat (Alpaka, Lumpenhund: vorher vorhanden, danach leer).
+- „Auftrag abgeschlossen“ ist keine Feindfahrt: Der Kommandant bekam 2 je Fahrt, andere Offiziere 1. Matrosen bekommen keine Leistungen.
+- `currentPatrolStartDate` ändert sich mit jedem Auslaufen. `lastDockTicks` liegt auf See nicht nach diesem Start, im Hafen nach der Rückkehr dahinter.
+
+Von Claude festgelegt:
+- **Kampagne:** `<startScenarioId>|<startDate>`, z. B. `U-68|1941-08-01`. Getrennter Verlauf je Kampagne.
+- **Figur:** Name im Spiel. Eine umbenannte Figur beginnt neu (bekannte Grenze).
+- **Feindfahrt gezählt,** wenn die Figur in einem Spielstand mit dieser Nummer auf See an Bord ist (Status „an Bord“, nicht gefallen). Spielstände im Hafen zählen nicht, weil dort die Besatzung für die nächste Fahrt wechseln kann. Die laufende Feindfahrt zählt mit.
+  - Grenze: Gibt es zu einer Fahrt keinen Spielstand auf See mit der Figur an Bord, fehlt sie.
+- **Lebenslauf:** Der erste gesehene bleibt gesichert. Fehlt er im Spielstand, gilt der gesicherte, mit dem heutigen Namen.
+- **Datei** `uboat_crew_history.json` (Laufzeitdatei, nicht im Repository, DATENKATALOG):
+  ```json
+  { "version": 1, "campaigns": { "U-68|1941-08-01": {
+      "patrols": { "1": "1941-08-05", "2": "1941-08-21", "3": "1941-10-21" },
+      "figures": { "Alpaka": { "background": { "key": "UI/RecruitmentUI/Backgrounds/Story 7", "args": ["…"] }, "patrols": [3] } } } } }
+  ```
+  - Geschrieben nur bei Änderung; wenige KB.
+- **Nachlesen:** `uboat nachlesen` liest alle Spielstände im Ordner, die zur Kampagne des gelesenen Stands gehören, nacheinander. Zwischen den Dateien gibt der Server die Ereignisschleife frei; je Datei dauert es etwa 1 s.
+  - Die Vorschau zeigt jede Datei mit Fahrtnummer und „auf See“ bzw. „im Hafen“, dann je Figur die Fahrten und ob ein Lebenslauf dazukommt.
+  - Erst `uboat nachlesen übernehmen` schreibt; `verwerfen` verwirft. Was seit der Vorschau aus neuen Spielständen dazukam, bleibt erhalten.
+- **Ausgabe:** `patrols` je Eintrag in `crew` und `fallen` (Anzahl; `null` ohne Verlauf der Kampagne), auch in `/api/uboat/crew`. `background` nutzt den gesicherten Lebenslauf.
+
 ## Website (Verbraucher, Repository `StreamKartei`, eigene Session)
 Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 - **Startseite:** Spiele aus `index.json` mit „Stand vom …“, Auswahl führt auf die Seite des Spiels.
@@ -247,6 +277,12 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
   - `lib/uboat-crew.js`: `toMember` mit Akte, `toCareer`, `state.career`
   - `lib/stream-kartei.js`: `buildUboatCrew` mit Akte, `boat`, `career`, `plaques`, `sinkings`
   - `test/uboat-fixture.js` (Akte und Karriere wie im Spielstand), neu `test/uboat-akte-test.js`, `test/stream-kartei-test.js` F6
+- Stufe 1c (Issue #87):
+  - neu `lib/uboat-history.js` (`campaignKey`, `observe`, `preview`, `figureOf`, `normalize`)
+  - `lib/uboat-save.js`: `patrolStart`, `atSea`, `dateTimeTicks`
+  - `lib/uboat-crew.js`: Option `history`, `patrols`, gesicherter Lebenslauf, `rebuild`, `scanCampaignSaves`
+  - `server.js`: `UBOAT_HISTORY_FILE`, `loadUboatHistory`/`saveUboatHistory`, `uboatHistoryScan`, `uboatHistoryApply`, Konsole `uboat nachlesen …`
+  - Tests: neu `test/uboat-history-test.js`, `uboat-test` K4/K5, Fixture mit Fahrtstart und letztem Anlegen
 - `server.js`:
   - Konstanten `STREAM_KARTEI_*`, `ADMIN_KARTEI_PUBLISH_PATH`, Modul `kartei` in `MODULE_NAMES`
   - `buildKarteiData`, `karteiPrivateNames`, `karteiHiddenNames`, `requestKartei`, `isPrivateLogin`, `karteiOverview`, `printKarteiStatus`
