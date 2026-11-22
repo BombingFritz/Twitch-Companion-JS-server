@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
 const { createUboatCrew, normalizeName: normalizeCrewName } = require('./lib/uboat-crew');
+const uboatHistoryLib = require('./lib/uboat-history');
 const { createGithubPublisher } = require('./lib/github-publisher');
 const kartei = require('./lib/stream-kartei');
 const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats');
@@ -48,6 +49,7 @@ const EVENTLOG_FILE = './events.json';
 const EFFECT_MODE_FILE = './effect_mode.json';
 const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
+const UBOAT_HISTORY_FILE = './uboat_crew_history.json';    // Verlauf je Kampagne: gesicherte Lebensläufe, Feindfahrten je Person (Stream-Kartei 1c)
 const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
 const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
@@ -3320,6 +3322,23 @@ async function handleRaidEvent(evt) {
 
 // %USERPROFILE% o. Ä. im Pfad aus der .env auflösen (dotenv tut das nicht)
 const uboatSavesDir = (UBOAT_SAVES_DIR || '').trim().replace(/%([^%]+)%/g, (m, v) => process.env[v] ?? m);
+
+// Verlauf je Kampagne (Stream-Kartei 1c): Lebensläufe, die das Spiel später löscht, und Feindfahrten je Person.
+// Geschrieben nur bei Änderung (neuer Lebenslauf, neue Feindfahrt), also selten.
+function loadUboatHistory() {
+  try { return uboatHistoryLib.normalize(JSON.parse(fs.readFileSync(UBOAT_HISTORY_FILE, 'utf8'))); }
+  catch { return uboatHistoryLib.emptyHistory(); }
+}
+function saveUboatHistory(h) {
+  fs.writeFileSync(UBOAT_HISTORY_FILE, JSON.stringify(h, null, 2));
+}
+let uboatHistory = loadUboatHistory();
+let uboatHistoryPreview = null;   // Nachlesen: Vorschau bis "uboat nachlesen übernehmen" (nur im Arbeitsspeicher)
+const uboatHistoryAdapter = {
+  observe(res) { if (uboatHistoryLib.observe(uboatHistory, res)) saveUboatHistory(uboatHistory); },
+  figure(key, name) { return uboatHistoryLib.figureOf(uboatHistory, key, name); },
+};
+
 const uboatCrew = uboatSavesDir
   ? createUboatCrew({
     savesDir: uboatSavesDir,
@@ -3329,8 +3348,40 @@ const uboatCrew = uboatSavesDir
     pollMs: UBOAT_POLL_MS,
     freshMs: UBOAT_FRESH_MS,
     onLoad: () => requestKartei(),   // Stream-Kartei: neuer Spielstand
+    history: uboatHistoryAdapter,
   })
   : null;
+
+// Nachlesen alter Spielstände derselben Kampagne: erst Vorschau, gespeichert erst nach Bestätigung (Nutzer, 22.11.2026)
+async function uboatHistoryScan() {
+  if (!uboatCrew) { console.log('UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env setzen)'); return; }
+  if (!uboatCrew.getState().campaign) { console.log('[UBOAT] Kein Spielstand mit Kampagne gelesen – erst "uboat reload"'); return; }
+  console.log(`[UBOAT] Nachlesen: Spielstände der Kampagne ${uboatCrew.getState().campaign} werden gelesen (je Datei etwa 1 s) …`);
+  const scan = await uboatCrew.scanCampaignSaves();
+  const pv = uboatHistoryLib.preview(uboatHistory, scan.saves.map(s => s.res));
+  uboatHistoryPreview = { ...pv, campaign: scan.campaign, results: scan.saves.map(s => s.res) };
+  console.log(`[UBOAT] Gelesen: ${scan.saves.length} Spielstände dieser Kampagne${scan.skipped.length ? `, ${scan.skipped.length} nicht lesbar` : ''}`);
+  for (const s of scan.saves) {
+    const k = s.res.career;
+    console.log(`  ${formatDateDe(new Date(s.mtimeMs))}  ${s.name}  – Feindfahrt ${k.assignmentIndex}${k.atSea ? ', auf See' : ', im Hafen (zählt nicht)'}`);
+  }
+  const camp = pv.history.campaigns[scan.campaign] || { patrols: {}, figures: {} };
+  console.log(`  Feindfahrten: ${Object.entries(camp.patrols).map(([n, d]) => `${n} (ab ${d || '?'})`).join(', ') || '–'}`);
+  if (!pv.diff.length) { console.log('[UBOAT] Nichts Neues gegenüber dem Verlauf – nichts zu übernehmen'); uboatHistoryPreview = null; return; }
+  console.log('[UBOAT] Würde übernommen (Name: Feindfahrten an Bord; + neu; L = Lebenslauf gesichert):');
+  for (const d of pv.diff) console.log(`  ${d.name}: ${d.patrols.join(', ') || '–'}${d.newPatrols.length ? ` (+${d.newPatrols.join(', ')})` : ''}${d.newBackground ? ' L' : ''}`);
+  console.log('[UBOAT] Prüfen und mit "uboat nachlesen übernehmen" speichern oder mit "uboat nachlesen verwerfen" verwerfen');
+}
+
+function uboatHistoryApply() {
+  if (!uboatHistoryPreview) { console.log('[UBOAT] Keine Vorschau – erst "uboat nachlesen"'); return; }
+  // Auf den aktuellen Verlauf anwenden: Was seit der Vorschau aus neuen Spielständen dazukam, bleibt erhalten
+  uboatHistory = uboatHistoryLib.preview(uboatHistory, uboatHistoryPreview.results).history;
+  saveUboatHistory(uboatHistory);
+  console.log(`[UBOAT] Nachlesen übernommen: ${uboatHistoryPreview.diff.length} Figuren ergänzt`);
+  uboatHistoryPreview = null;
+  if (uboatCrew) uboatCrew.rebuild();   // Crew mit Verlauf neu aufbauen; stößt die Stream-Kartei an
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // STREAM-KARTEI (ADR 0026, docs/specs/stream-kartei.md) – letzter Stand der UBOAT-Crew öffentlich im Zweig
@@ -3633,6 +3684,8 @@ function printConsoleHelp() {
   console.log(' uboat show                 - UBOAT: gelesener Spielstand, Kategorie, Crew und Zuordnungen anzeigen');
   console.log(' uboat reload               - UBOAT: neuesten Spielstand sofort einlesen');
   console.log(' uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen');
+  console.log(' uboat nachlesen            - UBOAT: ältere Spielstände der Kampagne lesen (Feindfahrten, Lebensläufe), nur Vorschau');
+  console.log(' uboat nachlesen übernehmen - UBOAT: Vorschau in den Verlauf speichern (… verwerfen: Vorschau verwerfen)');
   console.log(' uboat unmap <login>        - UBOAT: Zuordnung entfernen');
   console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' kartei show|publish        - Stream-Kartei: Stand der Website bzw. jetzt veröffentlichen (nur bei Änderung, Abstand 10 min)');
@@ -3910,7 +3963,13 @@ rl.on('line', async (input) => {
       switchModule('uboat', false);
       return;
     }
-    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login> | uboat activate | uboat deactivate');
+    if (sub === 'nachlesen') {
+      const what = (parts[2] || '').toLowerCase();
+      if (!what) { await uboatHistoryScan(); return; }
+      if (what === 'übernehmen' || what === 'uebernehmen') { uboatHistoryApply(); return; }
+      if (what === 'verwerfen') { console.log(uboatHistoryPreview ? '[UBOAT] Vorschau verworfen' : '[UBOAT] Keine Vorschau'); uboatHistoryPreview = null; return; }
+    }
+    console.log('Nutzung: uboat show | uboat reload | uboat map <login> <Name im Spiel> | uboat unmap <login> | uboat nachlesen [übernehmen|verwerfen] | uboat activate | uboat deactivate');
     return;
   }
 

@@ -178,6 +178,11 @@ async function ask(login, display, text) { const before = chatPosts.length; chat
     check('N4 Saves-Ordner unverändert (nur gelesen)', fs.readdirSync(savesDir).sort().join(',') === 'Alt.save,Autosave_1.save,Kaputt.save,Versenkung.save');
     rl.emit('line', 'uboat show'); await sleep(50);
     check('K3 Konsole uboat show zeigt Spielstand und Crew', has(/Spielstand: Autosave_1.save \(Stand/) && has(/Crew \(9\):/));
+    // Nachlesen (Stream-Kartei 1c): Spielstände ohne Karriere haben keine Kampagne; der volle Ablauf steht in uboat-history-test
+    rl.emit('line', 'uboat nachlesen'); await sleep(50);
+    rl.emit('line', 'uboat nachlesen übernehmen'); await sleep(50);
+    check('K4 uboat nachlesen ohne Kampagne: Hinweis; übernehmen ohne Vorschau: Hinweis', has(/Kein Spielstand mit Kampagne gelesen/) && has(/Keine Vorschau – erst "uboat nachlesen"/));
+    check('K5 Ohne Kampagne kein Verlauf geschrieben', !fs.existsSync(path.join(workDir, 'uboat_crew_history.json')));
   }
 
   console.log = realLog;
