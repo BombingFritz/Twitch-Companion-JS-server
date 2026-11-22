@@ -26,6 +26,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Optional und standardmäßig aus: neu `STREAM_KARTEI_REPO` und `STREAM_KARTEI_TOKEN` (fein abgestuftes GitHub-Token nur für dieses Repository).
   - Webkonsole: Karte und Licht „Stream-Kartei“, Modul-Schalter mit „Jetzt veröffentlichen“, Warnung vor Ablauf des Tokens. Konsole: `kartei show|publish|activate|deactivate`.
   - Neu `lib/stream-kartei.js`, `lib/github-publisher.js`.
+- UBOAT: Charakterzüge erscheinen nur noch, wenn das Spiel sie aufgedeckt hat (Feld `hidden` im Spielstand), in `!soldbuch`, `/api/uboat/crew` und der Stream-Kartei. Vorher verrieten sie Eigenschaften, die im Spiel erst später sichtbar werden.
 - Stream-Kartei, Stufe 1b (Issue #87): `uboat/crew.json` enthält mehr aus dem Spielstand, rückwärtskompatibel (`schemaVersion` bleibt 1):
   - je Figur Lebenslauf (`background`), Orden mit deutschem Namen (`decorationNames`) und Leistungen (`accomplishments`), auch in `/api/uboat/crew`
   - Boot (`boat`), Karrierestatistik (`career`), Gedenktafeln (`plaques`) und versenkte Schiffe mit Ladung, Geleitzug, Ziel und Datum (`sinkings`)

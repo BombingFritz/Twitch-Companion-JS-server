@@ -118,7 +118,9 @@ function buildSave({ version = '2026.1 Patch 21', crew = [], career = null } = {
     const statusList = [i32(c.statuses ? c.statuses.length : 0)];
     for (const s of c.statuses || []) {
       const typeName = 'UBOAT.Game.Scene.Characters.Skills.' + s.replace(/\s+/g, '');
-      statusList.push(objHead(typeName, STATUS_DATA_ORDER, ownerRef), field(str(s)), field(u8(1)), field(u8(0, ...i32(4242))), i32(0));
+      // hidden: im Spiel noch nicht aufgedeckt (c.hiddenStatuses)
+      const isHidden = (c.hiddenStatuses || []).includes(s) ? 1 : 0;
+      statusList.push(objHead(typeName, STATUS_DATA_ORDER, ownerRef), field(str(s)), field(u8(isHidden)), field(u8(0, ...i32(4242))), i32(0));
     }
     const decorations = c.decorationList ? objList(c.decorationList.map(decoElement)) : i32(c.decorations || 0);
     const accomplishments = c.accomplishments ? objList(c.accomplishments.map(a => Buffer.concat([
@@ -230,6 +232,8 @@ const AKTE_CREW = DEFAULT_CREW.map(c => {
     { key: 'UI/Accomplishments/Assignment Completed', args: [] },
   ] };
   if (c.name === 'Alpaka') return { ...c, decorations: 1, decorationList: ['U-boat War Badge'], background: { key: 'UI/RecruitmentUI/Backgrounds/Story 7', args: ['Hermann Herrmann'] } };
+  // Charakterzug noch nicht aufgedeckt (wie im Spiel bis zum auslösenden Ereignis)
+  if (c.name === 'Kobold') return { ...c, hiddenStatuses: ['AnxiousPersonality'] };
   return c;
 });
 
