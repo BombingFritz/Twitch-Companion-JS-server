@@ -108,5 +108,29 @@ function setup(dirName, saveOpts) {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
+// --- Aktive Mods im Kopf des Spielstands (Nutzer, 24.11.2026) ---
+{
+  const res = parseSave(fx.buildSave({ crew: fx.DEFAULT_CREW, mods: fx.DEFAULT_MODS }));
+  check('M1 Mods gelesen: IDs und Namen paarweise, Reihenfolge wie im Spielstand', JSON.stringify(res.mods) === JSON.stringify(fx.DEFAULT_MODS), res.mods);
+  check('M2 Crew unverändert neben der Mod-Liste', res.crew.length === 9, res.crew.length);
+  check('M3 Ohne Liste (ältere Spielstände): null', parseSave(fx.buildSave({ crew: fx.DEFAULT_CREW })).mods === null);
+  // kaputte oder fremde Listen: lieber keine Mods als falsche
+  const strList = list => { const items = list.map(s => { const b = Buffer.from(s); return Buffer.concat([Buffer.from([b.length]), b]); }); const body = Buffer.concat([Buffer.alloc(4), ...items]); body.writeInt32LE(list.length, 0); const head = Buffer.alloc(4); head.writeInt32LE(body.length); return Buffer.concat([head, body]); };
+  const raw = (ids, names) => Buffer.concat([Buffer.from([0, 0, 0, 0]), strList(ids), strList(names)]);
+  const read = modsRaw => parseSave(fx.buildSave({ crew: fx.DEFAULT_CREW, modsRaw })).mods;
+  check('M4a Gegenprobe: dieselbe Bauart mit gültiger Liste wird gelesen', JSON.stringify(read(raw(['uboat', 'steam:1'], ['uboat', 'Das Book']))) === '[{"id":"uboat","name":"uboat"},{"id":"steam:1","name":"Das Book"}]');
+  check('M4 Ungleich lange Listen: null', read(raw(['uboat', 'steam:1'], ['uboat'])) === null);
+  check('M5 Ohne das Spiel selbst ("uboat"): null', read(raw(['steam:1'], ['Das Book'])) === null);
+  check('M6 Name passt nicht zur ID ohne "steam:": null', read(raw(['uboat', 'Uboat-Smutje'], ['uboat', 'Anderer Name'])) === null);
+  const broken = raw(['uboat', 'steam:1'], ['uboat', 'Das Book']); broken.writeInt32LE(99, 4);   // Byteangabe der ID-Liste falsch
+  check('M7 Falsche Längenangabe: null', read(broken) === null);
+  const { crew, root } = setup('uboat-akte-mods', { crew: fx.DEFAULT_CREW, mods: fx.DEFAULT_MODS });
+  const data = buildUboatCrew(crew.getState());
+  check('M8 crew.json: Art und Workshop-Nummer je Mod', JSON.stringify(data.mods.map(m => [m.id, m.kind, m.workshopId])) === JSON.stringify([
+    ['custom-music', 'other', null], ['uboat', 'game', null], ['uboat.dlc.type-ix', 'dlc', null], ['Uboat-Smutje', 'other', null],
+    ['steam:3419126557', 'workshop', '3419126557'], ['steam:3768412570', 'workshop', '3768412570']]) && data.mods[5].name === '[2026.1] Type IX Flooding Fix', data.mods);
+  fs.rmSync(root, { recursive: true, force: true });
+}
+
 console.log(failed ? `\n${failed} FEHLER` : '\nAlle Prüfungen bestanden');
 process.exit(failed ? 1 : 0);

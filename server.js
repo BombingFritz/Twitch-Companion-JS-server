@@ -3661,6 +3661,8 @@ function printUboatStatus() {
   console.log(`UBOAT-Spielstände: ${uboatSavesDir}`);
   console.log(`Spielstand: ${s.source || 'keiner'}${s.savedAt ? ` (Stand ${uboatCrew.formatStand(s.savedAt)}, Spielversion ${s.gameVersion || 'unbekannt'})` : ''}${s.error ? ` – letzter Fehler: ${s.error}` : ''}`);
   console.log(`Kategorie: ${currentCategory || 'unbekannt'} – Befehl ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}`);
+  if (s.mods) console.log(`Mods im Spielstand (${s.mods.length}, davon ${s.mods.filter(m => m.kind === 'workshop').length} aus dem Steam Workshop): ${s.mods.map(m => m.name).join(', ')}`);
+  else if (s.source) console.log('Mods im Spielstand: keine Liste (ältere Spielstände)');
   console.log(`Crew (${s.crew.length}):`);
   s.crew.forEach(m => console.log(` - ${m.typeLabel.padEnd(10)} Stufe ${m.level}  ${m.name}${mappedBy[m.name.toLowerCase()] ? `  ← @${mappedBy[m.name.toLowerCase()]}` : ''}`));
   const crewNames = new Set(s.crew.map(m => m.name.toLowerCase()));

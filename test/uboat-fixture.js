@@ -69,7 +69,8 @@ function schema(dataOrder) {
 //   plaques: [{boat, port, emblem}], sinkings: [{name, group, grt, purpose, destination, patrol, damaged}], events: [{id, date, patrol}] }
 // Crew-Eintrag zusätzlich: background: {key, args}, decorationList: [Name], accomplishments: [{key, args, award, points}]
 //   (args: Zeichenkette oder {ref: "Schlüssel"} für einen Verweis auf einen LocalizedString außerhalb)
-function buildSave({ version = '2026.1 Patch 21', crew = [], career = null } = {}) {
+// mods (optional): [{id, name}] wie im Kopf echter Spielstände (ModIds, ModNames hinter dem Kopf-JSON); modsRaw: Kopfbytes selbst vorgeben
+function buildSave({ version = '2026.1 Patch 21', crew = [], career = null, mods = null, modsRaw = null } = {}) {
   let nextObj = 100000, nextType = 900000;
   const typeIds = new Map();
   const parts = [];
@@ -84,7 +85,13 @@ function buildSave({ version = '2026.1 Patch 21', crew = [], career = null } = {
 
   // Kopf mit JSON und Spielversion
   const commander = crew.find(c => c.type === 2);
-  parts.push(u8(0, 0x10, 0, 0), field(str(version)), Buffer.from(JSON.stringify({ level: commander ? commander.level : 0, role: 'Watch Officer' }, null, 4).replace(/^\{/, '{\n').replace(/\n\s*\n/, '\n')), u8(0xAA, 0xAA, 0xAA));
+  parts.push(u8(0, 0x10, 0, 0), field(str(version)), Buffer.from(JSON.stringify({ level: commander ? commander.level : 0, role: 'Watch Officer' }, null, 4).replace(/^\{/, '{\n').replace(/\n\s*\n/, '\n')));
+  // wie im Spielstand: AssignmentName, RegionName, SectorName, InitialVersion, dann ModIds und ModNames als Listen von Zeichenketten
+  const strList = list => field(Buffer.concat([i32(list.length), ...list.map(str)]));
+  if (modsRaw) parts.push(modsRaw);
+  else if (mods) parts.push(u8(0x24, 0, 0, 0, 0, 0xfc, 0xff, 0xff, 0xff, 0, 7, 0, 0, 0, 0), field(str('---')), field(str('North Sea')), field(str('AN9')),
+    field(str('2026.1 Patch 8')), strList(mods.map(m => m.id)), strList(mods.map(m => m.name)));
+  parts.push(u8(0xAA, 0xAA, 0xAA));
 
   // eine Rolle (wird von Offizieren referenziert)
   const roleId = nextObj;
@@ -241,4 +248,10 @@ const AKTE_CREW = DEFAULT_CREW.map(c => {
   return c;
 });
 
-module.exports = { buildSave, buildLocales, DEFAULT_LOCALES, DEFAULT_CREW, AKTE_CREW, DEFAULT_CAREER };
+// Mods wie im Spielstand vom 24.11.2026 (Auswahl): Spiel, DLC, eingebautes Paket, eigene Mod, Workshop
+const DEFAULT_MODS = [
+  { id: 'custom-music', name: 'custom-music' }, { id: 'uboat', name: 'uboat' }, { id: 'uboat.dlc.type-ix', name: 'uboat.dlc.type-ix' },
+  { id: 'Uboat-Smutje', name: 'Uboat-Smutje' }, { id: 'steam:3419126557', name: 'Das Book' }, { id: 'steam:3768412570', name: '[2026.1] Type IX Flooding Fix' },
+];
+
+module.exports = { buildSave, buildLocales, DEFAULT_LOCALES, DEFAULT_CREW, AKTE_CREW, DEFAULT_CAREER, DEFAULT_MODS };

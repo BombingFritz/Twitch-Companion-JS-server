@@ -166,7 +166,7 @@ Zugriffsschutz (ADR 0013):
 | `bdu show` | BdU-Chat: Widget verbunden, Funkstille, offene Anfragen, Tageszähler, nächste mögliche Annahme |
 | `bdu silence off` | BdU-Chat: Funkstille sofort aufheben |
 | `bdu activate` / `bdu deactivate` | BdU-Chat ein- bzw. ausschalten, gespeichert in `modules.json`. Deaktiviert: `!BdU` wird still ignoriert (Konsolenzeile), offene Anfragen werden verworfen, späte Antworten des Widgets nicht gepostet; Widget-Verbindung bleibt |
-| `uboat show` | UBOAT: Ordner, gelesener Spielstand mit Stand und Spielversion, Kategorie, Crew mit Zuordnungen, Zuordnungen ohne passendes Crewmitglied |
+| `uboat show` | UBOAT: Ordner, gelesener Spielstand mit Stand und Spielversion, Kategorie, aktive Mods des Spielstands, Crew mit Zuordnungen, Zuordnungen ohne passendes Crewmitglied |
 | `uboat reload` | UBOAT: neuesten Spielstand sofort einlesen |
 | `uboat map <login> <Name im Spiel>` | UBOAT: Zuordnung in `uboat_crew_map.json` setzen (Name darf Leerzeichen enthalten) |
 | `uboat nachlesen` / `uboat nachlesen übernehmen` / `uboat nachlesen verwerfen` | UBOAT: ältere Spielstände der laufenden Kampagne nacheinander lesen und als Vorschau zeigen (Feindfahrten je Person, Lebensläufe); erst `übernehmen` schreibt `uboat_crew_history.json` (Stream-Kartei 1c) |
