@@ -124,7 +124,7 @@ Alle Zeitpunkte als ISO. `schemaVersion` steigt nur bei nicht rückwärtskompati
 }
 ```
 - `savedAt`: Änderungszeit des gelesenen Spielstands. `publishedAt`: Zeitpunkt der Veröffentlichung.
-- Weitere Felder seit Stufe 1b: siehe „Akte, Boot und Karriere“.
+- Weitere Felder seit Stufe 1b: siehe „Akte, Boot und Karriere“, „Feindfahrten je Person“ (`patrols`) und „Aktive Mods“ (`mods`).
 - `crew`: alle mit Status an Bord oder in Reserve, Felder wie bei `/api/uboat/crew` (Spec `uboat-personalakte.md`).
 - `traits` und `skills` enthalten nur, was im Spiel aufgedeckt ist (Feld `hidden`, Nutzer 22.11.2026). `traits` ist daher oft leer.
 - `fallen`: alle mit Todesdatum, für die Ehrentafel.
@@ -240,6 +240,34 @@ Von Claude festgelegt:
   - Erst `uboat nachlesen übernehmen` schreibt; `verwerfen` verwirft. Was seit der Vorschau aus neuen Spielständen dazukam, bleibt erhalten.
 - **Ausgabe:** `patrols` je Eintrag in `crew` und `fallen` (Anzahl; `null` ohne Verlauf der Kampagne), auch in `/api/uboat/crew`. `background` nutzt den gesicherten Lebenslauf.
 
+### Aktive Mods (Issue #87)
+Wunsch des Nutzers (24.11.2026, über die Website-Session): „die Liste der aktiven Mods des Spielstands auslesen und unten anzeigen“. Das Spiel meldet beim Laden, wenn sie nicht zu den aktiven Mods passen.
+
+Beobachtet im Spielstand:
+- Die Liste steht im Kopf (`GameStateExtendedData`, Felder `ModIds` und `ModNames`), direkt hinter dem JSON zum Kommandanten. Es sind zwei Listen gleicher Länge in gleicher Reihenfolge: erst die IDs, dann die Namen.
+- Gelesen in allen Spielständen der Kampagnen seit Mitte 2025 (geprüft bis Patch 21). In jedem Spielstand enthalten: das Spiel selbst (`uboat`) und das eingebaute Paket `custom-music`.
+- IDs: `uboat`, DLC wie `uboat.dlc.type-ix`, Steam-Workshop-Mods als `steam:<Nummer>`, lokale Mods ohne Workshop (z. B. `Uboat-Smutje`). Außer bei `steam:` ist die ID zugleich der Name.
+- Eine Version je Mod steht nicht darin. Manche Mod-Namen tragen die Spielversion selbst, z. B. „[2026.1] Shadow Zone“.
+- Die Liste hält fest, welche Mods beim Speichern aktiv waren. Sie ändert sich, wenn Mods dazukommen (in der U-68-Kampagne von 8 auf 22).
+
+Von Claude festgelegt:
+- **Feld `mods`** oben in `uboat/crew.json`, rückwärtskompatibel (`schemaVersion` bleibt 1):
+  ```json
+  "mods": [
+    { "id": "uboat", "name": "uboat", "kind": "game", "workshopId": null },
+    { "id": "uboat.dlc.type-ix", "name": "uboat.dlc.type-ix", "kind": "dlc", "workshopId": null },
+    { "id": "custom-music", "name": "custom-music", "kind": "other", "workshopId": null },
+    { "id": "steam:3758192379", "name": "[2026.1] Shadow Zone", "kind": "workshop", "workshopId": "3758192379" }
+  ]
+  ```
+  - Reihenfolge wie im Spielstand.
+  - `kind`: `game` (das Spiel selbst), `dlc` (ID beginnt mit `uboat.dlc.`), `workshop` (ID `steam:<Nummer>`), `other` (alles andere, etwa eingebaute Pakete und lokale Mods).
+  - `workshopId`: die Nummer im Steam Workshop als Zeichenkette, sonst `null`. Die Website kann daraus einen Link bilden (`https://steamcommunity.com/sharedfiles/filedetails/?id=<workshopId>`). Was sie zeigt oder ausblendet, entscheidet sie selbst.
+  - `null`, wenn der Spielstand keine Liste hat oder sie nicht sicher lesbar ist. Bei zweifelhaften Daten lieber keine Liste als eine falsche: Länge, Anzahl, IDs und Namen müssen zusammenpassen, und `uboat` muss enthalten sein.
+- Mod-Namen sind öffentliche Namen aus dem Steam Workshop oder lokale Ordnernamen. Sie gehören zu keinem Zuschauer, `!privat` betrifft sie nicht.
+- Konsole: `uboat show` nennt die Mods des gelesenen Spielstands.
+- Nicht in `/api/uboat/crew`, solange kein Widget sie braucht.
+
 ## Website (Verbraucher, Repository `StreamKartei`, eigene Session)
 Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
 - **Startseite:** Spiele aus `index.json` mit „Stand vom …“, Auswahl führt auf die Seite des Spiels.
@@ -249,6 +277,7 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
   - Kopf mit „Spielstand vom …“ und „veröffentlicht …“
   - Ist der Stand älter als 7 Tage, ein Hinweis, dass länger nicht gespielt wurde
   - Stufe 1b: je Figur Lebenslauf, Orden und Leistungen; dazu Boot, Karriere und die Liste der Versenkungen
+  - Unten die aktiven Mods aus `mods` (Wunsch Nutzer, 24.11.2026)
 - Ohne Daten oder bei Ladefehler: freundlicher Hinweis statt leerer Seite.
 - Keine Twitch-Anbindung, keine Cookies, kein Tracking.
 
@@ -313,6 +342,7 @@ Nur als Anforderung an den Verbraucher; die Gestaltung liegt dort.
   - `server.js`: `UBOAT_HISTORY_FILE`, `loadUboatHistory`/`saveUboatHistory`, `uboatHistoryScan`, `uboatHistoryApply`, Konsole `uboat nachlesen …`
   - Tests: neu `test/uboat-history-test.js`, `uboat-test` K4/K5, Fixture mit Fahrtstart und letztem Anlegen
   - Kontrolle einer Person: `lib/uboat-history.js` `findPersons`, `birthDate`; `lib/uboat-crew.js` `personDetails`; `server.js` `uboatHistoryShow`, Konsole `uboat verlauf <Name>`; Tests `uboat-history-test` S1–S6, `uboat-test` Szenario `verlauf` (H1–H12) und K6
+- Aktive Mods: `lib/uboat-save.js` `modList`; `lib/uboat-crew.js` `toMods`, `state.mods`; `lib/stream-kartei.js` Feld `mods`; `server.js` `uboat show`; Fixture `mods`/`modsRaw`, `DEFAULT_MODS`; Tests `uboat-akte-test` M1–M8, `stream-kartei-test` F6/F6b
 - `server.js`:
   - Konstanten `STREAM_KARTEI_*`, `ADMIN_KARTEI_PUBLISH_PATH`, Modul `kartei` in `MODULE_NAMES`
   - `buildKarteiData`, `karteiPrivateNames`, `karteiHiddenNames`, `requestKartei`, `isPrivateLogin`, `karteiOverview`, `printKarteiStatus`

@@ -23,7 +23,11 @@ const results = []; const check = (name, cond, info = '') => results.push({ name
   check('F5 Kein Dateiname, keine internen Schlüssel', !json.includes('Geheim.save') && !/"type"|"characterClass"|"status"|"wounded"/.test(json), json.slice(0, 300));
   check('F6 Felder je Person wie in der Spec (mit Akte, Stufe 1b)', JSON.stringify(Object.keys(data.crew[0])) === '["name","typeLabel","classLabel","level","experiencePoints","experiencePointsFromLastPatrol","born","decorations","statusLabel","woundLabel","traits","skills","patrols","background","decorationNames","accomplishments"]'
     && JSON.stringify(Object.keys(data.fallen[0])) === '["name","typeLabel","classLabel","level","born","died","decorations","traits","skills","patrols","background","decorationNames","accomplishments"]'
-    && JSON.stringify(Object.keys(data)) === '["schemaVersion","game","savedAt","gameVersion","crew","fallen","boat","career","plaques","sinkings"]', Object.keys(data));
+    && JSON.stringify(Object.keys(data)) === '["schemaVersion","game","savedAt","gameVersion","crew","fallen","boat","career","plaques","sinkings","mods"]', Object.keys(data));
+  const mods = [{ id: 'uboat', name: 'uboat', kind: 'game', workshopId: null }, { id: 'steam:3419126557', name: 'Das Book', kind: 'workshop', workshopId: '3419126557', extra: 'x' }];
+  const withMods = kartei.buildUboatCrew({ ...state, mods });
+  check('F6b mods: Liste mit id, name, kind, workshopId in Reihenfolge; null ohne Liste', data.mods === null
+    && JSON.stringify(withMods.mods) === '[{"id":"uboat","name":"uboat","kind":"game","workshopId":null},{"id":"steam:3419126557","name":"Das Book","kind":"workshop","workshopId":"3419126557"}]', withMods.mods);
 
   const files = kartei.uboatFiles(data, '2026-11-21T10:05:00.000Z');
   const crewFile = JSON.parse(files['uboat/crew.json']), indexFile = JSON.parse(files['index.json']);
