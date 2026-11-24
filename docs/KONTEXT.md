@@ -49,11 +49,12 @@ Startreihenfolge laut Kontext: zuerst der Server, danach mit zeitlichem Abstand 
 ### OBS-Widgets
 | Widget | Zweck | Status laut Kontext |
 |---|---|---|
-| Polling-Widget (SpargelPoll) | Abstimmungen mit Branding, Animation, Sound, Chat-Ausgabe; Referenz für neue Widgets. Repository `BombingFritz/TwitchPoll` (öffentlich), Stand 0.8.2: holt Token, Client-ID und Broadcaster-ID über `/token` | aktiv |
-| Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand. Repository `BombingFritz/CoinFlip` (privat), Stand 0.1.0 | aktiv |
-| Enigma-Widget | immersive Kommunikation für U-Boot-Streams; Repository `BombingFritz/Uboat-Widget` (öffentlich, MIT ab 1.3.1). Ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), aktuell 1.3.0 mit Benchmark zur Modellwahl; funktioniert ohne Server, der Chat-Modus ist dort optional und eingeklappt | aktiv |
+| Polling-Widget (SpargelPoll) | Abstimmungen mit Branding, Animation, Sound; Referenz für neue Widgets. Repository `BombingFritz/TwitchPoll` (öffentlich), Stand 1.0.1 (24.11.2026): Stand der Abstimmung über `/api/twitch/poll/current`, die Ergebniszeile sendet der Server | aktiv |
+| Wetten-Widget | Wetten (Predictions) mit Quoten, Handelsschluss und Ergebnis. Repository `BombingFritz/TwitchPredictionWidget`, Stand 0.8.0: Stand über `/api/twitch/prediction/current`, die Ergebniszeile sendet der Server | aktiv |
+| Coinflip-Widget | Entscheidungshilfe, auch bei Poll-Gleichstand. Repository `BombingFritz/CoinFlip` (privat), Stand 0.4.0 (24.11.2026) | aktiv |
+| Enigma-Widget | immersive Kommunikation für U-Boot-Streams; Repository `BombingFritz/Uboat-Widget` (öffentlich, MIT ab 1.3.1). Ab 1.2.0 Chat-Modus über den Server (`!BdU`, ADR 0014), Stand 1.5.0 (24.11.2026); funktioniert ohne Server, der Chat-Modus ist dort optional und eingeklappt | aktiv |
 | Companion-Widget | Anzeige und Steuerung von Sub-Goals, Effekten, Server-Daten | geplant / in Arbeit |
-| CheckTalk-Widget (Intro-Topics) | abhakbare Themenliste fürs Intro, Steuerung per Stream Deck über den Server; Repository `BombingFritz/CheckTalk-Widget` (MIT), Fahrplan in [FAHRPLAN.md](FAHRPLAN.md) | Server-Teil und Widget 0.2.0 umgesetzt (12.11.2026), Test in OBS offen |
+| CheckTalk-Widget (Intro-Topics) | abhakbare Themenliste fürs Intro, Steuerung per Stream Deck über den Server; Repository `BombingFritz/CheckTalk-Widget` (MIT), Fahrplan in [FAHRPLAN.md](FAHRPLAN.md) | Widget 0.3.0, in OBS in Betrieb (Nutzer, 13.11.2026) |
 | Spiel-Statistik-Widgets | spielbezogene Statistiken | angefangen |
 | Flavor-KI-Widgets | thematische KI-Interaktion | Idee / angefangen |
 
@@ -62,7 +63,11 @@ Widget-Prinzipien laut Kontext:
 - Twitch-Credentials liegen nie im Widget-Frontend.
 - Flüchtiger Zustand darf im Widget liegen. Daten, die über einen Stream hinaus gelten oder korrigierbar sein sollen, kommen später persistent in den Server oder gezielt in den Browser-Speicher.
 
-Welche Widgets welche Endpoints nutzen, ist hier nicht dokumentiert [UNGEKLÄRT].
+Welche Widgets welche Endpoints nutzen, ist hier nicht vollständig dokumentiert [UNGEKLÄRT]; Ansätze im Datenkatalog.
+
+Weitere Verbraucher (keine OBS-Widgets):
+- RimWorld-Mod: `BombingFritz/TwitchCompanion_RimWorld`, Stand 0.1.0; über die Chat-Brücke (ADR 0025).
+- Website der Stream-Kartei: `BombingFritz/StreamKartei`; liest die Daten, die der Server veröffentlicht (ADR 0026).
 
 ### Bot-Account „DerBdu“
 - Eigenes Twitch-Konto mit „Chat Bot“-Abzeichen und Moderatorrolle im Kanal. Es antwortet als BdU auf `!BdU` (Antwort vom Enigma-Widget) und gibt das Soldbuch aus. Raid- und Whitelist-Shoutouts kommen weiter vom Broadcaster (ADR 0017).

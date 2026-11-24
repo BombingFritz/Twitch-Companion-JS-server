@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
+## [1.2.0] – Release-Kandidat, Datum folgt mit dem Tag
+
+Erst nach der Abnahme im Teststream (Issue #96) bekommt diese Version Tag und Release. Die Nummer 1.2 war seit 1.1.5 für die Webkonsole vorgesehen. Gegenüber 1.1.5 kommen Funktionen dazu, ohne Breaking Change für Widgets, Plugins und Home Assistant. Ausnahmen: die entfernten Effekt-Adressen (Security) und der Effekt-Modus `manual` (Removed).
+
+### Update von 1.1.5
+- `main` bzw. den Tag `1.2.0` holen, `npm ci`, Server neu starten.
+- `.env`: `channel:manage:polls` an `SCOPES` anhängen, danach einmal `http://localhost:<PORT>/login`. Nur nötig, wenn ein Verbraucher Abstimmungen starten soll (RimWorld-Mod); ohne den Scope läuft alles andere wie bisher.
+- Optional: `STREAM_KARTEI_REPO` und `STREAM_KARTEI_TOKEN` für die Stream-Kartei (siehe `.env.example`); ohne beide Werte bleibt sie aus.
+- Stream-Deck-Tasten auf `/api/effects/mode/:mode` oder `/api/effects/confirm` funktionieren nicht mehr; Effekte schaltet jetzt der Reiter „Einstellungen“ der Webkonsole (siehe Security).
+- Ältere Widgets, die ihre Ergebniszeile selbst senden (Wetten-Widget vor 0.8.0, SpargelPoll vor 0.9.0): die Ergebniszeilen des Servers ausschalten (`results prediction off` bzw. `results poll off`), sonst stehen sie doppelt im Chat.
+- Neue Laufzeitdateien entstehen von selbst (siehe `docs/DATENKATALOG.md`); keine gehört ins Repository.
+
 ### Added
 - Chat-Brücke für lokale Verbraucher (Issue #74, ADR 0025, Spec `chat-bruecke.md`, Teil A), zuerst für die RimWorld-Mod und CoinFlip:
   - Ereignisstrom `GET /api/chat/stream`: angemeldete Befehle (`commands`) oder Präfixe (`prefixes`), Nachrichten aus dem eigenen Kanal mit Abzeichen und `!privat`-Kennzeichen, Ereignis `privacy` beim Umschalten. Ohne Bots, fremden geteilten Chat und die eigenen Befehle des Servers.
@@ -103,6 +115,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - Bot-Test: Prüfung des Quelltexts (A22) ersetzt durch Verhaltenstests, dass `!raidstats` und Raid-Begrüßung auch mit Bot vom Broadcaster kommen.
 
 ### Documentation
+- Release-Vorbereitung 1.2.0 (24.11.2026):
+  - ARCHITEKTUR nennt die Topics-Endpunkte der Webkonsole und alle POST-Endpunkte.
+  - OFFEN ist auf den Stand gebracht; Erledigtes steht mit Beleg im Archiv.
+  - `npm audit`: 0 Schwachstellen.
+  - Checkliste für den Teststream: #96.
 - Inventur (14.11.2026): OFFEN.md nach Kategorien gegliedert (Live-Abnahmen, Sicherheit und Datenschutz, technische Schuld, Entscheidungen, Ideen), erledigte und überholte Punkte wortgleich mit Beleg in `docs/archiv/OFFEN-bis-2026-11-14.md`. Neu festgehalten: Server künftig nur lokal erreichbar, Widget-Schlüssel als Nahziel, LAN-Zugang später nur mit Schlüssel, Abfrage-Automatik als Idee, Lizenz entschieden. `stream-bericht.md` verweist für Umgesetztes auf `statistik.md`; BUGS.md mit OBS-Diagnose.
 - ADR 0023, Nachtrag: Das Wetten-Widget 0.7.0 holt die Zuschauerzahl beim Server. Datenkatalog: Ergebniszeilen von Wetten-Widget und SpargelPoll, die die Widgets bis zur Umstellung (Issue #50) selbst in den Chat senden, und welche Widgets `/api/twitch/stream` und `/api/privacy/optouts` nutzen. OFFEN: Zuschauerzahl wird erfasst (Issue #51).
 - Arbeitsablauf zwischen Server und Verbrauchern (Widgets, Stream-Deck-Plugin, Home Assistant): AGENTS.md mit Zuständigkeit, Prüfung vor jeder Aufgabe, Umgang mit Issues, Schnittstellenregeln, Übergabe und Statusstufen sowie „Wo was steht“. Verbraucher melden Serverbedarf als Issue, die Server-Session ändert die Specs. Code, Tests und Doku im selben Pull Request. FAHRPLAN Regeln 1 und 4 entsprechend angepasst, neue Regel 6: Fahrplan nur nach Bestätigung durch den Nutzer ändern. Neu: Vorlagen `.github/ISSUE_TEMPLATE/serveranforderung.md` und `.github/pull_request_template.md`.
@@ -248,7 +265,9 @@ In mehreren Livestreams (03.–05.11.2026) erprobter Stand.
 ### Hinweis
 - Die 40-Tage-Aktivitätsprüfung für Shoutouts existierte nur in einem anderen, nicht mehr auffindbaren Branch und ist in 1.0 nicht enthalten; in 1.1 neu umgesetzt (ADR 0015).
 
-[Unreleased]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.1.1...HEAD
+[Unreleased]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.2.0...HEAD
+[1.2.0]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.1.5...1.2.0
+[1.1.5]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.1.1...1.1.5
 [1.1.1]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.1...1.1.1
 [1.1]: https://github.com/BombingFritz/Twitch-Companion-JS-server/compare/1.0...1.1
 [1.0]: https://github.com/BombingFritz/Twitch-Companion-JS-server/releases/tag/1.0
