@@ -28,6 +28,7 @@ const runs = [
   ['aktiv-test.js', ['grammatik', '0.8']],
   ['uboat-test.js', ['an']],
   ['uboat-test.js', ['aus']],
+  ['uboat-test.js', ['verlauf']],
   ['modul-test.js', ['schalten']],
   ['modul-test.js', ['gespeichert']],
   ['modul-test.js', ['defekt']],

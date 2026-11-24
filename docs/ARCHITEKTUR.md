@@ -170,6 +170,7 @@ Zugriffsschutz (ADR 0013):
 | `uboat reload` | UBOAT: neuesten Spielstand sofort einlesen |
 | `uboat map <login> <Name im Spiel>` | UBOAT: Zuordnung in `uboat_crew_map.json` setzen (Name darf Leerzeichen enthalten) |
 | `uboat nachlesen` / `uboat nachlesen übernehmen` / `uboat nachlesen verwerfen` | UBOAT: ältere Spielstände der laufenden Kampagne nacheinander lesen und als Vorschau zeigen (Feindfahrten je Person, Lebensläufe); erst `übernehmen` schreibt `uboat_crew_history.json` (Stream-Kartei 1c) |
+| `uboat verlauf <Name>` | UBOAT: frühere Namen, Geburtsdatum, Feindfahrten und Lebenslauf (mit Quelle) einer Person; aus der offenen Vorschau, sonst aus dem Verlauf; speichert nichts |
 | `uboat unmap <login>` | UBOAT: Zuordnung entfernen |
 | `kartei show` / `kartei publish` / `kartei activate` / `kartei deactivate` | Stream-Kartei (ADR 0026): Stand (Repository, Website, letzte Veröffentlichung, wartende Änderung, Fehler, Ablauf des Tokens), Veröffentlichung anstoßen (nur bei Änderung, Abstand 10 min), ein- bzw. ausschalten (gespeichert in `modules.json`) |
 | `uboat activate` / `uboat deactivate` | UBOAT-Soldbuch ein- bzw. ausschalten, gespeichert in `modules.json`. Deaktiviert: `!soldbuch` wird still ignoriert; der Spielstand wird weiter eingelesen, `/api/uboat/crew` bleibt aktuell. Ohne `UBOAT_SAVES_DIR` bleibt das Soldbuch trotz `activate` aus |

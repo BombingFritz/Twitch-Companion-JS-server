@@ -185,6 +185,21 @@ const saves = {
   const plain = createUboatCrew({ savesDir, log: () => {} });
   plain.reload();
   check('C7 Ohne Verlauf: patrols null', plain.getState().crew.every(m => m.patrols === null));
+
+  // --- Konsole "uboat verlauf": Suche, Geburtsdatum, Lebenslauf mit Quelle ---
+  const key = 'U-68|1941-08-01';
+  const alpP = hist.campaigns[key].persons.find(p => p.name === 'Alpaka');
+  alpP.names = ['Erich Vossmann', 'Alpaka'];
+  check('S1 Suche über einen früheren Namen', H.findPersons(hist, key, 'erich vossmann').map(p => p.name).join() === 'Alpaka');
+  check('S2 Genaue Treffer vor Teilwörtern; Teilwort, wenn nichts genau passt; sonst leer',
+    H.findPersons(hist, key, 'Hanspeter').length === 1 && H.findPersons(hist, key, 'Hans').length === 2 && H.findPersons(hist, key, 'Niemand').length === 0 && H.findPersons(hist, 'U-1|x', 'Alpaka').length === 0);
+  const kob = parseSave(saves.p2See).crew.find(c => c.name === 'Kobold');
+  check('S3 Geburtsdatum aus dem Geburtszeitpunkt', H.birthDate(kob.birthTicks) === kob.born && kob.born === '1911-02-14', { ticks: kob.birthTicks, born: kob.born, out: H.birthDate(kob.birthTicks) });
+  check('S4 Unbekannter oder unsinniger Geburtszeitpunkt: null', H.birthDate(null) === null && H.birthDate('abc') === null && H.birthDate('0') === null);
+  let det = crew.personDetails('Alpaka', alpP.birth, alpP.background);
+  check('S5 Lebenslauf nur im Verlauf: Quelle „gesichert“, heutiger Name', det.backgroundSource === 'kept' && det.background === 'Alpaka stammt aus Kiel und liest gern.' && det.member && det.member.name === 'Alpaka', det);
+  det = crew.personDetails('Gibtsnicht', null, null);
+  check('S6 Nicht im Spielstand, ohne Lebenslauf', det.member === null && det.backgroundSource === null && det.background === null, det);
   fs.rmSync(root, { recursive: true, force: true });
   console.log(failed ? `\n${failed} FEHLER` : '\nAlle Prüfungen bestanden');
   process.exit(failed ? 1 : 0);
