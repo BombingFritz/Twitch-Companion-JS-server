@@ -91,7 +91,11 @@ Außerhalb des PCs (Stream-Kartei, ADR 0026): Zweig `data` von `STREAM_KARTEI_RE
 
 ## 4. HTTP-Endpoints
 
-Alle GET außer `POST /api/bdu/answer` (ADR 0014), `POST /api/admin/server/…`, `POST /api/admin/whitelist/…`, `POST /api/admin/modules`, `POST /api/admin/kartei/publish`, `POST /api/admin/effects/…`, `POST /api/admin/reports/delete` und `POST /api/admin/stream/close` (ADR 0018, ADR 0019). Alle Antworten mit `Cache-Control: no-store`.
+Alle GET außer:
+- für Widgets, Programme und Stream Deck: `POST /api/bdu/answer` (ADR 0014), `POST /api/topics/…` (ADR 0020), `POST /api/chat/send` und `POST /api/twitch/poll/start` (ADR 0025)
+- für die Webkonsole (ADR 0018, ADR 0019): `POST /api/admin/server/…`, `/whitelist/…`, `/modules`, `/kartei/publish`, `/effects/…`, `/chat/sender`, `/chat/results`, `/topics`, `/topics/action`, `/reports/delete` und `/stream/close`
+
+ Alle Antworten mit `Cache-Control: no-store`.
 
 Zugriffsschutz (ADR 0013):
 - Der Server lauscht nur auf `127.0.0.1` und `::1` (`SERVER_HOST`, `SERVER_HOST_V6`; ADR 0013, Nachtrag 14.11.2026). Andere Geräte im Heimnetz erreichen ihn nicht; Home Assistant bekommt nur Webhooks.
@@ -125,6 +129,9 @@ Zugriffsschutz (ADR 0013):
 | `POST /api/admin/kartei/publish` | JSON `{}`; stößt die Stream-Kartei an (nur bei geändertem Inhalt, Abstand 10 min) → `{ok:true, kartei}` (ADR 0026) | 403 und 415 wie die übrigen POST; 409 nicht eingerichtet oder ausgeschaltet |
 | `POST /api/admin/chat/sender` | JSON `{feature, sender: bot/broadcaster}`; `{ok:true, changed, chat_senders:[{feature, name, sender}]}` (Spec `bot-account.md`) | 403 und 415 wie die übrigen POST; 400 bei unbekannter Funktion oder unbekanntem Absender |
 | `POST /api/admin/chat/results` | JSON `{line: prediction/poll, enabled: true/false}`; `{ok:true, changed, chat_results:[{line, name, enabled}]}` (Spec `wetten-abstimmungen.md`, Schritt 3b) | 403 und 415 wie die übrigen POST; 400 bei unbekannter Zeile oder wenn `enabled` kein Wahrheitswert ist |
+| `/api/admin/topics` | Intro-Topics für den Reiter „Topics“: Liste und Anzeige-Einstellungen (`topics.getConfig()`), `state`, `debug`, `clients` (verbundene Anzeigen); strenge Herkunft wie `/api/admin/overview` (ADR 0020, 0021) | 403 wie die übrigen Admin-Endpunkte |
+| `POST /api/admin/topics` | JSON `{items?, display?}`: neue Liste und/oder Anzeige-Einstellungen speichern → `{ok:true, …config, state}` | 403 und 415 wie die übrigen POST; 400 ohne `items` und `display` oder bei ungültigen Werten |
+| `POST /api/admin/topics/action` | JSON `{action: next/back/toggle/reset}`: bedienen wie die Stream-Deck-Tasten → `{ok:true, state}` | 403 und 415 wie die übrigen POST; 400 unbekannte Aktion; 409 Modul aus |
 | `POST /api/admin/server/shutdown` | `{ok:true, pid, at}`, danach endet der Prozess nach 300 ms mit Exit-Code 0 | 403 aus dem Netzwerk, mit fremdem Host, ohne oder mit fremder Herkunft; 415 ohne JSON; 409 wenn er schon endet |
 | `POST /api/admin/server/restart` | wie oben, Exit-Code 75; `AuthServer.cmd` startet neu | wie oben; zusätzlich 409 ohne `AuthServer.cmd` |
 | `/api/twitch/prediction/current` | `{status:'WAITING'}` oder `{predictionId, title, status, outcomes[{id, title, channelPoints, users, color (BLUE/PINK), topPredictors[{userId, userName, userLogin, channelPointsUsed, channelPointsWon}]}], createdAt, locksAt, endsAt (= endedAt, bisheriger Name), lockedAt, endedAt, predictionWindow (s), winningOutcomeId, updatedAt}` (nicht gesetzte Zeitpunkte und Sieger `null`; Issue #38) für die letzte Prediction, auch bei anderem Status als ACTIVE/LOCKED. Letzter Stand aus EventSub, fragt Twitch nicht (ADR 0023, Spec `wetten-abstimmungen.md`); `channelPointsWon` steht erst nach dem Ende, vorher 0 | keiner; ohne Stand `WAITING` |
