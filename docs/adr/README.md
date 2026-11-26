@@ -12,6 +12,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0001](0001-json-dateien-statt-datenbank.md) | Jede Datenart liegt in einer eigenen JSON-Datei, keine Datenbank. |
 | [0002](0002-einzelprozess-mit-ram-zustand.md) | Ein Node.js-Prozess hält alle Verbindungen und den flüchtigen Zustand im Arbeitsspeicher. |
 | [0007](0007-eventsub-per-websocket.md) | Twitch-Ereignisse kommen über eine dauerhafte EventSub-WebSocket-Verbindung. |
+| [0027](0027-server-in-kern-und-module-aufteilen.md) | `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt; Module melden Endpunkte, EventSub-Abos, Befehle und ihren Teil der Webkonsole selbst an und hängen nur am Kern. Ergänzt 0024 und 0018. |
 
 ### Widgets und Sicherheit
 | ADR | Worum es geht |
@@ -63,7 +64,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 ## Herkunft
 
 - **Nachträglich festgehalten** aus vorhandenem Code und älterer Doku (Entscheidung lag schon vor, Begründung und Alternativen teils `[UNGEKLÄRT]`): 0001–0011; ausdrücklich „aus dem Code abgeleitet“ sind 0002 und 0007.
-- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0026. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
+- **Mit dem Nutzer entschieden oder geändert:** 0003 (Präzisierung), 0012 (Änderung 05.11.2026), 0013–0027. Was Claude dabei selbst festgelegt hat, steht im jeweiligen Status (z. B. 0017).
 
 ## Neues ADR anlegen
 
