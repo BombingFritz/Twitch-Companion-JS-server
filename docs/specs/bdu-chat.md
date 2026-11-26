@@ -16,7 +16,7 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten eine Antwort
 3. **Tagesobergrenze erreicht** (`BDU_DAILY_LIMIT` = 60 je Kalendertag in Ortszeit des Servers, 0 = aus): ignorieren. Bei einem Stream über Mitternacht beginnt der Zähler um 0:00 neu; das ist so gewollt (Nutzer, 04.11.2026).
 4. **Globales Limit:** Seit der letzten angenommenen Anfrage sind weniger als `BDU_GLOBAL_COOLDOWN_MS` (3 min) vergangen → Verstoß.
 5. **Nutzerlimit:** Der Nutzer (`chatter_user_id`) hat in den letzten `BDU_USER_WINDOW_MS` (30 min) schon `BDU_USER_MAX` (3) angenommene Anfragen → Verstoß.
-6. Sonst: **annehmen.** Zeitpunkt für globales und Nutzerlimit speichern (auch wenn die KI später scheitert), Anfrage `{id, text}` mit neuer `id` per Events an das Widget, Zuordnung `id → message_id` merken.
+6. Sonst: **annehmen.** Zeitpunkt für globales und Nutzerlimit speichern und den Tageszähler erhöhen, Anfrage `{id, text}` mit neuer `id` per Events an das Widget, Zuordnung `id → message_id` merken. Scheitert die Anfrage, nimmt der Server die Zählung zurück (siehe „Gescheiterte Anfrage“).
 
 ### Verstoß gegen ein Limit
 - Liegt die letzte Warnung mindestens `BDU_WARNING_COOLDOWN_MS` (10 min) zurück: als Antwort auf die Chat-Nachricht „Funkverkehr einschränken, Feind peilt ein!“ posten.
@@ -26,8 +26,26 @@ Zuschauer schicken dem KI-BdU im Chat einen Funkspruch und erhalten eine Antwort
 ### Antwort des Widgets (`POST /api/bdu/answer`, JSON)
 - `{id, status: "ok", text}`: Bekannte, noch offene `id` → Text, auf 500 Zeichen gekürzt (Twitch-Limit), per `POST /helix/chat/messages` mit `reply_parent_message_id` posten. Seit ADR 0017 über den Bot „DerBdu“, wenn eingerichtet (gilt auch für Warnung und Funkstille-Ansage), dann ohne Präfix (Nutzer, 07.11.2026: der Absender zeigt schon, wer spricht). Sendet der Broadcaster (kein Bot oder Rückfall), steht „FT vom BdU: “ davor; die Kürzung zählt das Präfix mit. Unbekannte oder abgelaufene `id`: verwerfen, loggen.
 - `{id, status: "quota", error}`: **Funkstille** starten (siehe unten), nichts zur Anfrage posten. Antwort an das Widget: `{ok: true, silenceUntil}` (Zeitstempel in ms; beim Tageskontingent `null`).
-- `{id, status: "error"}`: nichts posten, loggen.
-- Kommt binnen `BDU_ANSWER_TIMEOUT_MS` (120 s; das Widget hält Anfragen bis zu 60 s für den Kaleu zurück) keine Antwort: Anfrage verwerfen, loggen.
+- `{id, status: "error"}` (auch `ok` ohne Text): **gescheiterte Anfrage**, siehe unten.
+- Kommt binnen `BDU_ANSWER_TIMEOUT_MS` (120 s; das Widget hält Anfragen bis zu 60 s für den Kaleu zurück) keine Antwort: Anfrage verwerfen, loggen, **gescheiterte Anfrage**. Eine spätere Antwort bekommt 404 und wird nicht gepostet.
+
+### Gescheiterte Anfrage (Issue #99, seit 26.11.2026)
+Vorher wurde bei `error` nichts gepostet, und die Anfrage zählte trotzdem. Im Stream vom 25.11.2026 bekam ein Zuschauer bei überlasteter KI („high demand“) deshalb gar keine Rückmeldung.
+
+**Entscheidungen des Nutzers (26.11.2026):**
+- Wortlaut „Funkspruch nicht durchgekommen, Störung im Äther. Später erneut funken!“ (`BDU_ERROR_TEXT`).
+- Gilt für alle Fehler, auch für Zeitüberschreitung.
+- Die Anfrage wird nicht angerechnet. Zurückgenommen werden:
+  - der Eintrag im Nutzerlimit,
+  - der Tageszähler (nur am selben Kalendertag),
+  - das globale Limit, aber nur, wenn seitdem keine andere Anfrage angenommen wurde.
+
+**Ablauf:**
+- Die Störungsmeldung geht als Antwort auf die `!BdU`-Nachricht an den Chat, über denselben Absender wie die übrigen BdU-Zeilen, ohne Präfix (wie Warnung und Funkstille).
+- **Gegen Dauerschleife** (von Claude festgelegt): höchstens eine Störungsmeldung je `BDU_ERROR_NOTICE_COOLDOWN_MS` (2 min). Weitere Fehler in dieser Zeit stehen nur im Log, werden aber ebenfalls nicht angerechnet.
+- **Während einer Funkstille** keine Störungsmeldung.
+- `quota` bleibt, wie es ist: Funkstille mit Ansage, keine Störungsmeldung.
+- Wiederholungen bei Überlastung (HTTP 503 bzw. `UNAVAILABLE`) gehören ins Widget, nicht in den Server.
 
 ### Funkstille (betrifft nur den Chat)
 - Auslöser: `status: "quota"` vom Widget.
@@ -50,10 +68,10 @@ Festgelegt im Widget-Repository (`docs/specs/chat-modus.md`, ADR 0004 dort); hie
 - Chat-Anfragen und -Antworten erscheinen nicht im Widget und nicht in seinem Funkverlauf.
 
 ### Konstanten (oben in `server.js`)
-`BDU_MAX_INPUT_CHARS = 200`, `BDU_GLOBAL_COOLDOWN_MS = 3 min`, `BDU_USER_WINDOW_MS = 30 min`, `BDU_USER_MAX = 3`, `BDU_WARNING_COOLDOWN_MS = 10 min`, `BDU_ANSWER_TIMEOUT_MS = 120 s`, `BDU_SILENCE_MS = 30 min`, `BDU_REPLY_PREFIX = 'FT vom BdU: '` (nur beim Versand als Broadcaster), Texte für Warnung und Funkstille.
+`BDU_MAX_INPUT_CHARS = 200`, `BDU_GLOBAL_COOLDOWN_MS = 3 min`, `BDU_USER_WINDOW_MS = 30 min`, `BDU_USER_MAX = 3`, `BDU_WARNING_COOLDOWN_MS = 10 min`, `BDU_ANSWER_TIMEOUT_MS = 120 s`, `BDU_SILENCE_MS = 30 min`, `BDU_ERROR_NOTICE_COOLDOWN_MS = 2 min`, `BDU_REPLY_PREFIX = 'FT vom BdU: '` (nur beim Versand als Broadcaster), Texte für Warnung, Störungsmeldung (`BDU_ERROR_TEXT`) und Funkstille.
 
 ### Zustand (RAM, ADR 0002)
-Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Funkstille bis, offene Anfragen `id → {message_id, angenommen}`, verbundene Events-Clients.
+Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, letzte Störungsmeldung, Funkstille bis, offene Anfragen `id → {message_id, Nutzer, angenommen, vorherige letzte Annahme, Kalendertag}`, verbundene Events-Clients.
 
 ### Status und Konsole
 - `/status`: `bdu_widget_connected`, `bdu_silence_until`, `modules.bdu`.
@@ -73,6 +91,12 @@ Letzte angenommene Anfrage, angenommene Zeitpunkte je Nutzer, letzte Warnung, Fu
 - Zwei Verstöße binnen 10 min: höchstens eine Warnung.
 - `status: "quota"`: eine Funkstille-Ansage; danach 30 min keine Weiterleitung und keine Warnungen.
 - Antwort nach 120 s oder mit unbekannter `id`: kein Chat-Post.
+- `status: "error"` oder keine Antwort binnen 120 s:
+  - eine Störungsmeldung als Antwort auf die Nachricht, höchstens eine je 2 min, keine während der Funkstille
+  - danach wird ein anderer Zuschauer sofort angenommen
+  - derselbe Zuschauer darf mehr als dreimal hintereinander fragen
+  - der Tageszähler bleibt unverändert
+  - Test `test/bdu-test.js`
 - Text über 200 Zeichen kommt gekürzt beim Widget an; Antwort über 500 Zeichen wird gekürzt gepostet.
 - Aufruf von `/api/bdu/stream` oder `/api/bdu/answer` aus dem Netzwerk: 403.
 - Tests ohne echten Twitch-Chat (Attrappen, eigenes Arbeitsverzeichnis, AGENTS.md).

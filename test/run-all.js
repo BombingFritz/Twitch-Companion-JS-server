@@ -19,6 +19,7 @@ const runs = [
   ['status-test.js', ['ohne-tokens']],
   ['keepalive-test.js', []],
   ['k9-test.js', []],
+  ['bdu-test.js', []],
   ['jahr-test.js', ['2026-11-05T20:00:00', '2026-Q4', 'Quartal']],
   ['jahr-test.js', ['2026-12-31T23:59:00', '2026-Q4', 'Quartal']],
   ['jahr-test.js', ['2027-01-01T00:01:00', '2027', 'Jahr']],

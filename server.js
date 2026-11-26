@@ -236,6 +236,9 @@ const BDU_DAILY_LIMIT = 60;                       // angenommene Chat-Anfragen j
 const BDU_SSE_PING_MS = 30 * 1000;                // Lebenszeichen auf der Events-Verbindung
 const BDU_REPLY_PREFIX = 'FT vom BdU: ';         // nur wenn der Broadcaster sendet; DerBdu postet die Antwort ohne Präfix (ADR 0017)
 const BDU_WARNING_TEXT = 'Funkverkehr einschränken, Feind peilt ein!';
+// Fehler des Widgets oder keine Antwort binnen BDU_ANSWER_TIMEOUT_MS (Issue #99): Störungsmeldung, Anfrage nicht anrechnen
+const BDU_ERROR_TEXT = 'Funkspruch nicht durchgekommen, Störung im Äther. Später erneut funken!';
+const BDU_ERROR_NOTICE_COOLDOWN_MS = 2 * 60 * 1000;   // Störungsmeldung höchstens einmal je 2 Minuten (gestörte KI, viele Versuche)
 
 // UBOAT-Soldbuch (!soldbuch, siehe ADR 0016 und docs/specs/uboat-personalakte.md)
 const UBOAT_COMMAND = '!soldbuch';                // Vergleich ohne Groß-/Kleinschreibung, "!Soldbuch" geht auch
@@ -1628,7 +1631,8 @@ app.post('/api/bdu/answer', express.json({ limit: '16kb' }), async (req, res) =>
     startBduSilence(String(error || ''));
     return res.json({ ok: true, silenceUntil: bduSilenceUntil });
   }
-  console.log(`[BdU] Widget meldet Fehler zur Anfrage von @${pending.userLogin}: ${error || status || 'unbekannt'} – keine Antwort im Chat`);
+  console.log(`[BdU] Widget meldet Fehler zur Anfrage von @${pending.userLogin}: ${error || status || 'unbekannt'}`);
+  failBduRequest(pending);
   res.json({ ok: true });
 });
 
@@ -2928,10 +2932,11 @@ async function handlePrivacyCommand(evt) {
 // ═══════════════════════════════════════════════════════════════════
 
 const bduClients = [];                  // offene Events-Verbindungen der Widgets (zuletzt verbundenes erhält Anfragen)
-const bduPending = new Map();           // id -> { messageId, userLogin, acceptedAt, timer }
+const bduPending = new Map();           // id -> { messageId, userLogin, userKey, acceptedAt, prevLastAcceptedAt, dailyKey, timer }
 const bduAcceptedByUser = new Map();    // user_id -> [Zeitpunkte angenommener Anfragen]
 let bduLastAcceptedAt = 0;
 let bduLastWarningAt = 0;
+let bduLastErrorNoticeAt = 0;
 let bduSilenceUntil = 0;                // 0 = keine Funkstille, Infinity = bis Streamstart
 let bduSilenceEndedAt = 0;              // Ende der letzten Funkstille (für Verlängerung ohne neue Ansage)
 let bduDailyKey = '';
@@ -2984,6 +2989,31 @@ function startBduSilence(errorText) {
     ? 'BdU befiehlt Funkstille bis auf Weiteres – Meldungen werden nicht beantwortet.'
     : `BdU befiehlt Funkstille bis ${formatClock(bduSilenceUntil)} Uhr – Meldungen werden nicht beantwortet.`;
   sendBduChatMessage(text);
+}
+
+// Anfrage gescheitert (Fehler des Widgets oder keine Antwort, Issue #99): nicht anrechnen, also globales Limit,
+// Nutzerlimit und Tageszähler zurücknehmen, und höchstens alle BDU_ERROR_NOTICE_COOLDOWN_MS eine Störungsmeldung posten.
+function failBduRequest(pending) {
+  const times = bduAcceptedByUser.get(pending.userKey);
+  if (times) {
+    const i = times.indexOf(pending.acceptedAt);
+    if (i >= 0) times.splice(i, 1);
+    if (!times.length) bduAcceptedByUser.delete(pending.userKey);
+  }
+  if (bduLastAcceptedAt === pending.acceptedAt) bduLastAcceptedAt = pending.prevLastAcceptedAt;   // nur, wenn seitdem keine andere angenommen wurde
+  if (bduDailyKey === pending.dailyKey && bduDailyCount > 0) bduDailyCount--;
+  const now = Date.now();
+  if (isBduSilenceActive(now)) {
+    console.log(`[BdU] Anfrage von @${pending.userLogin} nicht angerechnet; keine Störungsmeldung während der Funkstille`);
+    return;
+  }
+  if (now - bduLastErrorNoticeAt < BDU_ERROR_NOTICE_COOLDOWN_MS) {
+    console.log(`[BdU] Anfrage von @${pending.userLogin} nicht angerechnet; keine Störungsmeldung (letzte vor ${Math.round((now - bduLastErrorNoticeAt) / 1000)} s)`);
+    return;
+  }
+  bduLastErrorNoticeAt = now;
+  console.log(`[BdU] Anfrage von @${pending.userLogin} nicht angerechnet; Störungsmeldung gepostet`);
+  sendBduChatMessage(BDU_ERROR_TEXT, pending.messageId);
 }
 
 // Erkennt "!BdU <Text>" und reicht angenommene Anfragen an das Enigma-Widget weiter.
@@ -3046,16 +3076,21 @@ function handleBduCommand(evt) {
     return;
   }
 
-  // 6. Annehmen: zählt sofort, auch wenn die KI später scheitert
+  // 6. Annehmen: zählt sofort; scheitert die KI, nimmt failBduRequest die Zählung zurück (Issue #99)
+  const prevLastAcceptedAt = bduLastAcceptedAt;
   bduLastAcceptedAt = now;
   recent.push(now);
   bduAcceptedByUser.set(userKey, recent);
   bduDailyCount++;
   const id = `bdu-${now}-${++bduRequestCounter}`;
-  const timer = setTimeout(() => {
-    if (bduPending.delete(id)) console.log(`[BdU] Keine Antwort des Widgets binnen ${BDU_ANSWER_TIMEOUT_MS / 1000} s – Anfrage von @${login} verworfen`);
+  const entry = { messageId: evt.message_id, userLogin: login, userKey, acceptedAt: now, prevLastAcceptedAt, dailyKey: bduDailyKey };
+  entry.timer = setTimeout(() => {
+    if (bduPending.get(id) !== entry) return;
+    bduPending.delete(id);
+    console.log(`[BdU] Keine Antwort des Widgets binnen ${BDU_ANSWER_TIMEOUT_MS / 1000} s – Anfrage von @${login} verworfen`);
+    failBduRequest(entry);
   }, BDU_ANSWER_TIMEOUT_MS);
-  bduPending.set(id, { messageId: evt.message_id, userLogin: login, acceptedAt: now, timer });
+  bduPending.set(id, entry);
   const client = bduClients[bduClients.length - 1];
   client.res.write(`event: request\ndata: ${JSON.stringify({ id, text })}\n\n`);
   console.log(`[BdU] !BdU von @${login} angenommen (${id}, heute ${bduDailyCount}${BDU_DAILY_LIMIT ? '/' + BDU_DAILY_LIMIT : ''}): ${text}`);
