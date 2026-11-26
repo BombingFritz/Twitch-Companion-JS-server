@@ -15,7 +15,7 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 ## Spielregeln für die Koordination
 
 1. **Schnittstellen nur hier ändern.** Endpoints, Ereignisse und Datenformate stehen in den Specs dieses Repositories. Widget und Plugin setzen sie um; brauchen sie etwas Neues, legen sie hier ein Issue an (Vorlage „Serveranforderung“). Die Server-Session präzisiert und ändert die Spec; Widget- und Plugin-Sessions ändern keine Serverdateien.
-2. **`server.js` nur in einer Session zur Zeit.** Server-Schritte beginnen erst, wenn keine andere Session an `server.js` arbeitet. Der Topics-Code liegt deshalb in `lib/topics.js`; `server.js` bekommt nur die Verdrahtung.
+2. **`server.js` nur in einer Session zur Zeit.** Server-Schritte beginnen erst, wenn keine andere Session an `server.js` arbeitet. Der Topics-Code liegt deshalb in `lib/topics.js`; `server.js` bekommt nur die Verdrahtung. Seit ADR 0027 (27.11.2026) wird `server.js` schrittweise in `core/` und `modules/` aufgeteilt; neue Server-Schritte dieses Fahrplans beginnen erst, wenn Topics als Modul umgezogen ist (ADR 0027, Schritt 2).
 3. **ADR-Nummern 0020 und 0021 sind vergeben.** Andere Sessions nehmen ab 0022.
 4. **Gemeinsame Doku im selben Pull Request.** `OFFEN.md`, `KONTEXT.md`, `ARCHITEKTUR.md`, `CHANGELOG.md` und `adr/README.md` werden im selben Pull Request wie Code und Tests angepasst (eigene Commits erlaubt) und vor dem Pull Request gegen den aktuellen `main` geprüft.
 5. **Stand pflegen:** Wer einen Schritt abschließt, setzt hier die Spalte „Stand“ und verlinkt den Pull Request.
@@ -32,7 +32,7 @@ Zugehörige Dokumente: [Spec Intro-Topics](specs/intro-topics.md), [Spec Stream-
 | 4 | Stream Deck vorläufig: Tasten über ein fertiges HTTP-Plugin (z. B. „API Request“) | – (Einrichtung) | 2 | offen |
 | 5 | Webkonsole: Reiter „Topics“ zum Bearbeiten der Liste, Reset-Knopf | Server | 2 | erledigt (12.11.2026), mit Anzeige-Einstellungen; zieht später in den gemeinsamen Einstellungs-Reiter um (Nutzer, 13.11.2026) |
 | 6 | Effekte `topic_active`, `topic_done`, `topics_complete` über `scheduleEffect`; Lichtlogik in Home Assistant | Server (+ HA, außerhalb) | 2 | Server erledigt (still, Testmodus `topics debug on`); Automation in Home Assistant offen |
-| 7 | Clip-Moment: `POST /api/clip/mark` (Statistik Stufe 6, Stream-Bericht 1e) | Server | 0 | offen |
+| 7 | Clip-Moment: `POST /api/clip/mark` (Statistik Stufe 6, Stream-Bericht 1e) | Server | 0 | offen; wartet auf den Umzug von Topics als Modul (ADR 0027, Schritt 2) |
 | 8 | Stream-Deck-Plugin 0.1: Aktionen „Topics weiter“, „Topics zurück“, „Topics ein/aus“, „Clip-Moment“; Live-Anzeige auf den Tasten | Plugin | 2, 7 | offen |
 | 9 | Plugin 0.2: mitgeliefertes Profil, Auslieferung der `.streamDeckPlugin`-Datei über GitHub-Releases | Plugin | 8 | offen |
 | 10 | Später: Widget und Plugin über den Server ausliefern bzw. installieren (Modulsystem) | alle | OFFEN.md, „Module“ | Idee |

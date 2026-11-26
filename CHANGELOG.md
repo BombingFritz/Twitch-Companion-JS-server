@@ -6,9 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ### Changed
 - BdU-Chat (Issue #99, Spec `bdu-chat.md`, „Gescheiterte Anfrage“): Meldet das Enigma-Widget einen Fehler, etwa eine überlastete KI, oder antwortet es nicht binnen 120 s, postet der BdU als Antwort „Funkspruch nicht durchgekommen, Störung im Äther. Später erneut funken!“. Höchstens eine solche Meldung kommt je 2 min, keine während der Funkstille. Die Anfrage wird nicht angerechnet: Globales Limit, Nutzerlimit und Tageszähler werden zurückgenommen, der Zuschauer kann gleich erneut fragen. Vorher kam keine Rückmeldung, und die Anfrage zählte trotzdem (Teststream 25.11.2026).
+- Umbau nach ADR 0027, Schritt 1, ohne Änderung des Verhaltens: Die Kern-Grundlagen liegen in `core/`:
+  - `config.js`: `.env`, Version, Konstanten des Kerns
+  - `store.js`: `writeJsonAtomic`
+  - `log.js`: Live-Log, Bereinigung, Fehlerprotokoll, `logIfChanged`
+  - `http.js`: Herkunftsprüfung, CORS, `no-store`, Prüfung auf lokale Aufrufe, HTTP-Protokoll
+
+  `server.js` ist rund 190 Zeilen kürzer.
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
+- FAHRPLAN (vom Nutzer bestätigt, 27.11.2026): Neue Server-Schritte beginnen erst nach dem Umzug von Topics als Modul; Schritt 7 (Clip-Moment) wartet darauf. ARCHITEKTUR mit Abschnitt „Kern“, AGENTS.md mit den Regeln zur Aufteilung.
 
 ### Tests
 - Neuer Test `test/bdu-test.js` (Störungsmeldung, Abstand, Rücknahme aller Zähler, Zeitüberschreitung, Erfolg zählt weiter, Funkstille unverändert).

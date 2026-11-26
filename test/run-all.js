@@ -74,6 +74,7 @@ const runs = [
   ['result-messages-test.js', []],
   ['chat-bridge-test.js', []],
   ['consumer-polls-test.js', []],
+  ['core-test.js', []],
   ['stream-kartei-test.js', []],
   ['uboat-akte-test.js', []],
   ['uboat-history-test.js', []],

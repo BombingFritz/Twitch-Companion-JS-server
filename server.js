@@ -1,10 +1,8 @@
 const express = require('express');
 const axios = require('axios');
-const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const util = require('util');
 const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
@@ -22,24 +20,28 @@ const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
 const { predictionResultMessage, pollResultMessage, createResultAnnouncer } = require('./lib/result-messages');
 const chatBridge = require('./lib/chat-bridge');
 const consumerPolls = require('./lib/consumer-polls');
-require('dotenv').config();
+// Kern (ADR 0027): Konfiguration, Speichern, Log, HTTP-Zugriffsschutz
+const config = require('./core/config');
+const { writeJsonAtomic } = require('./core/store');
+const { createLog, redactedValues } = require('./core/log');
+const { createAccess } = require('./core/http');
 
 const app = express();
-const SERVER_STARTED_AT = new Date().toISOString();   // für /status und Startanzeige (welcher Prozess antwortet?)
-const APP_VERSION = require('./package.json').version;
-
 const {
+  SERVER_STARTED_AT,
+  APP_VERSION,
   CLIENT_ID,
   CLIENT_SECRET,
   REDIRECT_URI,
-  PORT = 3000,
+  PORT,
   SCOPES,
   HA_WEBHOOK_URL,
   CORS_ORIGINS,
   UBOAT_SAVES_DIR,
   STREAM_KARTEI_REPO,
   STREAM_KARTEI_TOKEN,
-} = process.env;
+  ERROR_LOG_MAX_ENTRIES,
+} = config;
 
 const TOKEN_FILE = './tokens.json';
 const RAID_FILE = './raids.json';
@@ -51,7 +53,6 @@ const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten d
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
 const UBOAT_HISTORY_FILE = './uboat_crew_history.json';    // Verlauf je Kampagne: gesicherte Lebensläufe, Feindfahrten je Person (Stream-Kartei 1c)
 const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
-const ERROR_LOG_FILE = './error_log.json';                 // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
 const STREAM_REPORTS_DIR = './stream_reports';             // je abgeschlossenem Stream eine .json und eine .txt (ADR 0019)
 const PRIVACY_FILE = './privacy_optouts.json';             // !privat: User-IDs mit Zeitpunkt (docs/DATENKATALOG.md)
@@ -161,13 +162,6 @@ const EVENTSUB_RECONNECT_DELAY_MS = 5000;         // Neuaufbau nach unerwartetem
 const EVENTSUB_KEEPALIVE_DEFAULT_S = 10;          // falls session_welcome keinen keepalive_timeout_seconds liefert
 const EVENTSUB_KEEPALIVE_GRACE_MS = 5000;         // Zuschlag auf das Keepalive-Intervall, bevor die Verbindung als tot gilt
 
-// Zugriffsschutz (siehe ADR 0013)
-// Standard-Herkünfte für Widgets, wenn CORS_ORIGINS in der .env leer ist:
-// 'http://absolute' = OBS-Browser-Source mit "Lokale Datei", 'null' = Datei per file:// geöffnet.
-const DEFAULT_CORS_ORIGINS = ['http://absolute', 'null'];
-const LOOPBACK_ADDRESSES = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];  // /token nur von diesem Rechner
-const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];      // erlaubte Host-Header für /token
-
 // Webkonsole (siehe ADR 0018 und docs/specs/webkonsole.md)
 const ADMIN_DIR = path.join(__dirname, 'public', 'admin');   // nur dieser Ordner wird ausgeliefert, nie der Server-Ordner
 const ADMIN_PAGE_PATH = '/TwitchCompanionAdmin';  // Adresse der Webkonsole im Browser (Groß-/Kleinschreibung egal)
@@ -181,11 +175,8 @@ const ADMIN_EXIT_DELAY_MS = 300;                  // Zeit für die Antwort an di
 const SERVER_RESTART_EXIT_CODE = 75;              // AuthServer.cmd startet den Server nur bei diesem Code neu
 const SERVER_SUPERVISED = process.env.TWITCH_COMPANION_SUPERVISED === '1';  // gesetzt von AuthServer.cmd
 const ADMIN_LOG_STREAM_PATH = '/api/admin/log/stream';
-const ADMIN_LOG_BUFFER_LINES = 1000;              // so viele Log-Zeilen hält der Server im Arbeitsspeicher
-const ADMIN_LOG_MAX_CHARS = 4000;                 // längere Log-Einträge werden im Live-Log gekürzt
 const ADMIN_LOG_PING_MS = 30 * 1000;              // Lebenszeichen auf der Live-Log-Verbindung
 const ADMIN_ERROR_LOG_PATH = '/api/admin/log/errors';
-const ERROR_LOG_MAX_ENTRIES = 1000;               // so viele Fehlermeldungen bleiben in error_log.json
 const ADMIN_STATS_PATH = '/api/admin/stats';
 const STATS_ENABLED = true;                       // false schaltet die ganze Statistik ab (ADR 0019)
 const STREAM_CLOSE_GRACE_MS = 2 * 60 * 60 * 1000; // so lange nach dem letzten Offline läuft die Erfassung weiter
@@ -220,8 +211,6 @@ const EFFECT_MODES = ['auto', 'off'];
 const ADMIN_JSON_LIMIT = '1kb';                   // Webkonsole-Aktionen senden nur kurze JSON-Objekte
 const TWITCH_LOGIN_PATTERN = /^[a-z0-9_]{1,25}$/;
 const TWITCH_ID_PATTERN = /^\d{1,20}$/;
-const LOG_REDACTED = '<entfernt>';
-const LOG_PRIVATE_ADDRESS = '<privat>';
 
 // BdU-Chat (!BdU, siehe ADR 0014 und docs/specs/bdu-chat.md)
 const BDU_COMMAND = '!bdu';
@@ -256,21 +245,8 @@ const UBOAT_TEXT_UNAVAILABLE = 'Die Soldbücher sind gerade nicht verfügbar.';
 const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachricht
 
 // ═══════════════════════════════════════════════════════════════════
-// LIVE-LOG – Puffer für die Webkonsole (ADR 0018, docs/specs/webkonsole.md)
+// STATISTIK UND LIVE-LOG (ADR 0019, ADR 0018); Log-Kern in core/log.js
 // ═══════════════════════════════════════════════════════════════════
-
-// Erst in eine Hilfsdatei, dann umbenennen: Ein Absturz mitten im Schreiben zerstört so nicht die ganze Datei.
-function writeJsonAtomic(file, data) {
-  const tempFile = `${file}.tmp`;
-  const json = JSON.stringify(data, null, 2);
-  fs.writeFileSync(tempFile, json, 'utf8');
-  try {
-    fs.renameSync(tempFile, file);
-  } catch {   // z. B. hält OneDrive die Datei gerade fest
-    fs.writeFileSync(file, json, 'utf8');
-    fs.rmSync(tempFile, { force: true });
-  }
-}
 
 function loadStreamStats() {
   if (!fs.existsSync(STREAM_STATS_FILE)) return null;
@@ -329,195 +305,48 @@ const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   
 setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
 streamSession.ensureArchived();   // z. B. wenn der Abschluss vor dem Speichern des Berichts endete
 
-const logBuffer = [];
-const logClients = new Set();     // offene Live-Log-Verbindungen
-let nextLogId = 1;
+// Live-Log, Bereinigung, Fehlerprotokoll und logIfChanged (core/log.js); Fehler zählen in der Statistik mit.
+// Achtung: logIfChanged gibt es erst ab hier (const, keine hochgezogene Funktion mehr). Code, der beim Laden
+// weiter oben läuft, nutzt console.* direkt; Konsolenausgaben davor erscheinen nicht im Live-Log (wie bisher).
+const log = createLog({
+  redactions: redactedValues({ secrets: [CLIENT_SECRET, STREAM_KARTEI_TOKEN], webhookUrl: HA_WEBHOOK_URL, loopbackHostnames: config.LOOPBACK_HOSTNAMES }),
+  redactedText: config.LOG_REDACTED,
+  privateAddressText: config.LOG_PRIVATE_ADDRESS,
+  bufferLines: config.ADMIN_LOG_BUFFER_LINES,
+  maxChars: config.ADMIN_LOG_MAX_CHARS,
+  errorLogFile: config.ERROR_LOG_FILE,
+  errorLogMax: ERROR_LOG_MAX_ENTRIES,
+  writeJson: writeJsonAtomic,
+  onError: () => stats.count('errors'),
+});
+log.installConsole();
+const { buffer: logBuffer, clients: logClients, errorLog, writeEntry: writeLogEntry, logIfChanged } = log;
 
-function logRedactedValues() {
-  const values = [CLIENT_SECRET, HA_WEBHOOK_URL, STREAM_KARTEI_TOKEN];
-  try {
-    const url = new URL(HA_WEBHOOK_URL);
-    if (!LOOPBACK_HOSTNAMES.includes(url.hostname)) values.push(url.host, url.hostname);
-    values.push(url.pathname.split('/').pop());
-  } catch { /* keine oder ungültige Webhook-Adresse */ }
-  return values.filter(Boolean).sort((a, b) => b.length - a.length);
-}
-
-const logRedactions = logRedactedValues();
-
-// Nur für den Puffer: Das Konsolenfenster zeigt weiter die unveränderte Zeile.
-function sanitizeLogText(text) {
-  let clean = text;
-  for (const value of logRedactions) clean = clean.split(value).join(LOG_REDACTED);
-  return clean
-    .replace(/((?:access_token|refresh_token|client_secret)["']?\s*[:=]\s*["']?)[^"'&\s,}]+/gi, `$1${LOG_REDACTED}`)
-    .replace(/\b(Bearer|OAuth)\s+[\w.~+/=-]+/g, `$1 ${LOG_REDACTED}`)
-    .replace(/\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}/g, LOG_REDACTED)   // GitHub-Tokens (Stream-Kartei)
-    .replace(/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/g, LOG_PRIVATE_ADDRESS);
-}
-
-function loadErrorLog() {
-  if (!fs.existsSync(ERROR_LOG_FILE)) return [];
-  try {
-    const list = JSON.parse(fs.readFileSync(ERROR_LOG_FILE, 'utf8'));
-    return Array.isArray(list) ? list : [];
-  } catch { return []; }
-}
-
-function saveErrorLog(list) {
-  writeJsonAtomic(ERROR_LOG_FILE, list);
-}
-
-const errorLog = loadErrorLog();
-
-function appendErrorLog(entry) {
-  errorLog.push({ at: entry.at, pid: process.pid, text: entry.text });
-  if (errorLog.length > ERROR_LOG_MAX_ENTRIES) errorLog.splice(0, errorLog.length - ERROR_LOG_MAX_ENTRIES);
-  try {
-    saveErrorLog(errorLog);
-  } catch (err) {
-    logIfChanged('error-log-write', `[Fehlerprotokoll] ${ERROR_LOG_FILE} konnte nicht geschrieben werden: ${err.message}`, 'warn');
-  }
-}
-
-function writeLogEntry(res, entry) {
-  res.write(`event: line\ndata: ${JSON.stringify(entry)}\n\n`);
-}
-
-function recordLogLine(level, args) {
-  try {
-    const text = sanitizeLogText(util.format(...args));
-    const entry = {
-      id: nextLogId++,
-      at: new Date().toISOString(),
-      level,
-      text: text.length > ADMIN_LOG_MAX_CHARS ? `${text.slice(0, ADMIN_LOG_MAX_CHARS)} … (gekürzt)` : text,
-    };
-    logBuffer.push(entry);
-    if (logBuffer.length > ADMIN_LOG_BUFFER_LINES) logBuffer.shift();
-    for (const res of logClients) writeLogEntry(res, entry);
-    if (level === 'error') {
-      appendErrorLog(entry);
-      stats.count('errors');
-    }
-  } catch { /* Das Protokollieren darf den Server nie stören */ }
-}
-
-for (const [method, level] of [['log', 'info'], ['info', 'info'], ['warn', 'warn'], ['error', 'error']]) {
-  const original = console[method];
-  console[method] = (...args) => {
-    original.apply(console, args);
-    recordLogLine(level, args);
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// LOGGING-HILFSFUNKTIONEN (reduziert Log-Spam bei wiederholten/Polling-Ereignissen)
-// ═══════════════════════════════════════════════════════════════════
-
-// Merkt sich pro Schlüssel die letzte ausgegebene Nachricht.
-// Solange sich die Nachricht für diesen Schlüssel nicht ändert, wird sie
-// nicht erneut ausgegeben (z.B. wiederholte identische Prediction-Status,
-// Sub-Goal-Stände, etc.). Bei Änderung wird sofort wieder geloggt.
-const lastLoggedByKey = new Map();
-
-function logIfChanged(key, message, level = 'log') {
-  const prev = lastLoggedByKey.get(key);
-  if (prev === message) return;
-  lastLoggedByKey.set(key, message);
-  if (level === 'error') {
-    console.error(message);
-  } else if (level === 'warn') {
-    console.warn(message);
-  } else {
-    console.log(message);
-  }
-}
-
-// Generischer HTTP-Request-Logger: loggt jede Anfrage, aber unterdrückt
-// direkt aufeinanderfolgende, identische Zeilen (z.B. Dauer-Polling von
-// Widgets mit immer demselben Ergebnis). Sobald sich Methode, Pfad oder
-// Statuscode ändern, wird sofort wieder geloggt. Gilt für ALLE Endpoints,
-// auch für künftig angedockte Widgets - es wird nichts an Funktionalität
-// eingeschränkt, nur die Konsolenausgabe entrauscht.
-let lastRequestLogLine = null;
+// HTTP-Protokoll und Zugriffsschutz (core/http.js, ADR 0013): Herkunft, CORS, no-store, nur lokale Aufrufe.
+// Welche erfolgreichen Abrufe still bleiben, legt diese Regel fest; sie zieht mit den Modulen um (ADR 0027).
 let httpDebug = false;   // Konsolenbefehl "http debug on": auch erfolgreiche Abrufe der Widget-Leseendpunkte protokollieren (bis Neustart)
 
-app.use((req, res, next) => {
-  const startedAt = Date.now();
-  res.on('finish', () => {
-    // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
-    if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH, ADMIN_REPORTS_PATH].includes(req.path) && res.statusCode === 200) return;
-    // Widgets fragen ihre Leseendpunkte alle 2–5 s ab: erfolgreiche Abrufe nur im Testmodus (http debug on). Fehler bleiben sichtbar.
-    if (req.method === 'GET' && HTTP_QUIET_WIDGET_PATHS.includes(req.path) && res.statusCode < 400 && !httpDebug) return;
-    // Intro-Topics: Tastendrücke und Widget-Verbindungen nur im Testmodus protokollieren (topics debug on)
-    if (isTopicsPath(req.path) && res.statusCode < 400 && !topicsDebug) return;
-    const durationMs = Date.now() - startedAt;
-    // OAuth-Code und state aus /callback nicht ins Protokoll schreiben
-    const url = req.originalUrl.replace(/([?&](?:code|state)=)[^&]*/g, '$1…');
-    const line = `[HTTP] ${req.method} ${url} -> ${res.statusCode} (${durationMs}ms)`;
-    if (line !== lastRequestLogLine) {
-      console.log(line);
-      lastRequestLogLine = line;
-    }
-  });
-  next();
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// ZUGRIFFSSCHUTZ – Browser-Herkunft (CORS), Caching, /token nur lokal
-// ═══════════════════════════════════════════════════════════════════
-
-// CORS_ORIGINS leer: Standard-Herkünfte. '*': jede Herkunft (altes Verhalten,
-// nur als Notschalter gedacht). localhost/127.0.0.1 auf dem eigenen Port sind immer erlaubt.
-const corsAllowAll = (CORS_ORIGINS || '').trim() === '*';
-const allowedOrigins = new Set([
-  ...(CORS_ORIGINS && CORS_ORIGINS.trim() && !corsAllowAll
-    ? CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-    : DEFAULT_CORS_ORIGINS),
-  `http://localhost:${PORT}`,
-  `http://127.0.0.1:${PORT}`
-]);
-
-// Anfragen ohne Origin-Header (Stream Deck, Home Assistant, Adresszeile des
-// Browsers) sind nicht betroffen.
-function isAllowedOrigin(origin) {
-  return corsAllowAll || !origin || allowedOrigins.has(origin);
+function isQuietRequest(req, res) {
+  // Die Webkonsole fragt alle paar Sekunden ab; erfolgreiche Abfragen würden die Konsole fluten.
+  if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH, ADMIN_REPORTS_PATH].includes(req.path) && res.statusCode === 200) return true;
+  // Widgets fragen ihre Leseendpunkte alle 2–5 s ab: erfolgreiche Abrufe nur im Testmodus (http debug on). Fehler bleiben sichtbar.
+  if (req.method === 'GET' && HTTP_QUIET_WIDGET_PATHS.includes(req.path) && res.statusCode < 400 && !httpDebug) return true;
+  // Intro-Topics: Tastendrücke und Widget-Verbindungen nur im Testmodus protokollieren (topics debug on)
+  if (isTopicsPath(req.path) && res.statusCode < 400 && !topicsDebug) return true;
+  return false;
 }
 
-// Browser-Anfragen von fremden Webseiten werden abgelehnt, bevor ein Endpoint
-// etwas ausführt oder Daten herausgibt.
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (isAllowedOrigin(origin)) return next();
-  logIfChanged(
-    `origin-blocked:${origin}`,
-    `[Zugriffsschutz] Anfrage von fremder Herkunft "${origin}" abgelehnt (${req.method} ${req.path}). Eigenes Widget? Herkunft in CORS_ORIGINS (.env) eintragen.`,
-    'warn'
-  );
-  res.status(403).json({ error: 'Herkunft nicht erlaubt', origin });
+const access = createAccess({
+  port: PORT,
+  corsOrigins: CORS_ORIGINS,
+  defaultOrigins: config.DEFAULT_CORS_ORIGINS,
+  loopbackAddresses: config.LOOPBACK_ADDRESSES,
+  loopbackHostnames: config.LOOPBACK_HOSTNAMES,
+  logIfChanged,
 });
-
-app.use(cors({ origin: (origin, callback) => callback(null, isAllowedOrigin(origin)) }));
-
-// Alle Antworten sind Live-Daten. Ohne diesen Header kann z. B. eine
-// OBS-Browser-Source eine alte /token-Antwort aus dem Cache verwenden.
-app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store');
-  next();
-});
-
-function isLoopbackRequest(req) {
-  return LOOPBACK_ADDRESSES.includes(req.socket.remoteAddress);
-}
-
-// Prüft den Host-Header. Schützt vor DNS-Rebinding: Eine fremde Domain, die auf
-// 127.0.0.1 zeigt, käme sonst als "gleiche Herkunft" an CORS vorbei.
-function hasLoopbackHost(req) {
-  const host = (req.headers.host || '').toLowerCase();
-  const hostname = host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
-  return LOOPBACK_HOSTNAMES.includes(hostname);
-}
+app.use(access.requestLogger(isQuietRequest));
+access.install(app);
+const { corsAllowAll, allowedOrigins, isLoopbackRequest, hasLoopbackHost, requireLocalRequest, isLocalWidgetRequest } = access;
 
 // ═══════════════════════════════════════════════════════════════════
 // HILFSFUNKTIONEN – TOKENS
@@ -1283,19 +1112,7 @@ function buildClosingMessage() {
 // ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════
 
-// Anmeldung nur vom eigenen Rechner (ADR 0013, Nachtrag 07.11.2026): REDIRECT_URI zeigt auf localhost, die Rückkehr
-// von Twitch kommt also immer lokal an. Ohne diese Prüfung könnte ein Gerät im Heimnetz einen Code für ein fremdes
-// Konto an /callback schicken und tokens.json überschreiben.
-function requireLocalRequest(req, res, label) {
-  if (isLoopbackRequest(req) && hasLoopbackHost(req)) return true;
-  logIfChanged(
-    `local-only-denied:${label}:${req.socket.remoteAddress}|${req.headers.host}`,
-    `[Zugriffsschutz] ${label} abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Nur lokale Aufrufe über localhost oder 127.0.0.1.`,
-    'warn'
-  );
-  res.status(403).send('Nur für lokale Aufrufe über localhost oder 127.0.0.1');
-  return false;
-}
+// requireLocalRequest (Anmeldung nur vom eigenen Rechner, ADR 0013) liegt in core/http.js
 
 // Offene Logins: state -> { kind: 'broadcaster' | 'bot', createdAt }. Jeder state gilt einmal und LOGIN_STATE_TTL_MS lang.
 const pendingLogins = new Map();
@@ -1464,16 +1281,7 @@ app.get('/token', async (req, res) => {
   }
 });
 
-// ── BdU-Chat: Verbindung des Enigma-Widgets (Server-Sent Events) ──
-function isLocalWidgetRequest(req, label) {
-  if (isLoopbackRequest(req) && hasLoopbackHost(req)) return true;
-  logIfChanged(
-    `bdu-denied:${label}:${req.socket.remoteAddress}|${req.headers.host}`,
-    `[Zugriffsschutz] ${label} abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Nur lokale Aufrufe über localhost oder 127.0.0.1.`,
-    'warn'
-  );
-  return false;
-}
+// ── BdU-Chat: Verbindung des Enigma-Widgets (Server-Sent Events); isLocalWidgetRequest liegt in core/http.js ──
 
 // ── Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, Teil A, Issue #74, ADR 0025) ──
 // Verbraucher melden Befehle oder Präfixe an und bekommen passende Chat-Nachrichten als Ereignis; sie senden über den Server.
