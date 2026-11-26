@@ -4,9 +4,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
-## [1.2.0] – Release-Kandidat, Datum folgt mit dem Tag
+## [1.2.0] – 2026-11-26
 
-Erst nach der Abnahme im Teststream (Issue #96) bekommt diese Version Tag und Release. Die Nummer 1.2 war seit 1.1.5 für die Webkonsole vorgesehen. Gegenüber 1.1.5 kommen Funktionen dazu, ohne Breaking Change für Widgets, Plugins und Home Assistant. Ausnahmen: die entfernten Effekt-Adressen (Security) und der Effekt-Modus `manual` (Removed).
+Abgenommen in zwei Teststreams am 24./25. und 25./26.11.2026, beide ohne Fehler des Servers (Issue #96). Die Nummer 1.2 war seit 1.1.5 für die Webkonsole vorgesehen. Gegenüber 1.1.5 kommen Funktionen dazu, ohne Breaking Change für Widgets, Plugins und Home Assistant. Ausnahmen: die entfernten Effekt-Adressen (Security) und der Effekt-Modus `manual` (Removed).
 
 ### Update von 1.1.5
 - `main` bzw. den Tag `1.2.0` holen, `npm ci`, Server neu starten.

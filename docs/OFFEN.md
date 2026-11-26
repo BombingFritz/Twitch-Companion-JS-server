@@ -20,7 +20,7 @@ Checklisten als Issue: #56 (laufend), #96 (Abnahme Release 1.2.0).
   - `fate`-Werte: noch nicht in einem Spielstand beobachtet [UNGEKLÄRT].
   - Ein Spiel-Update kann das Format ändern: dann Konsolenhinweis „Ungetestete Spielversion“ bzw. „nicht lesbar“; Diagnose mit `node lib/uboat-save.js <Kopie des Spielstands>`.
 - **BdU-Chat** (`docs/specs/bdu-chat.md`, ADR 0014): mit echtem Chat erprobt (03.11.2026, 6 Anfragen, Antworten nach 1–3 s). Limits, Warnung und Funkstille wurden nicht erreicht, also unter Last weiter unerprobt.
-- **EventSub:** In 5½ Stunden am 17./18.11.2026 kein stiller Abbruch (#56). Ob sie überhaupt vorkommen, bleibt offen; die Konsole meldet sie seit dem Keepalive-Fix.
+- **EventSub:** Stille Abbrüche kommen vor. Am 26.11.2026 um 00:02 kamen 15 s weder Ereignis noch Keepalive; der Server baute die Verbindung nach 6 s mit allen Abos neu auf, eine gesperrte Wette lief darüber hinweg sauber weiter (#96). Vorher (17./18.11.2026) in 5½ Stunden keiner. Weiter beobachten, ob in der Lücke Ereignisse verloren gehen.
 - **Intro-Topics:** Home-Assistant-Automation für die Effekte `topic_active`, `topic_done`, `topics_complete` (FAHRPLAN Schritt 6).
 
 ## 2. Sicherheit und Datenschutz
