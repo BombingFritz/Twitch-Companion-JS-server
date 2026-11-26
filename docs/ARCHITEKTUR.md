@@ -1,6 +1,6 @@
 # Architektur (Ist-Zustand)
 
-Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016); die Statistik in `lib/stats.js` (ADR 0019); die Intro-Topics in `lib/topics.js` (ADR 0021); die Webkonsole liegt in `public/admin/` (ADR 0018). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
+Hauptdatei `server.js`; das UBOAT-Soldbuch liegt als eigenes Modul in `lib/` (`uboat-save.js`: Spielstand-Format, `uboat-crew.js`: Einlesen, Beobachtung, Zuordnung, Text; ADR 0016); die Statistik in `lib/stats.js` (ADR 0019); die Intro-Topics in `lib/topics.js` und `modules/topics/` (ADR 0021); Kern und Modul-Anmeldung in `core/` (ADR 0027); die Webkonsole liegt in `public/admin/` (ADR 0018). Laufzeit: Node.js ≥ 18, Express 5, `ws`, `axios`, `dotenv`, `cors`, `readline`. Abhängigkeiten in `package.json`, Start mit `npm start`.
 
 ## 1. Datenfluss
 
@@ -26,7 +26,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 
 Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `modules/<name>/`. Was noch nicht umgezogen ist, steht in `server.js`.
 
-**Kern (`core/`), Stand Schritt 1:**
+**Kern (`core/`), Stand Schritt 2:**
 
 | Datei | Inhalt |
 |---|---|
@@ -34,8 +34,22 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | `core/store.js` | `writeJsonAtomic` (erst in eine Hilfsdatei, dann umbenennen; Rückfall, wenn OneDrive die Datei festhält) |
 | `core/log.js` | `createLog` (`installConsole` umhüllt `console.log/info/warn/error`, `logIfChanged`, `sanitize`, `writeEntry`; Puffer `buffer`, Verbindungen `clients`, Fehlerprotokoll `errorLog`; `onError` zählt Fehler in der Statistik), `redactedValues` (Secrets, Webhook-Adresse samt Host und ID) |
 | `core/http.js` | `createAccess` (`isAllowedOrigin`, `isLoopbackRequest`, `hasLoopbackHost`, `requireLocalRequest` mit eigener 403-Antwort, `isLocalWidgetRequest` ohne Antwort, `requestLogger(isQuiet)`, `install` für Herkunftsprüfung, CORS und `Cache-Control: no-store`; `corsAllowAll`, `allowedOrigins`) |
+| `core/modules.js` | `createModuleHost`: Anmeldung der Module. `add(modul)`, `mountRoutes(app, 'widget'\|'admin')`, `handleConsole(cmd, parts)`, `helpLines()`, `isQuiet(req, res)`, `silentEffectsVisible()`, `overview()`, `emit(ereignis, daten)` |
 
-`server.js` erzeugt Log und Zugriffsschutz in dieser Reihenfolge: Statistik, dann `createLog` und `installConsole`, dann `requestLogger` und `install`. Welche erfolgreichen Abrufe im HTTP-Protokoll still bleiben, legt `isQuietRequest` in `server.js` fest (Webkonsole, Widget-Leseendpunkte, Topics); die Regel zieht mit den Modulen um.
+`server.js` erzeugt Log und Zugriffsschutz in dieser Reihenfolge: Statistik, dann `createLog` und `installConsole`, dann `requestLogger` und `install`. Welche erfolgreichen Abrufe im HTTP-Protokoll still bleiben, legt `isQuietRequest` in `server.js` fest (Webkonsole, Widget-Leseendpunkte); Module tragen eigene stille Abrufe über `isQuiet` bei.
+
+**Module (`modules/<name>/`), Stand Schritt 2:** Ein Modul ist eine Funktion `create…Module(ctx)`, die ein Objekt mit optionalen Teilen zurückgibt (Beschreibung oben in `core/modules.js`):
+- `routes.widget(app)`: Endpunkte für Widgets und Stream Deck. Sie werden an der Stelle der früheren Widget-Endpunkte eingehängt.
+- `routes.admin(app)`: Endpunkte der Webkonsole, erst nach dem Schutz `app.use('/api/admin', …)` eingehängt.
+- `consoleCommands`: Name, Hilfezeilen, `handle`. Die Hilfezeilen erscheinen in `printConsoleHelp` an fester Stelle; der Befehl wird im `rl.on('line')`-Handler über `handleConsole` verteilt.
+- `isQuiet`, `showsSilentEffects`, `overview`.
+- `on`: Ereignisse `stream.new` (neue Stream-Session, nicht Wiederaufnahme) und `module.switched` (`{key, on, changed}` nach `switchModule`).
+
+| Modul | Inhalt |
+|---|---|
+| `modules/topics/` (ADR 0020, 0021) | `createTopicsModule`: Datei `topics.json`, Ereignisse an Widgets und Plugin, Effekte über `ctx.scheduleEffect`, `/api/topics`, `/api/topics/stream`, `POST /api/topics/:action`, `/api/admin/topics…`, Konsole `topics …`, Testmodus (still im HTTP-Protokoll, stille Effekte sichtbar), Teil `topics` der Übersicht; Konstanten `TOPICS_*`, `ADMIN_TOPICS_PATH`. `ctx`: `isEnabled`, `switchModule`, `stateLabel`, `scheduleEffect`, `logIfChanged`, `isLocalWidgetRequest`, `requireAdminWrite`, `adminJsonLimit`, `deckPath`. Zustand und Regeln weiter in `lib/topics.js` |
+
+`/api/deck` (Stream-Deck-Übersicht) bleibt in `server.js`, weil es auch den Clip-Moment betrifft.
 
 **Noch in `server.js`:**
 
@@ -56,7 +70,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode` |
 | Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch`, `switchModule` (Konsole `bdu`/`uboat activate\|deactivate` und Webkonsole), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `processEffectQueue`, `isSilentEffect` (Typen in `SILENT_EFFECT_TYPES`: kein Log, kein Event-Log, keine Statistik); RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
-| Intro-Topics (ADR 0020, 0021) | `server.js`: `loadTopicsFile`, `saveTopicsFile`, `broadcastTopics`, `isTopicsPath` (still im HTTP-Protokoll), `topicsDebugLog`, `topicsSummary`, `printTopicsStatus`; RAM: `topics`, `topicsClients`, `topicsDebug`. `lib/topics.js`: `createTopics` (`getState`, `getConfig`, `next`, `back`, `toggle`, `reset`, `setItems`, `setDisplay`, `notifyEnabledChanged`), `validateItems`, `validateDisplay` |
+| Intro-Topics (ADR 0020, 0021) | umgezogen nach `modules/topics/` (siehe oben). `server.js`: `moduleHost` (Anmeldung) und `DECK_PATH`. `lib/topics.js`: `createTopics` (`getState`, `getConfig`, `next`, `back`, `toggle`, `reset`, `setItems`, `setDisplay`, `notifyEnabledChanged`), `validateItems`, `validateDisplay` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged` und HTTP-Protokoll aus dem Kern (`core/log.js`, `core/http.js`; unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen). In `server.js` `isQuietRequest`: erfolgreiche GET der Widget-Leseendpunkte in `HTTP_QUIET_WIDGET_PATHS` nur mit `http debug on`, `/token` und Antworten ab 400 immer; RAM: `httpDebug` |
 | Statistik (ADR 0019) | `server.js`: `isCountedChatter`, `syncStreamWithTwitch`, `loadStreamStats`, `saveStreamStats` (über `writeJsonAtomic` aus `core/store.js`); RAM: `stats`, `streamSession`. `lib/stats.js`: `createStats` (`count`, `snapshot`), `streamMetricKeys`, zentrale Liste `METRICS`. `lib/stream-session.js`: `createStreamSession` (`onOnline`, `onOffline`, `onRaidOut`, `closeManually`, `ensureArchived`, `reconcile`, `setCategory`, `count`, `noteChatter`, `anonymize`, `noteViewers`, `tick`, `flush`, `snapshot`; Optionen `onClose` für das Archiv, `isPrivate` und `anonName` für `!privat`, `maxViewerMinutes`), `viewerSummary`. `lib/stream-reports.js`: `createStreamReports` (`archive`, `list`, `totals`, `text`, `remove`, `exists`, `anonymize`), `reportIdFor`, `reportWarnings`, `isReportId`, `CLOSE_REASONS`. `server.js` außerdem: `subscribeForStats`, `recordPollEnd`, `recordPredictionEnd`, `overviewStream`, `withReportState`, `statsWithReportState`, `pollStreamViewers` (ADR 0023); RAM: `streamReports`, `streamViewers` |
@@ -71,7 +85,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | Stream-Kartei (ADR 0026) | `lib/stream-kartei.js` (`buildUboatCrew`, `contentHash`, `uboatFiles`, `createKarteiScheduler`: höchstens alle `STREAM_KARTEI_MIN_GAP_MS`, nur bei Änderung, dringend ohne Abstand, 401/403 sperren bis Neustart); `lib/github-publisher.js` (`createGithubPublisher`: `publish` ersetzt den Zweig `data` durch einen Commit ohne Vorgänger, `readFile`, `tokenExpiresAt`; eigener Client über `axios`, nicht `twitchApi`). In `server.js`: `buildKarteiData`, `karteiPrivateNames` (Login und Anzeigename der `!privat`-Zuschauer über `GET /users?id=`), `karteiHiddenNames`, `requestKartei` (aus `onLoad`, `handlePrivacyCommand`, `uboat map`, Modulschalter), `isPrivateLogin` (`uboat map` sperrt `!privat`), `karteiOverview`, `printKarteiStatus`; RAM: `karteiPrivacyNames`, Zustand des Schedulers (Spec `stream-kartei.md`) |
 | Raid | `enqueueRaidEvent`, `processRaidQueue`, `handleRaidEvent`, `buildBaseMessage`, `buildGameMessage`, `buildRankRepeatMessage`, `buildRepeatOnlyMessage`, `buildViewerRankMessage`, `buildClosingMessage`; RAM: `raidQueue`, `isProcessingQueue`, `lastRaidGreetingSentAt`, `lastRaidstatsCommandAt` |
 | Sessions | RAM: `shoutedOutThisSession`, `eventSubWs`, `eventSubReconnectTimer` |
-| Konsole | `printConsoleHelp`, `rl.on('line', …)` |
+| Konsole | `printConsoleHelp`, `rl.on('line', …)`; Befehle der Module über `moduleHost.handleConsole` und `moduleHost.helpLines()` |
 | Status | `buildAuthStatus`, `buildRuntimeStatus` (gemeinsam für `/status` und die Webkonsole) |
 | Webkonsole (ADR 0018) | `requireAdminPage`, `requireAdminApi`, `requireAdminWrite` (ändernde Aktionen), `endServerFromAdmin`, `parseWhitelistInput`; RAM: `adminOrigins`, `adminExitRequested`. Seite: `public/admin/` (`index.html`, `admin.js` mit Reiterliste `TABS`, `admin.css`) |
 

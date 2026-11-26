@@ -149,6 +149,8 @@ Hinweise:
 ## Berührte Dateien
 Neu: `lib/topics.js`, `topics.json` (Laufzeit, nicht im Repository), `test/topics-lib-test.js`, `test/topics-test.js`. Geändert: `server.js` (Verdrahtung, Endpoints, Modulschalter, Konsolenbefehl `topics`, stille Effekt-Typen), `public/admin/` (Reiter „Topics“).
 
+Seit ADR 0027, Schritt 2: Endpunkte, Konsolenbefehl, Testmodus, Datei, Ereignisse an Widgets und Plugin und der Teil der Übersicht liegen im Modul `modules/topics/`. `server.js` meldet es über `core/modules.js` an und behält Modul-Schalter, stille Effekt-Typen und `/api/deck`. Verhalten und Schnittstelle sind unverändert.
+
 ## Status
 Umgesetzt (12.11.2026): `lib/topics.js` mit `test/topics-lib-test.js` (Logik, künstlicher Timer), Server mit Attrappen in `test/topics-test.js` (Endpoints, Zugriffsschutz, Server-Sent Events mit zwei Widgets, Ausblenden nach 5 s, stille Effekte, Testmodus, kaputter Webhook, Modulschalter, Webkonsole, Reset bei neuem Stream). Reiter „Topics“ und CheckTalk-Widget 0.2.0 (horizontal und vertikal gleichzeitig) im Browser mit Attrappen geprüft. Am echten Server, in OBS und mit Home Assistant noch nicht geprüft.
 
