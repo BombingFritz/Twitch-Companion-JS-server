@@ -305,7 +305,9 @@ const stats = createStats({ enabled: STATS_ENABLED, stream: streamSession });   
 setInterval(() => streamSession.tick(), STREAM_TICK_MS).unref();
 streamSession.ensureArchived();   // z. B. wenn der Abschluss vor dem Speichern des Berichts endete
 
-// Live-Log, Bereinigung, Fehlerprotokoll und logIfChanged (core/log.js); Fehler zählen in der Statistik mit
+// Live-Log, Bereinigung, Fehlerprotokoll und logIfChanged (core/log.js); Fehler zählen in der Statistik mit.
+// Achtung: logIfChanged gibt es erst ab hier (const, keine hochgezogene Funktion mehr). Code, der beim Laden
+// weiter oben läuft, nutzt console.* direkt; Konsolenausgaben davor erscheinen nicht im Live-Log (wie bisher).
 const log = createLog({
   redactions: redactedValues({ secrets: [CLIENT_SECRET, STREAM_KARTEI_TOKEN], webhookUrl: HA_WEBHOOK_URL, loopbackHostnames: config.LOOPBACK_HOSTNAMES }),
   redactedText: config.LOG_REDACTED,
