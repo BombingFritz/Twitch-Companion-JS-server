@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ## [Unreleased]
 
+### Changed
+- BdU-Chat (Issue #99, Spec `bdu-chat.md`, „Gescheiterte Anfrage“): Meldet das Enigma-Widget einen Fehler, etwa eine überlastete KI, oder antwortet es nicht binnen 120 s, postet der BdU als Antwort „Funkspruch nicht durchgekommen, Störung im Äther. Später erneut funken!“. Höchstens eine solche Meldung kommt je 2 min, keine während der Funkstille. Die Anfrage wird nicht angerechnet: Globales Limit, Nutzerlimit und Tageszähler werden zurückgenommen, der Zuschauer kann gleich erneut fragen. Vorher kam keine Rückmeldung, und die Anfrage zählte trotzdem (Teststream 25.11.2026).
+
+### Tests
+- Neuer Test `test/bdu-test.js` (Störungsmeldung, Abstand, Rücknahme aller Zähler, Zeitüberschreitung, Erfolg zählt weiter, Funkstille unverändert).
+
 ## [1.2.0] – 2026-11-26
 
 Abgenommen in zwei Teststreams am 24./25. und 25./26.11.2026, beide ohne Fehler des Servers (Issue #96). Die Nummer 1.2 war seit 1.1.5 für die Webkonsole vorgesehen. Gegenüber 1.1.5 kommen Funktionen dazu, ohne Breaking Change für Widgets, Plugins und Home Assistant. Ausnahmen: die entfernten Effekt-Adressen (Security) und der Effekt-Modus `manual` (Removed).
