@@ -12,7 +12,7 @@ Wie etwas **heute** funktioniert, steht in [ARCHITEKTUR.md](../ARCHITEKTUR.md); 
 | [0001](0001-json-dateien-statt-datenbank.md) | Jede Datenart liegt in einer eigenen JSON-Datei, keine Datenbank. |
 | [0002](0002-einzelprozess-mit-ram-zustand.md) | Ein Node.js-Prozess hält alle Verbindungen und den flüchtigen Zustand im Arbeitsspeicher. |
 | [0007](0007-eventsub-per-websocket.md) | Twitch-Ereignisse kommen über eine dauerhafte EventSub-WebSocket-Verbindung. |
-| [0027](0027-server-in-kern-und-module-aufteilen.md) | `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt; Module melden Endpunkte, EventSub-Abos, Befehle und ihren Teil der Webkonsole selbst an und hängen nur am Kern. Ergänzt 0024 und 0018. |
+| [0027](0027-server-in-kern-und-module-aufteilen.md) | `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt; Module melden Endpunkte, EventSub-Abos, Befehle und ihren Teil der Webkonsole selbst an und hängen nur am Kern. Ergänzt 0024 und 0018. Nachtrag: Ist-Form der Anmeldung, `ctx`, Zustand, Schritt 3d EventSub, unbehandelte asynchrone Fehler. |
 
 ### Widgets und Sicherheit
 | ADR | Worum es geht |
