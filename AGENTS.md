@@ -78,7 +78,7 @@
 | Was ausgeliefert wurde | CHANGELOG.md, Releases |
 
 ## Pflicht-Checks
-- Vor jedem Commit mit Code lokal: `node --check server.js` und die Tests zu den geänderten Bereichen (einzeln, z. B. `node test/admin-test.js server.js statistik`; neue Tests ebenso). Die volle Testreihe (`npm test`) führt GitHub Actions bei jedem Pull Request unter Linux aus (`.github/workflows/test.yml`); gemergt wird nur bei grünem Lauf, ein roter Lauf wird im selben Branch behoben (Nutzer, 13.11.2026).
+- Vor jedem Commit mit Code lokal: `npm run check` (Syntax aller projekteigenen JS-Dateien) und die Tests zu den geänderten Bereichen (einzeln, z. B. `node test/admin-test.js server.js statistik`; neue Tests ebenso). Die volle Testreihe (`npm test`) führt GitHub Actions bei jedem Pull Request unter Linux aus (`.github/workflows/test.yml`); gemergt wird nur bei grünem Lauf, ein roter Lauf wird im selben Branch behoben (Nutzer, 13.11.2026).
 - Ausnahme: Änderungen an `AuthServer.cmd`, Neustart oder Beenden des Servers lokal mit `node test/authserver-test.js` und `npm test` prüfen; der AuthServer-Test läuft nur unter Windows und nicht in der CI.
 - In der PR-Übergabe angeben, welche Tests lokal liefen und dass die volle Testreihe in der CI läuft; deren Ergebnis vor der Übergabe ansehen.
 - Nur beabsichtigte Stellen ändern; Diff gegen die Vorversion prüfen.

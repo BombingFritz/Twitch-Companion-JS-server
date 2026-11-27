@@ -23,5 +23,5 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: node --check server.js
+      - run: npm run check   # Syntax aller projekteigenen JS-Dateien (scripts/check.js)
       - run: npm test
