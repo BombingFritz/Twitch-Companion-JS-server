@@ -53,6 +53,18 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 
 `/api/deck` (Stream-Deck-Übersicht) bleibt in `server.js`, weil es auch den Clip-Moment betrifft.
 
+**Absicherung der Regeln (ADR 0027, Nachtrag, Abschnitt 8):** `test/architektur-test.js` läuft in der Testreihe und damit in der CI. Er prüft in `server.js`, `core/`, `lib/` und `modules/`:
+- Module importieren kein anderes Modul.
+- Der Kern importiert keine Module.
+- `lib/` importiert weder Kern noch Module.
+- Niemand importiert `server.js`.
+- Es gibt keine Zyklen.
+- Jedes `require` hat einen festen Pfad.
+- `axios` und `ws` lädt nur `server.js`.
+- Direkte Schreibzugriffe außerhalb von `core/store.js` gibt es nur an den bekannten Stellen (`KNOWN_WRITES` im Test, Stand 27.11.2026: 15). Die Liste darf nur schrumpfen.
+
+`npm run check` (`scripts/check.js`) prüft die Syntax aller projekteigenen JS-Dateien. Die CI nutzt denselben Befehl.
+
 **Noch in `server.js`:**
 
 | Bereich | Funktionen / Zustand |
