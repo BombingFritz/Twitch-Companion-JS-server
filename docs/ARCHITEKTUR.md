@@ -26,11 +26,12 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 
 Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `modules/<name>/`. Was noch nicht umgezogen ist, steht in `server.js`.
 
-**Kern (`core/`), Stand Schritt 2:**
+**Kern (`core/`), Stand Schritt 3a:**
 
 | Datei | Inhalt |
 |---|---|
-| `core/config.js` | `.env` (`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS`, `UBOAT_SAVES_DIR`, `STREAM_KARTEI_*`), `APP_VERSION`, `SERVER_STARTED_AT` und die Konstanten des Kerns (Zugriffsschutz, Log, Fehlerprotokoll; Abschnitt 7) |
+| `core/config.js` | `.env` (`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS`, `UBOAT_SAVES_DIR`, `STREAM_KARTEI_*`), `APP_VERSION`, `SERVER_STARTED_AT` und die Konstanten des Kerns (Zugriffsschutz, Login, Tokens, Bot, Twitch-Drosselung, Log, Fehlerprotokoll; Abschnitt 7) |
+| `core/auth.js` | `createAuth` (Schritt 3a): Tokens (`tokenStore` aus `lib/twitch-api.js`, `loadTokens`, `saveTokens`, `getValidAccessToken`, Erneuerung vor Ablauf), Bot-Datei (`loadBotConfig`, `saveBotConfig`, `removeBotConfig`), App-Token (`getAppAccessToken`), zentraler Twitch-Zugriff `twitchApi` (ADR 0024) und `routes(app)` für `/login`, `/login-bot`, `/callback` (mit einmal gültigem `state`, Bot-Freigabe) und `/token`. Rückrufe aus `server.js`: `onBroadcasterLogin` (Scope-Merker der Abstimmungen zurücksetzen, EventSub verbinden), `onBotAuthorized` (letzten Bot-Fehler löschen), `botFeatureLabels` |
 | `core/store.js` | `writeJsonAtomic` (erst in eine Hilfsdatei, dann umbenennen; Rückfall, wenn OneDrive die Datei festhält) |
 | `core/log.js` | `createLog` (`installConsole` umhüllt `console.log/info/warn/error`, `logIfChanged`, `sanitize`, `writeEntry`; Puffer `buffer`, Verbindungen `clients`, Fehlerprotokoll `errorLog`; `onError` zählt Fehler in der Statistik), `redactedValues` (Secrets, Webhook-Adresse samt Host und ID) |
 | `core/http.js` | `createAccess` (`isAllowedOrigin`, `isLoopbackRequest`, `hasLoopbackHost`, `requireLocalRequest` mit eigener 403-Antwort, `isLocalWidgetRequest` ohne Antwort, `requestLogger(isQuiet)`, `install` für Herkunftsprüfung, CORS und `Cache-Control: no-store`; `corsAllowAll`, `allowedOrigins`) |
@@ -55,10 +56,10 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 
 | Bereich | Funktionen / Zustand |
 |---|---|
-| Tokens und Twitch-API (ADR 0024) | `server.js`: `readTokensFile`, `loadTokens`/`saveTokens` (aus dem und in den Arbeitsspeicher, gespeichert atomar), `getValidAccessToken`, `createEventSubSubscription`, Zeitgeber für die Erneuerung vor Ablauf; RAM: `tokenStore`, `twitchApi`, `tokenProactiveRetryAt`. `lib/twitch-api.js`: `createTokenStore` (`get`, `set`, `expiresAt`, `refresh` – nur eine zur Zeit, `getValidAccessToken`), `createRateLimiter` (`acquire`, `stats`), `createTwitchApi` (`get`, `post`, `patch`, `delete`, `stats`). Alle Helix-Anfragen laufen über `twitchApi` |
+| Tokens und Twitch-API (ADR 0024) | in `core/auth.js` (siehe oben); `server.js` übernimmt `tokenStore`, `twitchApi`, `loadTokens`, `getValidAccessToken` und behält `createEventSubSubscription`. `lib/twitch-api.js`: `createTokenStore` (`get`, `set`, `expiresAt`, `refresh` – nur eine zur Zeit, `getValidAccessToken`), `createRateLimiter` (`acquire`, `stats`), `createTwitchApi` (`get`, `post`, `patch`, `delete`, `stats`). Alle Helix-Anfragen laufen über `twitchApi` |
 | Zugriffsschutz (ADR 0013) | in `core/http.js` (siehe oben); `server.js` nutzt `isLocalWidgetRequest` für die Widget-Endpunkte und `isQuietRequest` für das HTTP-Protokoll |
-| Login (ADR 0013, 0017) | `requireLocalRequest` aus `core/http.js` (nur lokal für `/login`, `/login-bot`, `/callback`), `createLoginState`, `takeLoginState`; RAM: `pendingLogins` (state → Art, einmal gültig) |
-| Bot-Account (ADR 0017) | `loadBotConfig`, `saveBotConfig`, `getAppAccessToken`, `handleBotCallback`, `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `appAccessToken`, `botLastError` |
+| Login (ADR 0013, 0017) | in `core/auth.js` (`createLoginState`, `takeLoginState`, RAM `pendingLogins`: state → Art, einmal gültig); nur lokal über `requireLocalRequest` aus `core/http.js` |
+| Bot-Account (ADR 0017) | Datei, App-Token und Freigabe in `core/auth.js`; in `server.js` `sendChatMessageAsBot`, `checkChatSendResult`, `botFeatureLabels`, `printBotStatus`; RAM: `botLastError` (zieht mit Schritt 3b nach `core/chat.js`) |
 | Raid-Tracking | `loadRaidLog`, `saveRaidLog`, `getPeriodKey`, `getPeriodWord`, `trackRaid`, `getRanks`, `getLeaderboardText`, `pick` |
 | Whitelist | `loadWhitelist`, `saveWhitelist`, `addToWhitelist`, `removeFromWhitelist`, `printWhitelist`, `resolveUserByLogin`, `resolveUserById` |
 | Letzter Stand aus EventSub | `lib/live-state.js` (`createLiveStateTracker`: Stand nur im Arbeitsspeicher, Ausgangsstand je Verbindung, Kontrolle nach `…_RECHECK_MS` ohne Ereignis, solange offen; ein früherer Zustand ersetzt nie einen späteren derselben ID; eine andere ID nur, wenn sie nicht früher begonnen hat, `startKey`) |
@@ -268,7 +269,7 @@ Für jede Notification gilt vorab: Eine bereits gesehene `metadata.message_id` w
 
 ## 7. Konstanten
 
-Seit ADR 0027 stehen die Konstanten des Kerns in `core/config.js`: `DEFAULT_CORS_ORIGINS`, `LOOPBACK_ADDRESSES`, `LOOPBACK_HOSTNAMES`, `ERROR_LOG_FILE`, `ERROR_LOG_MAX_ENTRIES`, `ADMIN_LOG_BUFFER_LINES`, `ADMIN_LOG_MAX_CHARS`, `LOG_REDACTED`, `LOG_PRIVATE_ADDRESS`. Alle übrigen stehen weiter oben in `server.js` und ziehen mit ihrem Modul um.
+Seit ADR 0027 stehen die Konstanten des Kerns in `core/config.js`: `DEFAULT_CORS_ORIGINS`, `LOOPBACK_ADDRESSES`, `LOOPBACK_HOSTNAMES`, `ERROR_LOG_FILE`, `ERROR_LOG_MAX_ENTRIES`, `ADMIN_LOG_BUFFER_LINES`, `ADMIN_LOG_MAX_CHARS`, `LOG_REDACTED`, `LOG_PRIVATE_ADDRESS`; seit Schritt 3a auch `TOKEN_FILE`, `BOT_FILE`, `BOT_SCOPES`, `LOGIN_STATE_TTL_MS`, `APP_TOKEN_REFRESH_MARGIN_MS`, `TOKEN_REFRESH_BUFFER_MS`, `TOKEN_PROACTIVE_REFRESH_MS`, `TOKEN_PROACTIVE_RETRY_MS`, `TOKEN_CHECK_INTERVAL_MS` und `TWITCH_API_*`. Alle übrigen stehen weiter oben in `server.js` und ziehen mit ihrem Modul um.
 
 | Name | Wert | Bedeutung |
 |---|---|---|

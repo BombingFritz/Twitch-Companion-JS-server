@@ -21,6 +21,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Reaktionen auf `stream.new` und `module.switched`
 
   Intro-Topics ist das erste Modul (`modules/topics/`). `server.js` ist rund 150 Zeilen kürzer.
+- Umbau nach ADR 0027, Schritt 3a, ohne Änderung des Verhaltens: Login, Tokens, Bot-Freigabe, App-Token und der zentrale Twitch-Zugriff liegen in `core/auth.js`:
+  - `/login`, `/login-bot`, `/callback`, `/token`
+  - Erneuerung vor Ablauf
+  - Konstanten in `core/config.js`
+
+  `server.js` ist rund 240 Zeilen kürzer. Schritt 3 ist geteilt: 3b Chat-Versand, 3c gemeinsamer Stand und Ereignisse.
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
