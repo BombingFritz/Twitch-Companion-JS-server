@@ -30,6 +30,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
+- ADR 0027, Nachtrag nach zwei Reviews des Umbaus. Er legt fest:
+  - die Ist-Form der Modul-Anmeldung und Regeln für neue Haken
+  - die Form von `ctx` und den Besitz des Zustands
+  - den neuen Schritt 3d: `core/eventsub.js` mit Abo-Register und Chat-Befehlen, `subgoal` als Pilot
+  - den Vertrag für Effekte und Statistik
+  - Start und Stopp der Module
+  - einen Architekturtest in der CI
+  - eigene Regeln für komplexe Module
+
+  Unbehandelte asynchrone Fehler sollen den Server künftig nicht mehr beenden, sondern protokolliert und angezeigt werden; das folgt als eigener PR.
 - FAHRPLAN (vom Nutzer bestätigt, 27.11.2026): Neue Server-Schritte beginnen erst nach dem Umzug von Topics als Modul; Schritt 7 (Clip-Moment) wartet darauf. ARCHITEKTUR mit Abschnitt „Kern“, AGENTS.md mit den Regeln zur Aufteilung.
 
 ### Tests
