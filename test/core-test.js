@@ -110,6 +110,48 @@ check('H5 Eigene Liste ersetzt die Standard-Herkünfte', listed.isAllowedOrigin(
   const saved = JSON.parse(fs.readFileSync(chatCfg.CHAT_SENDERS_FILE, 'utf8'));
   check('C6 Absender umstellen wird gespeichert', changed && saved.raid === 'bot' && chat.setChatSender('raid', 'bot', 'Test') === false);
 
+  // createState (Schritt 3c): Modul-Schalter, Kategorie, !privat-Liste, Stream live
+  const { createState } = require(path.join(root, 'core', 'state'));
+  const { createEvents } = require(path.join(root, 'core', 'events'));
+  const stateCfg = { ...cfg, MODULES_FILE: path.join(dir, 'modules.json'), PRIVACY_FILE: path.join(dir, 'privacy_optouts.json') };
+  fs.writeFileSync(stateCfg.MODULES_FILE, JSON.stringify({ b: false, fremd: false, a: 'kaputt' }));
+  const bus = createEvents(); const switched = [];
+  bus.on('module.switched', 'test', p => switched.push(p));
+  let live = false;
+  const stateLogs = []; const keepLog = console.log, keepWarn = console.warn;
+  console.log = console.warn = (...a) => stateLogs.push(a.join(' '));
+  const st = createState({ config: stateCfg, modules: { a: 'Modul A', b: 'Modul B' }, offTexts: { b: 'B ruht' }, events: bus, writeJson: writeJsonAtomic, isLive: () => live });
+  const loaded = st.moduleSwitches();
+  const ch1 = st.switchModule('b', true);
+  const ch2 = st.switchModule('b', true);
+  st.switchModule('a', false);
+  console.log = keepLog; console.warn = keepWarn;
+  const savedSwitches = JSON.parse(fs.readFileSync(stateCfg.MODULES_FILE, 'utf8'));
+  check('Z1 Schalter laden: Reihenfolge der Module, ungültige Werte und fremde Einträge ignoriert', JSON.stringify(loaded) === '{"a":true,"b":false}', JSON.stringify(loaded));
+  check('Z2 Umschalten: speichert, Logzeilen wie bisher, meldet module.switched auch ohne Änderung', ch1 === true && ch2 === false && JSON.stringify(savedSwitches) === '{"a":false,"b":true}'
+    && stateLogs.includes('Modul B aktiviert (gespeichert, gilt auch nach Neustart)') && stateLogs.includes('Modul B ist bereits aktiviert')
+    && stateLogs.includes('Modul A deaktiviert – Befehle im Chat werden ignoriert (gespeichert, gilt auch nach Neustart)')
+    && JSON.stringify(switched) === '[{"key":"b","on":true,"changed":true},{"key":"b","on":true,"changed":false},{"key":"a","on":false,"changed":true}]', JSON.stringify({ stateLogs, switched }));
+  check('Z3 Zustandstext und Abfrage', st.stateLabel('b') === 'aktiviert' && st.stateLabel('a') === 'deaktiviert ("a activate" schaltet ein)' && st.isEnabled('a') === false && st.isEnabled('b') === true);
+  const before = st.categoryConfirmedAt();
+  const c1 = st.setCategory('UBOAT'); const changedAt = st.categoryChangedAt();
+  while (new Date().toISOString() === changedAt) await new Promise(r => setImmediate(r));   // bis die Uhr weiter ist
+  const c2 = st.setCategory('UBOAT');
+  check('Z4 Kategorie: Änderung gemeldet, Bestätigung ohne Änderung erneuert nur den Bestätigungszeitpunkt', before === null && c1 === true && c2 === false && st.category() === 'UBOAT'
+    && st.categoryChangedAt() === changedAt && st.categoryConfirmedAt() > changedAt);
+  st.setPrivate(42, true, Date.UTC(2026, 10, 28)); st.setPrivate('7', true); st.setPrivate('7', false);
+  st.savePrivacyOptouts();
+  const savedPrivacy = JSON.parse(fs.readFileSync(stateCfg.PRIVACY_FILE, 'utf8'));
+  check('Z5 !privat: setzen, entfernen, speichern, Abfrage mit Zahl oder Text', st.isPrivateUser(42) && st.isPrivateUser('42') && !st.isPrivateUser('7')
+    && JSON.stringify(st.privateUserIds()) === '["42"]' && savedPrivacy['42'] === '2026-11-28T00:00:00.000Z' && Object.keys(savedPrivacy).length === 1, JSON.stringify(savedPrivacy));
+  fs.writeFileSync(stateCfg.PRIVACY_FILE, '{ kaputt'); fs.rmSync(stateCfg.MODULES_FILE);
+  const warns = []; console.warn = m => warns.push(m);
+  const st2 = createState({ config: stateCfg, modules: { a: 'Modul A' }, events: bus, writeJson: writeJsonAtomic, isLive: () => live });
+  console.warn = keepWarn;
+  live = true;
+  check('Z6 Defekte !privat-Datei: niemand privat, Warnung; fehlende modules.json: alle an; Stream live aus der Quelle', st2.privateUserIds().length === 0
+    && warns.some(w => w.includes('ist unlesbar – niemand gilt als privat')) && st2.isEnabled('a') === true && st2.isLive() === true && st.isLive() === true, JSON.stringify(warns));
+
   for (const x of results) realLog(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : `  -> ${x.info}`}`);
   process.chdir(os.tmpdir());
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* egal */ }

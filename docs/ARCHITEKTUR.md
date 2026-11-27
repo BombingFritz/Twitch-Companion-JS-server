@@ -10,7 +10,7 @@ server.js --alle 30 s, solange live: GET /helix/streams--> streamViewers (RAM) +
 Twitch --EventSub WebSocket--> server.js
 server.js --scheduleEffect()--> effectQueue --POST--> HA_WEBHOOK_URL
 Chat "!raidstats" --> server.js --> Leaderboard in Twitch-Chat
-Chat "!privat" --> server.js --> privacy_optouts.json; Chatter-Eintrag in stream_stats.json und stream_reports/ anonymisiert; Antwort im Chat ; Widget --GET /api/privacy/optouts (ADR 0022)
+Chat "!privat" --> server.js --> core/state.js --> privacy_optouts.json; Chatter-Eintrag in stream_stats.json und stream_reports/ anonymisiert; Antwort im Chat ; Widget --GET /api/privacy/optouts (ADR 0022)
 Chat "!BdU …" --> server.js --SSE /api/bdu/stream--> Enigma-Widget (KI) --POST /api/bdu/answer--> server.js --> Antwort im Chat von DerBdu (ohne Bot: "FT vom BdU: …" vom Broadcaster)
 UBOAT-Saves-Ordner --nur lesen--> lib/uboat-crew.js (RAM) ; Chat "!soldbuch" --> server.js --> Soldbuch im Chat über Bot DerBdu (kein Treffer: nur Konsole) ; Widget --GET /api/uboat/crew
 Bot-Nachrichten: server.js --App-Access-Token, sender_id = Bot--> Helix /chat/messages (Rückfall: Broadcaster-Token; ADR 0017)
@@ -26,7 +26,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 
 Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `modules/<name>/`. Was noch nicht umgezogen ist, steht in `server.js`.
 
-**Kern (`core/`), Stand Schritt 3c (Ereignisse):**
+**Kern (`core/`), Stand Schritt 3c:**
 
 | Datei | Inhalt |
 |---|---|
@@ -38,6 +38,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | `core/http.js` | `createAccess` (`isAllowedOrigin`, `isLoopbackRequest`, `hasLoopbackHost`, `requireLocalRequest` mit eigener 403-Antwort, `isLocalWidgetRequest` ohne Antwort, `requestLogger(isQuiet)`, `install` für Herkunftsprüfung, CORS und `Cache-Control: no-store`; `corsAllowAll`, `allowedOrigins`) |
 | `core/modules.js` | `createModuleHost({ events })`: Anmeldung der Module. `add(modul)` (trägt dessen `on` in den Ereignisbus ein), `mountRoutes(app, 'widget'\|'admin')`, `handleConsole(cmd, parts)`, `helpLines()`, `isQuiet(req, res)`, `silentEffectsVisible()`, `overview()`, `events` |
 | `core/events.js` | `createEvents` (Schritt 3c): interner Ereignisbus mit `on(ereignis, besitzer, fn)`, `emit(ereignis, daten)` und `eventNames()`. Fehler fängt er je Empfänger ab, auch abgelehnte Promises (Abschnitt „Interne Ereignisse“) |
+| `core/state.js` | `createState` (Schritt 3c): gemeinsamer Laufzeitstand, nur was mindestens zwei Bereiche lesen. Inhalt:<br>• Modul-Schalter mit `isEnabled(key)`, `stateLabel(key)`, `switchModule(key, on)` (speichert `modules.json`, loggt, sendet `module.switched`) und `moduleSwitches()`<br>• Twitch-Kategorie mit `category()`, `categoryChangedAt()`, `categoryConfirmedAt()`, `setCategory(name)`<br>• `!privat`-Liste mit `isPrivateUser`, `setPrivate`, `savePrivacyOptouts` (über `writeJsonAtomic`), `privateUserIds()`<br>• `isLive()`<br>Aus `server.js` kommen `modules` (`MODULE_NAMES`, Reihenfolge der Schalter), `offTexts` (`MODULE_OFF_TEXT`), `events` und `isLive` (Stream-Session) |
 
 `server.js` erzeugt Log und Zugriffsschutz in dieser Reihenfolge: Statistik, dann `createLog` und `installConsole`, dann `requestLogger` und `install`. Welche erfolgreichen Abrufe im HTTP-Protokoll still bleiben, legt `isQuietRequest` in `server.js` fest (Webkonsole, Widget-Leseendpunkte); Module tragen eigene stille Abrufe über `isQuiet` bei.
 
@@ -50,7 +51,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 
 | Modul | Inhalt |
 |---|---|
-| `modules/topics/` (ADR 0020, 0021) | `createTopicsModule`: Datei `topics.json`, Ereignisse an Widgets und Plugin, Effekte über `ctx.scheduleEffect`, `/api/topics`, `/api/topics/stream`, `POST /api/topics/:action`, `/api/admin/topics…`, Konsole `topics …`, Testmodus (still im HTTP-Protokoll, stille Effekte sichtbar), Teil `topics` der Übersicht; Konstanten `TOPICS_*`, `ADMIN_TOPICS_PATH`. `ctx`: `isEnabled`, `switchModule`, `stateLabel`, `scheduleEffect`, `logIfChanged`, `isLocalWidgetRequest`, `requireAdminWrite`, `adminJsonLimit`, `deckPath`. Zustand und Regeln weiter in `lib/topics.js` |
+| `modules/topics/` (ADR 0020, 0021) | `createTopicsModule`: Datei `topics.json`, Ereignisse an Widgets und Plugin, Effekte über `ctx.scheduleEffect`, `/api/topics`, `/api/topics/stream`, `POST /api/topics/:action`, `/api/admin/topics…`, Konsole `topics …`, Testmodus (still im HTTP-Protokoll, stille Effekte sichtbar), Teil `topics` der Übersicht; Konstanten `TOPICS_*`, `ADMIN_TOPICS_PATH`. `ctx`: `state` (Schalter `topics`), `scheduleEffect`, `logIfChanged`, `isLocalWidgetRequest`, `requireAdminWrite`, `adminJsonLimit`, `deckPath`. Zustand und Regeln weiter in `lib/topics.js` |
 
 `/api/deck` (Stream-Deck-Übersicht) bleibt in `server.js`, weil es auch den Clip-Moment betrifft.
 
@@ -63,9 +64,30 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 - Jedes `require` hat einen festen Pfad.
 - `axios` und `ws` lädt nur `server.js`.
 - Jedes gesendete oder von einem Modul gehörte interne Ereignis steht im Katalog unter „Interne Ereignisse“, und jedes dort genannte wird gesendet.
-- Direkte Schreibzugriffe außerhalb von `core/store.js` gibt es nur an den bekannten Stellen (`KNOWN_WRITES` im Test, Stand 27.11.2026: 15). Die Liste darf nur schrumpfen.
+- Direkte Schreibzugriffe außerhalb von `core/store.js` gibt es nur an den bekannten Stellen (`KNOWN_WRITES` im Test, Stand 28.11.2026: 15, davon `modules.json` seit 3c in `core/state.js`). Die Liste darf nur schrumpfen.
 
 `npm run check` (`scripts/check.js`) prüft die Syntax aller projekteigenen JS-Dateien. Die CI nutzt denselben Befehl.
+
+### Besitz des Zustands
+
+Nach ADR 0027, Nachtrag, Abschnitt 4, bekommt jede veränderliche Variable auf oberster Ebene von `server.js` genau einen Besitzer. Andere Bereiche lesen und ändern sie nur über dessen Funktionen.
+- **Vor dem Umbau:** 29 Variablen.
+- **Nach Schritt 3b:** 27; `chatSenders` und `botLastError` liegen in `core/chat.js`.
+- **Nach Schritt 3c:** 23, mit diesen Besitzern.
+
+| Variable(n) | Besitzer | Stand |
+|---|---|---|
+| Modul-Schalter (bisher `moduleSwitches`), Kategorie (bisher `currentCategory`, `currentCategoryChangedAt`, `currentCategoryConfirmedAt`) | `core/state.js` | umgezogen (3c) |
+| `eventSubWs`, `eventSubReconnectTimer` | `core/eventsub.js` | Schritt 3d |
+| `httpDebug` | Kern, HTTP-Protokoll (`core/http.js`, mit `isQuietRequest`) | offen |
+| `bduLastAcceptedAt`, `bduLastWarningAt`, `bduLastErrorNoticeAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` | Modul `bdu` | Schritt 4 |
+| `uboatHistory`, `uboatHistoryPreview` | Modul `uboat` | Schritt 4 |
+| `chatResults`, `consumerPollLastStart`, `consumerPollScopeMissing` | Modul `predictions` | Schritt 4 |
+| `lastRaidstatsCommandAt`, `lastRaidGreetingSentAt`, `isProcessingQueue` | Modul `raid` | Schritt 4 |
+| `effectMode`, `isProcessingEffectQueue`, `lastEffectSentAt` | Modul `effects` | Schritt 4 |
+| `adminExitRequested` | Modul `admin` | Schritt 5 |
+
+Die `!privat`-Liste (`privacyOptouts`) war eine Konstante mit veränderlichem Inhalt und liegt jetzt ebenfalls in `core/state.js`. Konstanten mit veränderlichem Inhalt (`Map`, `Set`, Objekte, z. B. `bduPending`, `raidQueue`) ziehen mit ihrem Bereich um.
 
 ### Interne Ereignisse
 
@@ -80,7 +102,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | Ereignis | Erzeuger | Bedeutung, Daten | Empfänger |
 |---|---|---|---|
 | `stream.new` | `server.js`, EventSub `stream.online` | Eine neue Stream-Session beginnt, keine Wiederaufnahme nach Unterbrechung. Ohne Daten. | `topics`: Intro-Topics von vorn |
-| `module.switched` | `server.js`, `switchModule` (Konsole, Webkonsole) | Ein Modul-Schalter wurde betätigt: `{ key, on, changed }`. `changed` ist `false`, wenn der Schalter schon so stand. | `topics`: blendet bei eigenem Schalter aus bzw. ein |
+| `module.switched` | `core/state.js`, `switchModule` (Konsole, Webkonsole) | Ein Modul-Schalter wurde betätigt: `{ key, on, changed }`. `changed` ist `false`, wenn der Schalter schon so stand. | `topics`: blendet bei eigenem Schalter aus bzw. ein. Noch in `server.js`: `bdu` verwirft beim Ausschalten offene Anfragen, `uboat` gibt beim Einschalten ohne `UBOAT_SAVES_DIR` einen Hinweis, `kartei` gibt einen Hinweis bzw. stößt eine Veröffentlichung an |
 
 **Noch in `server.js`:**
 
@@ -99,17 +121,17 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | Sub-Goal | `loadSubGoalCache`, `saveSubGoalCache`, `refreshSubGoalCache` (Ausgangsstand), `handleGoalEvent` (Stand aus `channel.goal.*`, Issue #60), `subscribeToGoals` |
 | Event-Log | `loadEventLog`, `saveEventLog`, `appendEvent` |
 | Effekt-Modus | `loadEffectMode`, `saveEffectMode`, `setEffectMode` (einziger Weg zum Umschalten, für HTTP und Konsole); RAM: `effectMode` |
-| Modul-Schalter | `loadModuleSwitches`, `saveModuleSwitches`, `setModuleSwitch`, `switchModule` (Konsole `bdu`/`uboat activate\|deactivate` und Webkonsole), `moduleStateLabel`; RAM: `moduleSwitches`. Abgefragt in `handleBduCommand` und `handleUboatCommand` |
+| Modul-Schalter | in `core/state.js` (siehe oben). `server.js`: `MODULE_NAMES`, `MODULE_OFF_TEXT`, Kurznamen `switchModule` und `moduleStateLabel` aus `state`, Empfänger von `module.switched` für `bdu`, `uboat` und `kartei`. Abgefragt über `state.isEnabled` in `handleBduCommand`, `handleUboatCommand`, der Stream-Kartei und der Webkonsole |
 | Effekt-Queue | `scheduleEffect`, `enqueueEffect`, `describeEffect`, `triggerEffect`, `processEffectQueue`, `isSilentEffect` (Typen in `SILENT_EFFECT_TYPES`: kein Log, kein Event-Log, keine Statistik); RAM: `pendingBursts`, `effectQueue`, `isProcessingEffectQueue`, `lastEffectSentAt` |
 | Intro-Topics (ADR 0020, 0021) | umgezogen nach `modules/topics/` (siehe oben). `server.js`: `moduleHost` (Anmeldung) und `DECK_PATH`. `lib/topics.js`: `createTopics` (`getState`, `getConfig`, `next`, `back`, `toggle`, `reset`, `setItems`, `setDisplay`, `notifyEnabledChanged`), `validateItems`, `validateDisplay` |
 | Entdoppelung | `pruneOldEntries`, `isDuplicateMessage`, `wasRecentlyTriggered`; RAM: `seenMessageIds`, `recentSubByUser`, `recentFollowByUser` |
 | Logging | `logIfChanged` und HTTP-Protokoll aus dem Kern (`core/log.js`, `core/http.js`; unterdrückt direkt aufeinanderfolgende identische `[HTTP] …`-Zeilen). In `server.js` `isQuietRequest`: erfolgreiche GET der Widget-Leseendpunkte in `HTTP_QUIET_WIDGET_PATHS` nur mit `http debug on`, `/token` und Antworten ab 400 immer; RAM: `httpDebug` |
 | Statistik (ADR 0019) | `server.js`: `isCountedChatter`, `syncStreamWithTwitch`, `loadStreamStats`, `saveStreamStats` (über `writeJsonAtomic` aus `core/store.js`); RAM: `stats`, `streamSession`. `lib/stats.js`: `createStats` (`count`, `snapshot`), `streamMetricKeys`, zentrale Liste `METRICS`. `lib/stream-session.js`: `createStreamSession` (`onOnline`, `onOffline`, `onRaidOut`, `closeManually`, `ensureArchived`, `reconcile`, `setCategory`, `count`, `noteChatter`, `anonymize`, `noteViewers`, `tick`, `flush`, `snapshot`; Optionen `onClose` für das Archiv, `isPrivate` und `anonName` für `!privat`, `maxViewerMinutes`), `viewerSummary`. `lib/stream-reports.js`: `createStreamReports` (`archive`, `list`, `totals`, `text`, `remove`, `exists`, `anonymize`), `reportIdFor`, `reportWarnings`, `isReportId`, `CLOSE_REASONS`. `server.js` außerdem: `subscribeForStats`, `recordPollEnd`, `recordPredictionEnd`, `overviewStream`, `withReportState`, `statsWithReportState`, `pollStreamViewers` (ADR 0023); RAM: `streamReports`, `streamViewers` |
-| `!privat` (ADR 0022) | `server.js`: `handlePrivacyCommand`, `loadPrivacyOptouts`, `savePrivacyOptouts`, `isPrivateUser`; RAM: `privacyOptouts`, `lastPrivacyCommandByUser`. `lib/privacy.js`: `anonymizeChatter`, `freeAnonKey`, `isAnonKey` |
+| `!privat` (ADR 0022) | Liste in `core/state.js` (siehe oben). `server.js`: `handlePrivacyCommand`, Kurzname `isPrivateUser` aus `state`; RAM: `lastPrivacyCommandByUser`. `lib/privacy.js`: `anonymizeChatter`, `freeAnonKey`, `isAnonKey` |
 | Live-Log (ADR 0018) | in `core/log.js` (siehe oben); `server.js` übernimmt `logBuffer`, `logClients`, `errorLog` und `writeLogEntry` für `/api/admin/log/stream` und `/api/admin/log/errors` |
 | EventSub | `connectEventSub`, `subscribeToRaid`, `subscribeToOutgoingRaid`, `subscribeToChat`, `subscribeToStreamOnline`, `subscribeToStreamOffline`, `subscribeToPolls`, `subscribeToPredictions`, `subscribeToShoutoutCreate`, `subscribeToSubscriptions`, `subscribeToChatNotifications`, `subscribeToFollows`, `subscribeToChannelUpdate`, `handleChatNotification`, `describeSubEvent`, `describeSubNotice` (Protokollzusätze, ADR 0008); in `connectEventSub` intern `armKeepalive` (Zeitgeber für die Keepalive-Überwachung) |
 | Chat | `isModOrBroadcaster`, `handleChatCommand`, `handleWhitelistShoutout`, `getChannelActivity`, `buildWhitelistShoutoutMessage`, `formatDateDe`, `loadWhitelistChecks`, `saveWhitelistChecks`, `recordWhitelistCheck`, `printWhitelistChecks` (ADR 0015), `sendChatMessage` (optional als Reply, kürzt auf `CHAT_MAX_CHARS`; mit `feature` über den Bot, wenn `chatSenders[feature]` „bot“ ist), `sendShoutout` |
-| Kategorie | `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`); RAM: `currentCategory` |
+| Kategorie | Wert und Zeitpunkte in `core/state.js` (siehe oben). `server.js`: `refreshChannelCategory` (beim `session_welcome`), `setCurrentCategory` (auch aus `channel.update`; Logzeile mit Stand des Soldbuchs, Kategorie der Stream-Session) |
 | UBOAT-Soldbuch (ADR 0016) | `server.js`: `handleUboatCommand`, `isUboatCategoryActive`, `loadUboatCrewMap`, `saveUboatCrewMap`, `printUboatStatus`; RAM: `uboatCrew`, `uboatLastAnswerByUser`. `lib/uboat-crew.js`: `createUboatCrew` (`start`, `stop`, `reload`, `getState`, `hasData`, `findMember`, `formatAkte`; Option `onLoad` nach jedem eingelesenen Spielstand), `normalizeName` (auch für die Stream-Kartei); intern `STATUS_LABELS`, `WOUNDED_STATUS_LABELS`; RAM: gelesener Spielstand und Crew. `lib/uboat-save.js`: `parseSave`, `parseLocales` (Aufruf `node lib/uboat-save.js <Spielstand> [Locales.dat]` zur Diagnose) |
 | BdU-Chat (ADR 0014) | `handleBduCommand`, `failBduRequest`, `sendBduChatMessage`, `startBduSilence`, `isBduSilenceActive`, `bduDailyLimitReached`, `printBduStatus`, `formatClock`; RAM: `bduClients`, `bduPending`, `bduAcceptedByUser`, `bduLastAcceptedAt`, `bduLastWarningAt`, `bduLastErrorNoticeAt`, `bduSilenceUntil`, `bduSilenceEndedAt`, `bduDailyKey`, `bduDailyCount`, `bduRequestCounter` |
 | Chat-Brücke (ADR 0025) | `lib/chat-bridge.js` (`parseSubscription`, `matches`, `isForwardable`, `chatEvent`); in `server.js` `chatBridgeClients`, `forwardChatToBridge` (zuerst im Chat-Handler), `notifyPrivacyChange` (aus `handlePrivacyCommand`), `chatBridgeExcludedLogins`; `SERVER_CHAT_COMMANDS`, `CHAT_BRIDGE_FEATURES` (Spec `chat-bruecke.md`) |
@@ -310,7 +332,8 @@ Seit ADR 0027 stehen die Konstanten des Kerns in `core/config.js`: `DEFAULT_CORS
 | `TOKEN_REFRESH_BUFFER_MS` / `TOKEN_PROACTIVE_REFRESH_MS` / `TOKEN_PROACTIVE_RETRY_MS` / `TOKEN_CHECK_INTERVAL_MS` | 5 min / 10 min / 10 min / 60 s | Anfrage erneuert selbst ab 5 min vor Ablauf; der Server erneuert von sich aus ab 10 min vor Ablauf, nach einem Fehlschlag erst 10 min später wieder; Prüftakt |
 | `RAIDSTATS_COOLDOWN_MS` | 30000 | Abstand zwischen `!raidstats` |
 | `PRIVACY_COMMAND` / `PRIVACY_ANON_NAME` / `PRIVACY_COMMAND_COOLDOWN_MS` | `!privat` / `anonymer Schlaumeier` / 10000 | Befehl, Anzeigename anonymisierter Chatter, Abklingzeit je Zuschauer (ADR 0022) |
-| `PRIVACY_FILE` / `PRIVACY_OPTOUTS_PATH` | `./privacy_optouts.json` / `/api/privacy/optouts` | Liste und Widget-Endpunkt; Antworttexte in `PRIVACY_TEXT_ON` und `PRIVACY_TEXT_OFF` |
+| `PRIVACY_FILE` / `PRIVACY_OPTOUTS_PATH` | `./privacy_optouts.json` / `/api/privacy/optouts` | Liste (`PRIVACY_FILE` in `core/config.js`) und Widget-Endpunkt; Antworttexte in `PRIVACY_TEXT_ON` und `PRIVACY_TEXT_OFF` |
+| `MODULES_FILE` | `./modules.json` | Modul-Schalter, in `core/config.js` |
 | `RAID_GREETING_MIN_GAP_MS` | 90000 | Abstand zwischen Raid-Begrüßungen |
 | `RAID_SHOUTOUT_MIN_VIEWERS` | 3 | Shoutout nach einem Raid erst ab so vielen Zuschauern; soll später in die Einstellungen (OFFEN.md, Abschnitt 4) |
 | `RAID_YEARLY_FROM_YEAR` | 2027 | Ab diesem Jahr Raid-Statistik je Kalenderjahr statt je Quartal |

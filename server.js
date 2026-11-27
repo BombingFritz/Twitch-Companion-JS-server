@@ -26,6 +26,7 @@ const { createAuth } = require('./core/auth');
 const { createChat } = require('./core/chat');
 const { createModuleHost } = require('./core/modules');
 const { createEvents } = require('./core/events');
+const { createState } = require('./core/state');
 // Module (ADR 0027): melden Endpunkte, Konsolenbefehle und ihren Teil der Webkonsole über core/modules.js an
 const { createTopicsModule } = require('./modules/topics');
 
@@ -54,10 +55,9 @@ const EFFECT_MODE_FILE = './effect_mode.json';
 const WHITELIST_CHECKS_FILE = './whitelist_checks.json';   // Auffälligkeiten der Aktivitätsprüfung (ADR 0015), Quelle für den Stream-Bericht
 const UBOAT_CREW_MAP_FILE = './uboat_crew_map.json';       // Zuordnung Twitch-Login -> Name im Spiel (ADR 0016)
 const UBOAT_HISTORY_FILE = './uboat_crew_history.json';    // Verlauf je Kampagne: gesicherte Lebensläufe, Feindfahrten je Person (Stream-Kartei 1c)
-const MODULES_FILE = './modules.json';                     // Modul-Schalter (bdu/uboat activate|deactivate), überdauert Neustarts
 const STREAM_STATS_FILE = './stream_stats.json';           // laufender oder letzter Stream (ADR 0019)
 const STREAM_REPORTS_DIR = './stream_reports';             // je abgeschlossenem Stream eine .json und eine .txt (ADR 0019)
-const PRIVACY_FILE = './privacy_optouts.json';             // !privat: User-IDs mit Zeitpunkt (docs/DATENKATALOG.md)
+// modules.json und privacy_optouts.json: Dateinamen in core/config.js, Stand in core/state.js
 const MODULE_NAMES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', topics: 'Intro-Topics', kartei: 'Stream-Kartei' };   // per Konsole und Webkonsole schaltbare Module, Standard: an
 const MODULE_OFF_TEXT = { topics: 'Stream-Deck-Tasten werden ignoriert, das Widget blendet aus',
   kartei: 'es wird nichts mehr hochgeladen, der letzte Stand bleibt online' };   // sonst: Befehle im Chat werden ignoriert
@@ -238,24 +238,19 @@ function saveStreamStats(data) {
   writeJsonAtomic(STREAM_STATS_FILE, data);
 }
 
-// !privat: { "<userId>": "<ISO-Zeitpunkt>" }; fehlt die Datei oder ist sie ungültig: leer
-function loadPrivacyOptouts() {
-  if (!fs.existsSync(PRIVACY_FILE)) return {};
-  try {
-    const data = JSON.parse(fs.readFileSync(PRIVACY_FILE, 'utf8'));
-    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
-  } catch {
-    console.warn(`[Privat] ${PRIVACY_FILE} ist unlesbar – niemand gilt als privat, bis die Datei repariert ist`);
-    return {};
-  }
-}
+// Interner Ereignisbus (core/events.js): Erzeuger rufen events.emit, Module hören über ihr "on"; Katalog in ARCHITEKTUR.md
+const events = createEvents();
 
-function savePrivacyOptouts(data) {
-  writeJsonAtomic(PRIVACY_FILE, data);
-}
-
-const privacyOptouts = loadPrivacyOptouts();
-const isPrivateUser = userId => Object.hasOwn(privacyOptouts, String(userId));
+// Gemeinsamer Stand (core/state.js): Modul-Schalter, Kategorie, !privat-Liste, Stream live
+const state = createState({
+  config,
+  modules: MODULE_NAMES,
+  offTexts: MODULE_OFF_TEXT,
+  events,
+  writeJson: writeJsonAtomic,
+  isLive: () => streamSession.snapshot().status === 'live',
+});
+const { isPrivateUser, switchModule, stateLabel: moduleStateLabel } = state;
 
 const streamReports = createStreamReports({
   dir: STREAM_REPORTS_DIR,
@@ -677,37 +672,13 @@ function saveEffectMode(mode) {
 let effectMode = loadEffectMode();       // Startet mit dem zuletzt gespeicherten Modus
 
 // ═══════════════════════════════════════════════════════════════════
-// MODUL-SCHALTER (BdU-Chat, UBOAT-Soldbuch) – per Konsole, gespeichert in modules.json
+// MODULE (ADR 0027) – Anmeldung über core/modules.js; Topics ist das erste umgezogene Modul.
+// Modul-Schalter (modules.json) und Umschalten liegen in core/state.js.
 // ═══════════════════════════════════════════════════════════════════
 
-// Fehlende Datei oder fehlender Eintrag: Modul an (Verhalten wie vor Einführung der Schalter)
-function loadModuleSwitches() {
-  const switches = Object.fromEntries(Object.keys(MODULE_NAMES).map(k => [k, true]));
-  if (!fs.existsSync(MODULES_FILE)) return switches;
-  try {
-    const data = JSON.parse(fs.readFileSync(MODULES_FILE, 'utf8'));
-    for (const k of Object.keys(switches)) if (typeof data[k] === 'boolean') switches[k] = data[k];
-  } catch { /* defekte Datei: alle Module an */ }
-  return switches;
-}
-
-function saveModuleSwitches(switches) {
-  fs.writeFileSync(MODULES_FILE, JSON.stringify(switches, null, 2), 'utf8');
-}
-
-let moduleSwitches = loadModuleSwitches();
-
-// ═══════════════════════════════════════════════════════════════════
-// MODULE (ADR 0027) – Anmeldung über core/modules.js; Topics ist das erste umgezogene Modul
-// ═══════════════════════════════════════════════════════════════════
-
-// Interner Ereignisbus (core/events.js): Erzeuger rufen events.emit, Module hören über ihr "on"; Katalog in ARCHITEKTUR.md
-const events = createEvents();
 const moduleHost = createModuleHost({ events });
 moduleHost.add(createTopicsModule({
-  isEnabled: () => moduleSwitches.topics,
-  switchModule: on => switchModule('topics', on),
-  stateLabel: () => moduleStateLabel('topics'),
+  state,
   scheduleEffect: (type, meta) => scheduleEffect(type, meta),
   logIfChanged,
   isLocalWidgetRequest,
@@ -716,41 +687,25 @@ moduleHost.add(createTopicsModule({
   deckPath: DECK_PATH,
 }));
 
-function moduleStateLabel(key) {
-  return moduleSwitches[key] ? 'aktiviert' : `deaktiviert ("${key} activate" schaltet ein)`;
-}
-
-// Gemeinsamer Teil von "bdu activate|deactivate" und "uboat activate|deactivate"
-function setModuleSwitch(key, on) {
-  const name = MODULE_NAMES[key];
-  if (moduleSwitches[key] === on) {
-    console.log(`${name} ist bereits ${on ? 'aktiviert' : 'deaktiviert'}`);
-    return false;
-  }
-  moduleSwitches = { ...moduleSwitches, [key]: on };
-  saveModuleSwitches(moduleSwitches);
-  console.log(`${name} ${on ? 'aktiviert' : `deaktiviert – ${MODULE_OFF_TEXT[key] || 'Befehle im Chat werden ignoriert'}`} (gespeichert, gilt auch nach Neustart)`);
-  return true;
-}
-
-// Für Konsole und Webkonsole: Schalter setzen samt den Folgen für das jeweilige Modul
-function switchModule(key, on) {
-  const changed = setModuleSwitch(key, on);
+// Folgen eines Modul-Schalters für Bereiche, die noch in server.js stehen (ziehen mit ihrem Modul um)
+events.on('module.switched', 'bdu', ({ key, on, changed }) => {
   if (key === 'bdu' && !on && changed && bduPending.size) {
     // Antworten auf bereits weitergereichte Anfragen nicht mehr posten
     for (const [id, p] of bduPending) { clearTimeout(p.timer); bduPending.delete(id); }
     console.log('[BdU] Offene Anfragen verworfen');
   }
-  events.emit('module.switched', { key, on, changed });   // z. B. Intro-Topics blendet aus bzw. ein
+});
+events.on('module.switched', 'uboat', ({ key, on }) => {
   if (key === 'uboat' && on && !uboatCrew) {
     console.log('[UBOAT] Hinweis: UBOAT_SAVES_DIR ist nicht gesetzt – das Soldbuch antwortet erst, wenn der Ordner in der .env steht (Neustart nötig)');
   }
+});
+events.on('module.switched', 'kartei', ({ key, on, changed }) => {
   if (key === 'kartei' && on) {
     if (!karteiConfigured) console.log('[Kartei] Hinweis: STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN sind nicht gesetzt – es wird nichts veröffentlicht (.env, Neustart nötig)');
     else if (changed) requestKartei();
   }
-  return changed;
-}
+});
 
 // Setzt den Effekt-Modus (Webkonsole und Konsole).
 function setEffectMode(mode) {
@@ -995,7 +950,7 @@ app.get(CHAT_ACTIVE_PATH, (req, res) => {
 
 app.get(CHANNEL_INFO_PATH, (req, res) => {
   if (!isLocalWidgetRequest(req, CHANNEL_INFO_PATH)) return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
-  res.json({ category: currentCategory, categoryChangedAt: currentCategoryChangedAt, live: streamSession.snapshot().status === 'live', updatedAt: currentCategoryConfirmedAt });
+  res.json({ category: state.category(), categoryChangedAt: state.categoryChangedAt(), live: state.isLive(), updatedAt: state.categoryConfirmedAt() });
 });
 
 function notifyPrivacyChange(userId, userLogin, isPrivate) {
@@ -1082,7 +1037,7 @@ app.get(PRIVACY_OPTOUTS_PATH, (req, res) => {
   if (!isLocalWidgetRequest(req, PRIVACY_OPTOUTS_PATH)) {
     return res.status(403).json({ error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
   }
-  res.json({ userIds: Object.keys(privacyOptouts) });
+  res.json({ userIds: state.privateUserIds() });
 });
 
 // ── BdU-Chat: Antwort des Widgets ──
@@ -1339,20 +1294,20 @@ app.get(DECK_PATH, (req, res) => {
     server: 'twitch-companion-js-server',
     version: APP_VERSION,
     actions: {
-      topics: { enabled: Boolean(moduleSwitches.topics) },
-      clip: { enabled: false, stream_live: streamSession.snapshot().status === 'live' },   // folgt mit Fahrplan-Schritt 7
+      topics: { enabled: Boolean(state.isEnabled('topics')) },
+      clip: { enabled: false, stream_live: state.isLive() },   // folgt mit Fahrplan-Schritt 7
     },
   });
 });
 
 // UBOAT-Crew aus dem letzten Spielstand (ADR 0016), z. B. für ein späteres Widget „Heute an Bord“
 app.get('/api/uboat/crew', (req, res) => {
-  if (!uboatCrew) return res.json({ enabled: false, active: false, category: currentCategory, crew: [] });
+  if (!uboatCrew) return res.json({ enabled: false, active: false, category: state.category(), crew: [] });
   const s = uboatCrew.getState();
   res.json({
     enabled: true,
     active: isUboatCategoryActive(),
-    category: currentCategory,
+    category: state.category(),
     source: s.source,
     savedAt: s.savedAt ? new Date(s.savedAt).toISOString() : null,
     loadedAt: s.loadedAt ? new Date(s.loadedAt).toISOString() : null,
@@ -1385,7 +1340,7 @@ function buildRuntimeStatus() {
     effect_mode: effectMode,
     effect_queue_length: effectQueue.length,
     allowed_origins: corsAllowAll ? '*' : [...allowedOrigins],
-    modules: { ...moduleSwitches },
+    modules: state.moduleSwitches(),
     bot_configured: Boolean(loadBotConfig()),
     bot_login: loadBotConfig()?.bot_login || null,
     bot_features: botFeatures(),
@@ -1450,7 +1405,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     poll_ms: ADMIN_POLL_MS,
     can_restart: SERVER_SUPERVISED,
     ha_webhook_configured: Boolean(HA_WEBHOOK_URL),
-    category: currentCategory,
+    category: state.category(),
     stream: overviewStream(),
     twitch_api: twitchApi.stats(),
     chat_senders: chatSenderList(),
@@ -1600,13 +1555,13 @@ app.post(ADMIN_MODULES_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON
   if (typeof key !== 'string' || !Object.hasOwn(MODULE_NAMES, key)) return res.status(400).json({ error: 'Unbekanntes Modul' });
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled muss true oder false sein' });
   const changed = switchModule(key, enabled);
-  res.json({ ok: true, changed, modules: { ...moduleSwitches } });
+  res.json({ ok: true, changed, modules: state.moduleSwitches() });
 });
 
 // Stream-Kartei: „Jetzt veröffentlichen“ (hält Abstand und Änderungsprüfung ein, ADR 0026)
 app.post(ADMIN_KARTEI_PUBLISH_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
   if (!karteiScheduler) return res.status(409).json({ error: 'Stream-Kartei ist nicht eingerichtet (STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN in .env)' });
-  if (!moduleSwitches.kartei) return res.status(409).json({ error: 'Stream-Kartei ist ausgeschaltet' });
+  if (!state.isEnabled('kartei')) return res.status(409).json({ error: 'Stream-Kartei ist ausgeschaltet' });
   requestKartei();
   res.json({ ok: true, kartei: karteiOverview() });
 });
@@ -2255,15 +2210,14 @@ async function handlePrivacyCommand(evt) {
   lastPrivacyCommandByUser.set(userId, now);
 
   const turnOn = !isPrivateUser(userId);
-  if (turnOn) privacyOptouts[userId] = new Date(now).toISOString();
-  else delete privacyOptouts[userId];
+  state.setPrivate(userId, turnOn, now);
   notifyPrivacyChange(userId, evt.chatter_user_login, turnOn);   // Chat-Brücke: Verbraucher löschen ggf. gespeicherte Daten
   rememberPrivacyName(userId, evt.chatter_user_login, evt.chatter_user_name);
   requestKartei({ urgent: turnOn });   // Stream-Kartei: Ausblenden sofort, Wiedereinblenden im normalen Takt
   try {
-    savePrivacyOptouts(privacyOptouts);
+    state.savePrivacyOptouts();
   } catch (err) {
-    console.error(`[Privat] ${PRIVACY_FILE} konnte nicht gespeichert werden: ${err.message}`);
+    console.error(`[Privat] ${config.PRIVACY_FILE} konnte nicht gespeichert werden: ${err.message}`);
   }
 
   if (turnOn) {
@@ -2389,7 +2343,7 @@ function handleBduCommand(evt) {
   const now = Date.now();
 
   // 0. Modul per Konsole deaktiviert: still ignorieren, nichts zählen
-  if (!moduleSwitches.bdu) {
+  if (!state.isEnabled('bdu')) {
     console.log(`[BdU] !BdU von @${login} ignoriert – BdU-Chat deaktiviert`);
     return;
   }
@@ -2825,7 +2779,7 @@ function rememberPrivacyName(userId, login, name) {
 
 // Login und Anzeigename aller !privat-Zuschauer; null, wenn das gerade nicht geht (dann nicht veröffentlichen)
 async function karteiPrivateNames() {
-  const ids = Object.keys(privacyOptouts);
+  const ids = state.privateUserIds();
   const stale = ids.filter(id => { const e = karteiPrivacyNames.get(id); return !e || Date.now() - e.at > STREAM_KARTEI_PRIVACY_CACHE_MS; });
   if (stale.length) {
     if (!loadTokens()) return null;
@@ -2866,7 +2820,7 @@ async function buildKarteiData() {
 const karteiScheduler = karteiPublisher
   ? kartei.createKarteiScheduler({
     minGapMs: STREAM_KARTEI_MIN_GAP_MS,
-    isEnabled: () => moduleSwitches.kartei,
+    isEnabled: () => state.isEnabled('kartei'),
     build: buildKarteiData,
     readRemoteHash: async () => {
       const text = await karteiPublisher.readFile(kartei.UBOAT_PATH);
@@ -2913,7 +2867,7 @@ function karteiOverview() {
 
 // !privat-Zuschauer sind nicht verknüpfbar (Nutzer, 21.11.2026). true/false, null = unbekannt
 async function isPrivateLogin(login) {
-  const ids = Object.keys(privacyOptouts);
+  const ids = state.privateUserIds();
   if (!ids.length) return false;
   if (ids.some(id => (karteiPrivacyNames.get(id) || {}).login === login)) return true;
   if (!loadTokens()) return null;
@@ -2929,9 +2883,7 @@ async function isPrivateLogin(login) {
   }
 }
 const uboatLastAnswerByUser = new Map();   // user_id -> Zeitpunkt der letzten Antwort
-let currentCategory = null;                // Twitch-Kategorie des eigenen Kanals, null = unbekannt
-let currentCategoryChangedAt = null;       // wann sich die Kategorie zuletzt geändert hat (ISO), für /api/twitch/channel
-let currentCategoryConfirmedAt = null;     // wann der Server sie zuletzt bestätigt hat (Abruf oder channel.update)
+// Twitch-Kategorie des eigenen Kanals: core/state.js (state.category(), Zeitpunkte für /api/twitch/channel)
 
 function loadUboatCrewMap() {
   try {
@@ -2949,16 +2901,13 @@ function saveUboatCrewMap(map) {
 }
 
 function isUboatCategoryActive() {
-  return Boolean(currentCategory) && UBOAT_CATEGORY_NAMES.some(n => n.toLowerCase() === currentCategory.toLowerCase());
+  return Boolean(state.category()) && UBOAT_CATEGORY_NAMES.some(n => n.toLowerCase() === state.category().toLowerCase());
 }
 
 function setCurrentCategory(name, source) {
-  currentCategoryConfirmedAt = new Date().toISOString();
-  if (name === currentCategory) return;
-  currentCategory = name;
-  currentCategoryChangedAt = currentCategoryConfirmedAt;
+  if (!state.setCategory(name)) return;   // bestätigt wird sie auch ohne Änderung
   streamSession.setCategory(name);
-  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${!moduleSwitches.uboat ? 'deaktiviert' : isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
+  console.log(`[Kategorie] Twitch-Kategorie: ${name || 'unbekannt'} (${source})${uboatCrew ? ` – UBOAT-Soldbuch ${!state.isEnabled('uboat') ? 'deaktiviert' : isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}` : ''}`);
 }
 
 // Kategorie beim Verbindungsaufbau holen; danach hält channel.update sie aktuell.
@@ -3010,12 +2959,12 @@ async function handleUboatCommand(evt) {
     console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – UBOAT_SAVES_DIR nicht gesetzt`);
     return;
   }
-  if (!moduleSwitches.uboat) {
+  if (!state.isEnabled('uboat')) {
     console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – UBOAT-Soldbuch deaktiviert`);
     return;
   }
   if (!isUboatCategoryActive()) {
-    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – Kategorie „${currentCategory || 'unbekannt'}“`);
+    console.log(`[UBOAT] ${UBOAT_COMMAND} von @${login} ignoriert – Kategorie „${state.category() || 'unbekannt'}“`);
     return;
   }
   if (wasRecentlyTriggered(uboatLastAnswerByUser, evt.chatter_user_id || login, UBOAT_USER_COOLDOWN_MS)) {
@@ -3051,7 +3000,7 @@ function printUboatStatus() {
   for (const [login, name] of Object.entries(map)) mappedBy[name.toLowerCase()] = login;
   console.log(`UBOAT-Spielstände: ${uboatSavesDir}`);
   console.log(`Spielstand: ${s.source || 'keiner'}${s.savedAt ? ` (Stand ${uboatCrew.formatStand(s.savedAt)}, Spielversion ${s.gameVersion || 'unbekannt'})` : ''}${s.error ? ` – letzter Fehler: ${s.error}` : ''}`);
-  console.log(`Kategorie: ${currentCategory || 'unbekannt'} – Befehl ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}`);
+  console.log(`Kategorie: ${state.category() || 'unbekannt'} – Befehl ${isUboatCategoryActive() ? 'aktiv' : 'inaktiv'}`);
   if (s.mods) console.log(`Mods im Spielstand (${s.mods.length}, davon ${s.mods.filter(m => m.kind === 'workshop').length} aus dem Steam Workshop): ${s.mods.map(m => m.name).join(', ')}`);
   else if (s.source) console.log('Mods im Spielstand: keine Liste (ältere Spielstände)');
   console.log(`Crew (${s.crew.length}):`);
@@ -3295,7 +3244,7 @@ rl.on('line', async (input) => {
     if (sub === 'show') { printKarteiStatus(); return; }
     if (sub === 'publish') {
       if (!karteiScheduler) { console.log('Stream-Kartei: nicht eingerichtet (STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN in .env)'); return; }
-      if (!moduleSwitches.kartei) { console.log(`Stream-Kartei: ${moduleStateLabel('kartei')}`); return; }
+      if (!state.isEnabled('kartei')) { console.log(`Stream-Kartei: ${moduleStateLabel('kartei')}`); return; }
       console.log('[Kartei] Veröffentlichung angestoßen (nur bei geändertem Inhalt, frühestens 10 min nach der letzten)');
       requestKartei();
       return;
@@ -3456,8 +3405,8 @@ app.listen(PORT_NUM, SERVER_HOST, (err) => {
   const bot = loadBotConfig();
   console.log(`Bot-Account: ${bot ? `${bot.bot_name || bot.bot_login} (${botFeatureLabels()})` : `nicht eingerichtet – http://localhost:${PORT_NUM}/login-bot (vorher /mod DerBdu im Chat)`}`);
   console.log(`BdU-Chat: ${moduleStateLabel('bdu')}`);
-  console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}${moduleSwitches.uboat ? '' : ' – deaktiviert ("uboat activate" schaltet ein)'}`);
-  if (karteiConfigured) console.log(`Stream-Kartei: an (Repository ${karteiRepo}, Zweig ${STREAM_KARTEI_BRANCH})${moduleSwitches.kartei ? '' : ' – deaktiviert ("kartei activate" schaltet ein)'}`);
+  console.log(`UBOAT-Soldbuch: ${uboatCrew ? `an (Spielstände: ${uboatSavesDir})` : 'aus (UBOAT_SAVES_DIR in .env)'}${state.isEnabled('uboat') ? '' : ' – deaktiviert ("uboat activate" schaltet ein)'}`);
+  if (karteiConfigured) console.log(`Stream-Kartei: an (Repository ${karteiRepo}, Zweig ${STREAM_KARTEI_BRANCH})${state.isEnabled('kartei') ? '' : ' – deaktiviert ("kartei activate" schaltet ein)'}`);
   else if ((STREAM_KARTEI_TOKEN || '').trim() || karteiRepo) console.warn('Stream-Kartei: aus – STREAM_KARTEI_REPO (Form Besitzer/Name) und STREAM_KARTEI_TOKEN müssen beide gesetzt sein');
   console.log('═════════════════════════════════════════════');
   if (uboatCrew) uboatCrew.start();

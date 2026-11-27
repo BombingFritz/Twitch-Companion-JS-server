@@ -53,6 +53,10 @@ module.exports = {
   CHAT_SENDER_VALUES: ['bot', 'broadcaster'],
   CHAT_MAX_CHARS: 500,                        // Twitch-Limit je Chat-Nachricht
 
+  // Gemeinsamer Stand (ADR 0027, core/state.js)
+  MODULES_FILE: './modules.json',             // Modul-Schalter (… activate|deactivate), überdauert Neustarts
+  PRIVACY_FILE: './privacy_optouts.json',     // !privat: User-IDs mit Zeitpunkt (docs/DATENKATALOG.md)
+
   // Twitch-API (ADR 0024, Issue #50): Vorgabe des Nutzers für alle Helix-Anfragen des Servers zusammen
   TWITCH_API_PER_SECOND: 3,                   // im Schnitt
   TWITCH_API_BURST: 20,                       // kurze Spitze, z. B. die EventSub-Abos binnen 10 s nach dem Welcome

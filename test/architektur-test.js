@@ -16,9 +16,10 @@ const EXTERNAL_ONLY_IN = { axios: ['server.js'], ws: ['server.js'] };
 // Schreibzugriffe außerhalb von core/store.js, Stand 27.11.2026 (Altlast, AGENTS.md: writeJsonAtomic).
 // Die Liste darf nur schrumpfen; wer eine Stelle umstellt, setzt die Zahl hier herunter.
 const KNOWN_WRITES = {
-  'server.js': 10,
+  'server.js': 9,
   'core/auth.js': 1,            // bot.json
   'core/chat.js': 1,            // chat_senders.json
+  'core/state.js': 1,           // modules.json (Schritt 3c aus server.js umgezogen)
   'lib/stream-reports.js': 2,   // Berichte als .txt
   'modules/topics/index.js': 1, // topics.json
 };

@@ -39,6 +39,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   Fehlerbehebung dabei: Ein Empfänger, der ein abgelehntes Promise zurückgibt, beendet den Server nicht mehr. Der Fehler erscheint wie ein synchroner mit dem Modulnamen im Log und Fehlerprotokoll. Bisher fing `moduleHost.emit` nur synchrone Fehler; heute hört nur Topics mit synchronen Empfängern, im Betrieb ist das also noch nicht aufgetreten.
 
   Ein Empfänger, der keine Funktion ist, wird schon beim Anmelden abgelehnt. Die Ereignisse stehen jetzt in ARCHITEKTUR.md unter „Interne Ereignisse“.
+- Umbau nach ADR 0027, Schritt 3c, zweiter Teil, ohne Änderung des Verhaltens: Der gemeinsame Stand liegt in `core/state.js`:
+  - Modul-Schalter samt `modules.json`, Umschalten und Zustandstext
+  - Twitch-Kategorie mit ihren Zeitpunkten
+  - `!privat`-Liste samt `privacy_optouts.json`
+  - `isLive()`
+
+  Die Folgen eines Schalters für BdU, UBOAT und Stream-Kartei hängen jetzt an `module.switched`. Topics nutzt seinen Schalter über `ctx.state`. ARCHITEKTUR.md führt den Besitz aller Variablen auf oberster Ebene von `server.js`; es sind noch 23 statt 27.
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
@@ -55,7 +62,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 - FAHRPLAN (vom Nutzer bestätigt, 27.11.2026): Neue Server-Schritte beginnen erst nach dem Umzug von Topics als Modul; Schritt 7 (Clip-Moment) wartet darauf. ARCHITEKTUR mit Abschnitt „Kern“, AGENTS.md mit den Regeln zur Aufteilung.
 
 ### Tests
-- Neuer Test `test/core-test.js` (Kern: Speichern, Bereinigung, Log-Puffer, Fehlerprotokoll, Herkunfts- und Loopback-Prüfung; seit 3a Login und Bot-Datei, seit 3b Chat-Versand mit Rückfall, Kürzung und Absender) und `test/modules-test.js` (Anmeldung der Module).
+- Neuer Test `test/core-test.js` (Kern: Speichern, Bereinigung, Log-Puffer, Fehlerprotokoll, Herkunfts- und Loopback-Prüfung; seit 3a Login und Bot-Datei, seit 3b Chat-Versand mit Rückfall, Kürzung und Absender, seit 3c gemeinsamer Stand: Schalter, Kategorie, `!privat`-Liste, defekte Dateien) und `test/modules-test.js` (Anmeldung der Module).
 - Neuer Test `test/bdu-test.js` (Störungsmeldung, Abstand, Rücknahme aller Zähler, Zeitüberschreitung, Erfolg zählt weiter, Funkstille unverändert).
 - Neuer Architekturtest `test/architektur-test.js` (ADR 0027, Nachtrag). Er prüft:
   - Module hängen nur am Kern, der Kern kennt keine Module, `lib/` hängt weder an Kern noch an Modulen.

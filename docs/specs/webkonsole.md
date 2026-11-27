@@ -32,7 +32,7 @@ Der Knopf „Streamlog beenden“ sitzt auf der Hauptseite in der Karte „Strea
 |---|---|---|
 | Server | Prozess-ID, läuft seit, Port | `pid`, `started_at` |
 | Stream | Streamlog läuft / offline mit Frist / abgeschlossen (Uhrzeit, Grund), Link zum Bericht oder „gelöscht“, Hinweise, Knopf „Streamlog beenden“ mit Rückfrage (Statistik Stufe 3) | `stream` |
-| Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, `currentCategory` |
+| Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, Kategorie aus `core/state.js` |
 | Bot | DerBdu eingerichtet, Funktionen über den Bot | `bot_*` |
 | *Gruppe „Optionale Module“:* | | |
 | HA-Effekte | Webhook eingetragen, Effekte an/aus, Warteschlange, letzte 5 Effekte | `ha_webhook_configured`, Status, `events.json` |
