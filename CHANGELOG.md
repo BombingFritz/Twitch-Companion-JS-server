@@ -34,6 +34,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Bot-Status
 
   Welche Funktionen es gibt, gibt `server.js` mit. `server.js` ist rund 100 Zeilen kürzer.
+- Umbau nach ADR 0027, Schritt 3c, erster Teil: Der interne Ereignisbus liegt in `core/events.js`. `server.js` sendet `stream.new` und `module.switched` darüber, Module hören über ihr `on`.
+
+  Fehlerbehebung dabei: Ein Empfänger, der ein abgelehntes Promise zurückgibt, beendet den Server nicht mehr. Der Fehler erscheint wie ein synchroner mit dem Modulnamen im Log und Fehlerprotokoll. Bisher fing `moduleHost.emit` nur synchrone Fehler; heute hört nur Topics mit synchronen Empfängern, im Betrieb ist das also noch nicht aufgetreten.
+
+  Ein Empfänger, der keine Funktion ist, wird schon beim Anmelden abgelehnt. Die Ereignisse stehen jetzt in ARCHITEKTUR.md unter „Interne Ereignisse“.
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
@@ -58,7 +63,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - `axios` und `ws` lädt nur `server.js`.
   - Es kommen keine neuen direkten Schreibzugriffe außerhalb von `core/store.js` dazu (bekannt: 15).
 
-  Er prüft sich vorher an Beispielen mit Verstößen selbst.
+  Er prüft sich vorher an Beispielen mit Verstößen selbst. Seit 3c prüft er auch den Katalog der internen Ereignisse in ARCHITEKTUR.md, in beide Richtungen.
+- `test/modules-test.js`: gemeinsamer Ereignisbus, Empfänger ohne Funktion, asynchrone Empfänger (Reihenfolge, `emit` wartet nicht, abgelehnte Promises mit Modulname im Log, kein unbehandelter Fehler).
 - `npm run check` (`scripts/check.js`) prüft jetzt die Syntax aller projekteigenen JS-Dateien statt nur `server.js`; die CI nutzt denselben Befehl.
 
 ## [1.2.0] – 2026-11-26

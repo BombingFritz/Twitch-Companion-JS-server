@@ -10,17 +10,26 @@
 //   isQuiet(req, res)         true: erfolgreicher Abruf erscheint nicht im HTTP-Protokoll
 //   showsSilentEffects()      true: stille Effekte (z. B. Topics) erscheinen im Log (Testmodus)
 //   overview()                Beitrag zu /api/admin/overview, unter dem Namen des Moduls
-//   on: { '<ereignis>': fn }  Reaktion auf Ereignisse des Servers, z. B. 'stream.new', 'module.switched'
+//   on: { '<ereignis>': fn }  Reaktion auf interne Ereignisse (core/events.js), z. B. 'stream.new', 'module.switched';
+//                             beim Anmelden in den Ereignisbus eingetragen, Katalog in docs/ARCHITEKTUR.md
 'use strict';
+const { createEvents } = require('./events');
 
-function createModuleHost() {
+// options.events: gemeinsamer Ereignisbus aus core/events.js (server.js gibt ihn mit); ohne: ein eigener
+function createModuleHost(options = {}) {
   const modules = [];
+  const events = options.events || createEvents();
   return {
+    events,
     // Namen müssen eindeutig sein; overview() legt jedes Modul unter seinem Namen in /api/admin/overview ab,
     // der Name darf deshalb auch kein vorhandenes Feld der Übersicht sein (z. B. subgoal, stream).
     add(mod) {
       if (modules.some(m => m.name === mod.name)) throw new Error(`Modul ${mod.name} ist schon angemeldet`);
+      for (const [event, fn] of Object.entries(mod.on || {})) {
+        if (typeof fn !== 'function') throw new Error(`Modul ${mod.name}: Empfänger für Ereignis ${event} ist keine Funktion`);
+      }
       modules.push(mod);
+      for (const [event, fn] of Object.entries(mod.on || {})) events.on(event, mod.name, fn);
       return mod;
     },
     mountRoutes(app, phase) {
@@ -50,18 +59,6 @@ function createModuleHost() {
       const out = {};
       for (const m of modules) if (typeof m.overview === 'function') out[m.name] = m.overview();
       return out;
-    },
-    // Ein Fehler in einem Modul hält weder die übrigen Module noch den Aufrufer (z. B. den EventSub-Empfang) auf
-    emit(event, payload) {
-      for (const m of modules) {
-        const handler = m.on && m.on[event];
-        if (typeof handler !== 'function') continue;
-        try {
-          handler(payload);
-        } catch (err) {
-          console.error(`[Module] ${m.name || '?'}: Fehler bei Ereignis ${event}: ${err.message}`);
-        }
-      }
     },
   };
 }

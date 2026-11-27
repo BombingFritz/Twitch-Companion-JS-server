@@ -25,6 +25,7 @@ const { createAccess } = require('./core/http');
 const { createAuth } = require('./core/auth');
 const { createChat } = require('./core/chat');
 const { createModuleHost } = require('./core/modules');
+const { createEvents } = require('./core/events');
 // Module (ADR 0027): melden Endpunkte, Konsolenbefehle und ihren Teil der Webkonsole über core/modules.js an
 const { createTopicsModule } = require('./modules/topics');
 
@@ -700,7 +701,9 @@ let moduleSwitches = loadModuleSwitches();
 // MODULE (ADR 0027) – Anmeldung über core/modules.js; Topics ist das erste umgezogene Modul
 // ═══════════════════════════════════════════════════════════════════
 
-const moduleHost = createModuleHost();
+// Interner Ereignisbus (core/events.js): Erzeuger rufen events.emit, Module hören über ihr "on"; Katalog in ARCHITEKTUR.md
+const events = createEvents();
+const moduleHost = createModuleHost({ events });
 moduleHost.add(createTopicsModule({
   isEnabled: () => moduleSwitches.topics,
   switchModule: on => switchModule('topics', on),
@@ -738,7 +741,7 @@ function switchModule(key, on) {
     for (const [id, p] of bduPending) { clearTimeout(p.timer); bduPending.delete(id); }
     console.log('[BdU] Offene Anfragen verworfen');
   }
-  moduleHost.emit('module.switched', { key, on, changed });   // z. B. Intro-Topics blendet aus bzw. ein
+  events.emit('module.switched', { key, on, changed });   // z. B. Intro-Topics blendet aus bzw. ein
   if (key === 'uboat' && on && !uboatCrew) {
     console.log('[UBOAT] Hinweis: UBOAT_SAVES_DIR ist nicht gesetzt – das Soldbuch antwortet erst, wenn der Ordner in der .env steht (Neustart nötig)');
   }
@@ -1845,7 +1848,7 @@ function connectEventSub(reconnectUrl = null) {
           streamSession.onOnline({ id: onlineEvent.id, startedAt: onlineEvent.started_at });
           pollStreamViewers();   // erster Wert gleich zu Beginn, danach im festen Takt
           // Neue Stream-Session (nicht Wiederaufnahme nach Unterbrechung): Module beginnen von vorn, z. B. Intro-Topics
-          if (streamSession.snapshot().started_at !== startedBefore) moduleHost.emit('stream.new');
+          if (streamSession.snapshot().started_at !== startedBefore) events.emit('stream.new');
         }
         shoutedOutThisSession.clear();
         console.log('Stream gestartet – Whitelist-Shoutout-Tracking für diese Session zurückgesetzt');
