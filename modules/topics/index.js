@@ -13,9 +13,11 @@ const TOPICS_ACTIONS = ['next', 'back', 'toggle', 'reset'];
 const ADMIN_TOPICS_PATH = '/api/admin/topics';
 const LOCAL_ONLY = 'Nur für lokale Aufrufe über localhost oder 127.0.0.1';
 
-// ctx: isEnabled(), switchModule(on), stateLabel(), scheduleEffect(type, meta), logIfChanged, isLocalWidgetRequest,
+// ctx: state (core/state.js, Modul-Schalter 'topics'), scheduleEffect(type, meta), logIfChanged, isLocalWidgetRequest,
 //      requireAdminWrite, adminJsonLimit, deckPath (still im HTTP-Protokoll wie die Topics-Endpunkte)
 function createTopicsModule(ctx) {
+  const KEY = 'topics';                    // Schlüssel des Modul-Schalters
+  const isEnabled = () => ctx.state.isEnabled(KEY);
   let debug = false;                       // Testschalter "topics debug on": Topic-Effekte und Tastendrücke erscheinen im Log
   const clients = [];                      // offene Events-Verbindungen (Widgets, Stream-Deck-Plugin)
 
@@ -50,7 +52,7 @@ function createTopicsModule(ctx) {
   const topics = createTopics({
     load: loadFile,
     save: saveFile,
-    isEnabled: () => ctx.isEnabled(),
+    isEnabled,
     autoHideMs: TOPICS_AUTO_HIDE_MS,
     warn: message => console.warn(message),
     onChange: state => {
@@ -73,7 +75,7 @@ function createTopicsModule(ctx) {
 
   function printStatus() {
     const state = topics.getState();
-    console.log(`[Topics] Modul: ${ctx.stateLabel()}, Testmodus: ${debug ? 'an' : 'aus'}, verbundene Widgets/Plugins: ${clients.length}`);
+    console.log(`[Topics] Modul: ${ctx.state.stateLabel(KEY)}, Testmodus: ${debug ? 'an' : 'aus'}, verbundene Widgets/Plugins: ${clients.length}`);
     console.log(`[Topics] ${summary(state)}`);
     state.items.forEach((item, i) => console.log(`  ${i + 1}. [${item.status === 'erledigt' ? 'x' : item.status === 'aktiv' ? '>' : ' '}] ${item.title}`));
     console.log(`[Topics] Überschrift: „${state.display.title}“, Design: ${state.display.theme}, Hintergrund horizontal: ${state.display.background.horizontal}, vertikal: ${state.display.background.vertikal}`);
@@ -113,7 +115,7 @@ function createTopicsModule(ctx) {
       if (!ctx.isLocalWidgetRequest(req, '/api/topics/…')) return res.status(403).json({ ok: false, error: LOCAL_ONLY });
       if (!TOPICS_ACTIONS.includes(action)) return res.status(404).json({ ok: false, error: `Unbekannte Aktion. Erlaubt: ${TOPICS_ACTIONS.join(', ')}` });
       if (!req.is('application/json')) return res.status(415).json({ ok: false, error: 'Content-Type: application/json erwartet (Body darf {} sein)' });
-      if (!ctx.isEnabled()) return res.status(503).json({ ok: false, error: 'Intro-Topics ist ausgeschaltet' });
+      if (!isEnabled()) return res.status(503).json({ ok: false, error: 'Intro-Topics ist ausgeschaltet' });
       const state = topics[action]();
       debugLog(`Taste ${action}: ${summary(state)}`);
       res.json({ ok: true, state });
@@ -147,7 +149,7 @@ function createTopicsModule(ctx) {
     app.post(`${ADMIN_TOPICS_PATH}/action`, ctx.requireAdminWrite, express.json({ limit: ctx.adminJsonLimit }), (req, res) => {
       const action = req.body && req.body.action;
       if (!TOPICS_ACTIONS.includes(action)) return res.status(400).json({ error: `Unbekannte Aktion. Erlaubt: ${TOPICS_ACTIONS.join(', ')}` });
-      if (!ctx.isEnabled()) return res.status(409).json({ error: 'Intro-Topics ist ausgeschaltet' });
+      if (!isEnabled()) return res.status(409).json({ error: 'Intro-Topics ist ausgeschaltet' });
       res.json({ ok: true, state: topics[action]() });
     });
   }
@@ -159,7 +161,7 @@ function createTopicsModule(ctx) {
       return;
     }
     if (TOPICS_ACTIONS.includes(sub)) {
-      if (!ctx.isEnabled()) {
+      if (!isEnabled()) {
         console.log('Intro-Topics ist deaktiviert ("topics activate" schaltet ein)');
         return;
       }
@@ -173,7 +175,7 @@ function createTopicsModule(ctx) {
       return;
     }
     if (sub === 'activate' || sub === 'deactivate') {
-      ctx.switchModule(sub === 'activate');
+      ctx.state.switchModule(KEY, sub === 'activate');
       return;
     }
     console.log('Nutzung: topics show | topics next|back|toggle|reset | topics debug on|off | topics activate|deactivate');
@@ -206,7 +208,7 @@ function createTopicsModule(ctx) {
         console.log('[Topics] Neuer Stream – Intro-Topics zurückgesetzt');
       },
       'module.switched': ({ key, changed }) => {
-        if (key === 'topics' && changed) topics.notifyEnabledChanged();
+        if (key === KEY && changed) topics.notifyEnabledChanged();
       },
     },
   };

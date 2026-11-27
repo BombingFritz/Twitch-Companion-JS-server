@@ -216,7 +216,7 @@ Ersetzt die Skizze unter „1. Drei Schichten“. Ein Modul exportiert `create�
 | `showsSilentEffects()` | 2 | Nur Topics. Wandert mit `effects` in den Effektdienst. |
 | `eventsub: [{ type, version, condition, handle(evt) }]` | 3d | EventSub-Abos |
 | `chatCommands: [{ name, modOnly, cooldownMs, handle(evt, args) }]` | 3d | Chat-Befehle |
-| `switchable` | 3c | Das Modul erscheint als Modul-Schalter. Der Schalter liegt in `core/state.js`, nicht mehr in `server.js`. |
+| `switchable` | zweites schaltbares Modul | Das Modul erscheint als Modul-Schalter. Seit 3c liegt der Schalter in `core/state.js`, nicht mehr in `server.js`. Präzisiert in 3c, 28.11.2026: Der Haken selbst kommt erst mit dem zweiten schaltbaren Modul. Bis dahin legt `MODULE_NAMES` in `server.js` die Schalter und ihre Reihenfolge fest (Konsole, Webkonsole, `modules.json`), und Topics nutzt seinen Schalter über `ctx.state`. Mit nur einem Modul würde der Haken die Reihenfolge gefährden, ohne etwas zu sparen. |
 | `start()`, `stop()` | erstes Modul mit eigenem Timer | Lebenszyklus (Abschnitt 7) |
 
 **Regeln:**
