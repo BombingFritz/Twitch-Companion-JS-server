@@ -23,6 +23,7 @@ const { writeJsonAtomic } = require('./core/store');
 const { createLog, redactedValues } = require('./core/log');
 const { createAccess } = require('./core/http');
 const { createAuth } = require('./core/auth');
+const { createChat } = require('./core/chat');
 const { createModuleHost } = require('./core/modules');
 // Module (ADR 0027): melden Endpunkte, Konsolenbefehle und ihren Teil der Webkonsole über core/modules.js an
 const { createTopicsModule } = require('./modules/topics');
@@ -81,8 +82,8 @@ const PRIVACY_TEXT_ON = `Privatmodus an: In der Stream-Statistik erscheinst du a
 const PRIVACY_TEXT_OFF = `Privatmodus aus: In der Stream-Statistik erscheinst du ab jetzt wieder mit Namen. Frühere Einträge bleiben anonym. Mit ${PRIVACY_COMMAND} schaltest du ihn wieder ein.`;
 
 // Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md): Datei, Scopes und Freigabe in core/auth.js
-// Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“): Bot oder Broadcaster, einstellbar per Konsole und Webkonsole
-const CHAT_SENDERS_FILE = './chat_senders.json';
+// Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“): Bot oder Broadcaster, einstellbar per Konsole und Webkonsole.
+// Datei, erlaubte Werte und Längengrenze in core/config.js, Versand in core/chat.js; die Funktionen und Vorgaben stehen hier.
 const CHAT_FEATURES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', raid: 'Raid-Begrüßung', whitelist: 'Whitelist-Begrüßung', raidstats: '!raidstats', privacy: '!privat-Antwort',
   prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis', rimworld: 'RimWorld', coinflip: 'CoinFlip' };
 // Chat-Brücke für lokale Verbraucher (Spec chat-bruecke.md, ADR 0025): diese Chat-Funktionen dürfen über POST /api/chat/send senden
@@ -106,7 +107,7 @@ const POLL_REQUEST_MAX_AGE_MS = 2 * 60 * 60 * 1000;   // offene Aufträge ohne E
 const CHAT_RESULTS_FILE = './chat_results.json';
 const CHAT_RESULT_LINES = { prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
 const CHAT_SENDER_DEFAULTS = { bdu: 'bot', uboat: 'bot', rimworld: 'bot' };   // alle übrigen: Broadcaster (rimworld: Nutzer, 20.11.2026)
-const CHAT_SENDER_VALUES = ['bot', 'broadcaster'];
+const { CHAT_SENDER_VALUES } = config;
 // Login-, Token-, Bot- und Twitch-API-Konstanten (ADR 0013, 0017, 0024) stehen in core/config.js
 
 // Erreichbarkeit (Nutzer, 14.11.2026; ADR 0013, Nachtrag): nur auf diesem PC. Home Assistant bekommt nur Webhooks und fragt nicht ab.
@@ -222,7 +223,6 @@ const UBOAT_HIDDEN_SKILLS = ['Authority', 'Skipper'];    // in der Akte nicht ne
 const UBOAT_FRESH_MS = 60 * 60 * 1000;           // Spielstand höchstens so alt: "Der Eintrag ist aktuell." im Soldbuch
 // Kein Soldbuch zum Namen: keine Antwort im Chat, nur Hinweis in der Konsole
 const UBOAT_TEXT_UNAVAILABLE = 'Die Soldbücher sind gerade nicht verfügbar.';
-const CHAT_MAX_CHARS = 500;                       // Twitch-Limit je Chat-Nachricht
 
 // ═══════════════════════════════════════════════════════════════════
 // STATISTIK UND LIVE-LOG (ADR 0019, ADR 0018); Log-Kern in core/log.js
@@ -343,40 +343,21 @@ const auth = createAuth({
     consumerPollScopeMissing = false;
     if (!eventSubWs) connectEventSub();
   },
-  onBotAuthorized: () => { botLastError = null; },
-  botFeatureLabels: () => botFeatureLabels(),
+  onBotAuthorized: () => chat.clearBotLastError(),
+  botFeatureLabels: () => chat.botFeatureLabels(),
 });
 const { tokenStore, twitchApi, loadTokens, getValidAccessToken, loadBotConfig, removeBotConfig } = auth;
 
-let botLastError = null;            // { at, text } – letzter Fehler beim Senden über den Bot
-
-// ── Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“) ──
-// Fehlende oder defekte Datei, fehlender oder unbekannter Eintrag: Vorgabe aus CHAT_SENDER_DEFAULTS, sonst Broadcaster
-function loadChatSenders() {
-  const senders = Object.fromEntries(Object.keys(CHAT_FEATURES).map(f => [f, CHAT_SENDER_DEFAULTS[f] || 'broadcaster']));
-  if (!fs.existsSync(CHAT_SENDERS_FILE)) return senders;
-  try {
-    const data = JSON.parse(fs.readFileSync(CHAT_SENDERS_FILE, 'utf8'));
-    for (const f of Object.keys(senders)) if (CHAT_SENDER_VALUES.includes(data[f])) senders[f] = data[f];
-  } catch { /* defekte Datei: Vorgaben */ }
-  return senders;
-}
-
-function saveChatSenders(senders) {
-  fs.writeFileSync(CHAT_SENDERS_FILE, JSON.stringify(senders, null, 2), 'utf8');
-}
-
-let chatSenders = loadChatSenders();
-
-// Rückgabe: true, wenn sich etwas geändert hat; Prüfung von feature und sender beim Aufrufer
-function setChatSender(feature, sender, source) {
-  if (chatSenders[feature] === sender) return false;
-  chatSenders = { ...chatSenders, [feature]: sender };
-  saveChatSenders(chatSenders);
-  const botHint = sender === 'bot' && !loadBotConfig() ? ' (noch kein Bot eingerichtet – bis dahin sendet der Broadcaster)' : '';
-  console.log(`[Bot] ${source}: ${CHAT_FEATURES[feature]} sendet jetzt ${sender === 'bot' ? 'der Bot' : 'der Broadcaster'}${botHint}`);
-  return true;
-}
+// Chat-Versand und Absender je Chat-Funktion (core/chat.js; ADR 0017, 0027): die Funktionen und Vorgaben kommen von hier
+const chat = createChat({
+  config,
+  features: CHAT_FEATURES,
+  defaults: CHAT_SENDER_DEFAULTS,
+  logPrefixes: { bdu: '[BdU] ', uboat: '[UBOAT] ', prediction: '[Wette] ', poll: '[Abstimmung] ', rimworld: '[RimWorld] ', coinflip: '[CoinFlip] ' },
+  auth,
+  onBotMessageSent: () => stats.count('bot_messages'),
+});
+const { sendChatMessage, setChatSender, chatSenderList, botFeatures, botFeatureLabels, printChatSenders, printBotStatus } = chat;
 
 // ── Ergebniszeilen für Wette und Abstimmung (Spec wetten-abstimmungen.md, Schritt 3b) ──
 // Fehlende oder defekte Datei, fehlender Eintrag: an
@@ -406,34 +387,6 @@ function setChatResult(line, on, source) {
 
 function chatResultList() {
   return Object.keys(CHAT_RESULT_LINES).map(line => ({ line, name: CHAT_RESULT_LINES[line], enabled: chatResults[line] }));
-}
-
-function botFeatures() {
-  return Object.keys(CHAT_FEATURES).filter(f => chatSenders[f] === 'bot');
-}
-
-function botFeatureLabels() {
-  const list = botFeatures().map(f => CHAT_FEATURES[f]);
-  return list.length ? list.join(', ') : 'nichts';
-}
-
-function chatSenderList() {
-  return Object.keys(CHAT_FEATURES).map(feature => ({ feature, name: CHAT_FEATURES[feature], sender: chatSenders[feature] }));
-}
-
-function printChatSenders() {
-  for (const { feature, name, sender } of chatSenderList()) console.log(`[Bot]   ${feature.padEnd(10)} ${name}: ${sender === 'bot' ? 'Bot' : 'Broadcaster'}`);
-}
-
-function printBotStatus() {
-  const bot = loadBotConfig();
-  if (!bot) {
-    console.log(`[Bot] Nicht eingerichtet – alle Nachrichten kommen vom Broadcaster. Einrichten: /mod DerBdu im Chat, dann http://localhost:${PORT}/login-bot in einem Browser, in dem DerBdu bei Twitch angemeldet ist`);
-    return;
-  }
-  console.log(`[Bot] ${bot.bot_name || bot.bot_login} (ID ${bot.bot_id}), freigegeben am ${new Date(bot.authorized_at).toLocaleString('de-DE')}`);
-  console.log(`[Bot] Sendet: ${botFeatureLabels()}; alles andere sendet der Broadcaster (umstellen: bot sender <funktion> bot|broadcaster)`);
-  console.log(`[Bot] Letzter Sendefehler: ${botLastError ? `${new Date(botLastError.at).toLocaleString('de-DE')} – ${botLastError.text}` : 'keiner'}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1093,7 +1046,7 @@ app.post(CHAT_BRIDGE_SEND_PATH, express.json({ limit: CHAT_BRIDGE_JSON_LIMIT }),
     return res.status(429).json({ ok: false, sent: false, error: 'zu schnell, höchstens eine Nachricht je Sekunde', retryAfterMs: CHAT_BRIDGE_MIN_GAP_MS - since });
   }
   chatBridgeLastSend.set(feature, Date.now());
-  const sender = chatSenders[feature] === 'bot' && loadBotConfig() ? 'bot' : 'broadcaster';
+  const sender = chat.senderOf(feature) === 'bot' && loadBotConfig() ? 'bot' : 'broadcaster';
   const sent = await sendChatMessage(text, null, feature);
   res.json({ ok: true, sent: Boolean(sent), sender });
 });
@@ -2222,64 +2175,7 @@ function isModOrBroadcaster(evt) {
   return badges.some(b => b.set_id === 'moderator' || b.set_id === 'broadcaster');
 }
 
-// Postet eine Chat-Nachricht; mit replyToMessageId als Antwort auf diese Chat-Nachricht. Über CHAT_MAX_CHARS wird gekürzt.
-// Absender der Funktion feature ist der Bot (chatSenders) und der Bot ist eingerichtet: über den Bot (App-Token, ADR 0017),
-// bei HTTP-Fehler Rückfall auf den Broadcaster.
-// Sonst als Broadcaster. Fehler werden geloggt; Rückgabe true, wenn Twitch die Nachricht angenommen hat.
-// options.broadcasterPrefix: nur beim Versand als Broadcaster vor den Text setzen (Absenderangabe, z. B. "FT vom BdU: ").
-async function sendChatMessage(text, replyToMessageId = null, feature = null, options = {}) {
-  const cut = t => (t.length > CHAT_MAX_CHARS ? t.slice(0, CHAT_MAX_CHARS - 1) + '…' : t);
-  const logPrefix = { bdu: '[BdU] ', uboat: '[UBOAT] ', prediction: '[Wette] ', poll: '[Abstimmung] ', rimworld: '[RimWorld] ', coinflip: '[CoinFlip] ' }[feature] || '';
-  const bot = feature && chatSenders[feature] === 'bot' ? loadBotConfig() : null;
-  if (bot) {
-    const result = await sendChatMessageAsBot(bot, cut(text), replyToMessageId, logPrefix);
-    if (result !== 'fallback') return result;
-  }
-  const message = cut((options.broadcasterPrefix || '') + text);
-  try {
-    await getValidAccessToken();
-    const tokens = loadTokens();
-    const body = { broadcaster_id: tokens.broadcaster_id, sender_id: tokens.broadcaster_id, message };
-    if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
-    const response = await twitchApi.post('/chat/messages', body, { headers: { 'Content-Type': 'application/json' } });
-    return checkChatSendResult(response, message, logPrefix);
-  } catch (err) {
-    console.error(`${logPrefix}Fehler beim Senden in den Chat:`, err.response?.data || err.message, '– Text:', message);
-    return false;
-  }
-}
-
-function checkChatSendResult(response, message, logPrefix) {
-  const result = response?.data?.data?.[0];
-  if (result && result.is_sent === false) {
-    console.warn(`${logPrefix}Twitch hat die Nachricht nicht gesendet (${result.drop_reason?.message || 'ohne Grund'}): ${message}`);
-    return false;
-  }
-  return true;
-}
-
-// Ergebnis: true/false (Twitch hat geantwortet; bei is_sent:false kein Rückfall, damit der Broadcaster keine Filter umgeht)
-// oder 'fallback' (HTTP-Fehler, Broadcaster soll senden).
-async function sendChatMessageAsBot(bot, message, replyToMessageId, logPrefix) {
-  const tokens = loadTokens();
-  if (!tokens) return 'fallback';
-  const body = { broadcaster_id: tokens.broadcaster_id, sender_id: bot.bot_id, message };
-  if (replyToMessageId) body.reply_parent_message_id = replyToMessageId;
-  try {
-    // App-Token; bei 401 holt twitchApi einmal einen neuen (abgelaufen oder widerrufen)
-    const response = await twitchApi.post('/chat/messages', body, { auth: 'app', headers: { 'Content-Type': 'application/json' } });
-    const sent = checkChatSendResult(response, message, logPrefix);
-    if (sent) stats.count('bot_messages');
-    return sent;
-  } catch (err) {
-    const status = err.response?.status;
-    const detail = err.response?.data?.message || err.message;
-    const hint = status === 403 ? ' – Ist DerBdu Moderator (/mod DerBdu) und ist die Freigabe noch gültig (/login-bot)?' : '';
-    botLastError = { at: Date.now(), text: `${status || 'kein HTTP-Status'}: ${detail}` };
-    console.warn(`${logPrefix}Senden über den Bot ${bot.bot_login} fehlgeschlagen (${status || '-'}: ${detail})${hint} – sende als Broadcaster`);
-    return 'fallback';
-  }
-}
+// sendChatMessage (Chat-Versand mit Bot-Absender und Rückfall auf den Broadcaster) liegt in core/chat.js
 
 async function sendShoutout(toBroadcasterId, toBroadcasterName) {
   try {
@@ -2781,7 +2677,7 @@ async function handleRaidEvent(evt) {
   const message = msgParts.join(' ');
   console.log(' Finale Chat-Nachricht:', message);
 
-  // Absender nach chatSenders.raid (Vorgabe Broadcaster). Shoutout nur, wenn Twitch die Begrüßung angenommen hat.
+  // Absender nach „Chat-Absender“ für raid (core/chat.js, Vorgabe Broadcaster). Shoutout nur, wenn Twitch die Begrüßung angenommen hat.
   if (!(await sendChatMessage(message, null, 'raid'))) {
     console.error(`Raid-Begrüßung für @${fromName} nicht gesendet – kein Shoutout`);
   } else {
@@ -3469,7 +3365,7 @@ rl.on('line', async (input) => {
     const value = (parts[2] || '').toLowerCase();
     if (!line || line === 'show') {
       for (const { line: key, name, enabled } of chatResultList()) {
-        console.log(`[Chat]   ${key.padEnd(10)} ${name}: ${enabled ? 'an (sendet der Server)' : 'aus'}, Absender ${chatSenders[key] === 'bot' ? 'Bot' : 'Broadcaster'}`);
+        console.log(`[Chat]   ${key.padEnd(10)} ${name}: ${enabled ? 'an (sendet der Server)' : 'aus'}, Absender ${chat.senderOf(key) === 'bot' ? 'Bot' : 'Broadcaster'}`);
       }
       return;
     }

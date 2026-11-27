@@ -27,13 +27,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Konstanten in `core/config.js`
 
   `server.js` ist rund 240 Zeilen kürzer. Schritt 3 ist geteilt: 3b Chat-Versand, 3c gemeinsamer Stand und Ereignisse.
+- Umbau nach ADR 0027, Schritt 3b, ohne Änderung des Verhaltens: Chat-Versand liegt in `core/chat.js`:
+  - über den Bot oder als Broadcaster, mit Rückfall auf den Broadcaster
+  - Kürzung und Prüfung von `is_sent`
+  - Absender je Chat-Funktion samt `chat_senders.json`
+  - Bot-Status
+
+  Welche Funktionen es gibt, gibt `server.js` mit. `server.js` ist rund 100 Zeilen kürzer.
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
 - FAHRPLAN (vom Nutzer bestätigt, 27.11.2026): Neue Server-Schritte beginnen erst nach dem Umzug von Topics als Modul; Schritt 7 (Clip-Moment) wartet darauf. ARCHITEKTUR mit Abschnitt „Kern“, AGENTS.md mit den Regeln zur Aufteilung.
 
 ### Tests
-- Neuer Test `test/core-test.js` (Kern: Speichern, Bereinigung, Log-Puffer, Fehlerprotokoll, Herkunfts- und Loopback-Prüfung) und `test/modules-test.js` (Anmeldung der Module).
+- Neuer Test `test/core-test.js` (Kern: Speichern, Bereinigung, Log-Puffer, Fehlerprotokoll, Herkunfts- und Loopback-Prüfung; seit 3a Login und Bot-Datei, seit 3b Chat-Versand mit Rückfall, Kürzung und Absender) und `test/modules-test.js` (Anmeldung der Module).
 - Neuer Test `test/bdu-test.js` (Störungsmeldung, Abstand, Rücknahme aller Zähler, Zeitüberschreitung, Erfolg zählt weiter, Funkstille unverändert).
 
 ## [1.2.0] – 2026-11-26

@@ -79,6 +79,37 @@ check('H5 Eigene Liste ersetzt die Standard-Herkünfte', listed.isAllowedOrigin(
   check('A3 Defekte Bot-Datei: kein Bot', auth.loadBotConfig() === null);
   check('A4 Twitch-Zugriff und Endpunkte angelegt', typeof auth.twitchApi.get === 'function' && typeof auth.routes === 'function');
 
+  // createChat (Schritt 3b): Absender je Funktion, Bot mit Rückfall auf den Broadcaster, Kürzung, is_sent:false
+  const { createChat } = require(path.join(root, 'core', 'chat'));
+  const posts = []; let botFails = false; let botMsgs = 0;
+  const fakeAuth = {
+    loadTokens: () => ({ broadcaster_id: '1' }),
+    getValidAccessToken: async () => 'tok',
+    loadBotConfig: () => ({ bot_id: '99', bot_login: 'derbdu' }),
+    twitchApi: { post: async (url, body, opts) => {
+      posts.push({ sender: body.sender_id, message: body.message, app: opts.auth === 'app', reply: body.reply_parent_message_id || null });
+      if (opts.auth === 'app' && botFails) throw Object.assign(new Error('x'), { response: { status: 403, data: { message: 'user is not a moderator' } } });
+      return { data: { data: [{ is_sent: !body.message.startsWith('BLOCK') }] } };
+    } },
+  };
+  const chatCfg = { ...cfg, CHAT_SENDERS_FILE: path.join(dir, 'chat_senders.json') };
+  const chat = createChat({ config: chatCfg, features: { bdu: 'BdU-Chat', raid: 'Raid-Begrüßung' }, defaults: { bdu: 'bot' }, logPrefixes: { bdu: '[BdU] ' }, auth: fakeAuth, onBotMessageSent: () => { botMsgs += 1; } });
+  check('C1 Vorgaben: bdu Bot, raid Broadcaster', chat.senderOf('bdu') === 'bot' && chat.senderOf('raid') === 'broadcaster' && chat.botFeatureLabels() === 'BdU-Chat');
+  let ok = await chat.sendChatMessage('Hallo', 'm1', 'bdu', { broadcasterPrefix: 'FT vom BdU: ' });
+  check('C2 Bot sendet ohne Präfix als Antwort, zählt', ok && posts.length === 1 && posts[0].sender === '99' && posts[0].app && posts[0].message === 'Hallo' && posts[0].reply === 'm1' && botMsgs === 1, JSON.stringify(posts));
+  botFails = true; posts.length = 0;
+  ok = await chat.sendChatMessage('Hallo', null, 'bdu', { broadcasterPrefix: 'FT vom BdU: ' });
+  check('C3 Bot-Fehler: Rückfall auf den Broadcaster mit Präfix', ok && posts.length === 2 && posts[1].sender === '1' && posts[1].message === 'FT vom BdU: Hallo', JSON.stringify(posts));
+  posts.length = 0;
+  ok = await chat.sendChatMessage('x'.repeat(600), null, 'raid');
+  check('C4 Broadcaster, gekürzt auf 500 Zeichen', ok && posts[0].sender === '1' && posts[0].message.length === 500 && posts[0].message.endsWith('…'));
+  posts.length = 0;
+  ok = await chat.sendChatMessage('BLOCK das', null, 'raid');
+  check('C5 is_sent:false: kein Erfolg, kein zweiter Versuch', ok === false && posts.length === 1);
+  const changed = chat.setChatSender('raid', 'bot', 'Test');
+  const saved = JSON.parse(fs.readFileSync(chatCfg.CHAT_SENDERS_FILE, 'utf8'));
+  check('C6 Absender umstellen wird gespeichert', changed && saved.raid === 'bot' && chat.setChatSender('raid', 'bot', 'Test') === false);
+
   for (const x of results) realLog(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : `  -> ${x.info}`}`);
   process.chdir(os.tmpdir());
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* egal */ }

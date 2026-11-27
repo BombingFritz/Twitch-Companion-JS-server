@@ -48,6 +48,11 @@ module.exports = {
   TOKEN_PROACTIVE_RETRY_MS: 10 * 60 * 1000,   // nach einer gescheiterten Erneuerung erst so viel später wieder
   TOKEN_CHECK_INTERVAL_MS: 60 * 1000,
 
+  // Chat-Versand (ADR 0017, Spec bot-account.md „Absender je Funktion“)
+  CHAT_SENDERS_FILE: './chat_senders.json',   // Absender je Chat-Funktion: Bot oder Broadcaster
+  CHAT_SENDER_VALUES: ['bot', 'broadcaster'],
+  CHAT_MAX_CHARS: 500,                        // Twitch-Limit je Chat-Nachricht
+
   // Twitch-API (ADR 0024, Issue #50): Vorgabe des Nutzers für alle Helix-Anfragen des Servers zusammen
   TWITCH_API_PER_SECOND: 3,                   // im Schnitt
   TWITCH_API_BURST: 20,                       // kurze Spitze, z. B. die EventSub-Abos binnen 10 s nach dem Welcome
