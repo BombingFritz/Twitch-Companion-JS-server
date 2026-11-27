@@ -9,7 +9,7 @@ Hinweis: Liegt der Projektordner in OneDrive o. Ä., werden `.env` und `tokens.j
 1. Node.js installieren, mindestens Version 18 (Vorgabe von Express 5).
 2. Abhängigkeiten installieren: `npm install` (liest `package.json` und `package-lock.json`).
 3. `.env` anlegen: `cp .env.example .env`, Werte eintragen. `REDIRECT_URI` muss exakt der Twitch-Developer-Console entsprechen.
-4. Syntax prüfen: `npm run check` (entspricht `node --check server.js`). Optional alle Tests: `npm test` (Attrappen statt Twitch und Home Assistant, eigenes temporäres Verzeichnis, rührt die Laufzeitdateien nicht an; etwa 4 Minuten)
+4. Syntax prüfen: `npm run check` (prüft alle projekteigenen JS-Dateien mit `node --check`). Optional alle Tests: `npm test` (Attrappen statt Twitch und Home Assistant, eigenes temporäres Verzeichnis, rührt die Laufzeitdateien nicht an; etwa 4 Minuten)
 5. Starten: `npm start` (entspricht `node server.js`), unter Windows alternativ per Doppelklick auf `AuthServer.cmd` (eigenes Konsolenfenster, bleibt nach einem Absturz offen, nur so geht der Neustart aus der Webkonsole; so startet auch das Stream-Deck-Skript den Server)
 6. Einmalig anmelden: `http://localhost:3000/login` im Browser öffnen.
 7. Prüfen: `http://localhost:3000/TwitchCompanionAdmin` (Webkonsole) oder `http://localhost:3000/status`

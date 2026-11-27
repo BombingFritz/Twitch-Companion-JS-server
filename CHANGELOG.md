@@ -52,6 +52,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 ### Tests
 - Neuer Test `test/core-test.js` (Kern: Speichern, Bereinigung, Log-Puffer, Fehlerprotokoll, Herkunfts- und Loopback-Prüfung; seit 3a Login und Bot-Datei, seit 3b Chat-Versand mit Rückfall, Kürzung und Absender) und `test/modules-test.js` (Anmeldung der Module).
 - Neuer Test `test/bdu-test.js` (Störungsmeldung, Abstand, Rücknahme aller Zähler, Zeitüberschreitung, Erfolg zählt weiter, Funkstille unverändert).
+- Neuer Architekturtest `test/architektur-test.js` (ADR 0027, Nachtrag). Er prüft:
+  - Module hängen nur am Kern, der Kern kennt keine Module, `lib/` hängt weder an Kern noch an Modulen.
+  - Niemand importiert `server.js`, es gibt keine Zyklen, jedes `require` hat einen festen Pfad.
+  - `axios` und `ws` lädt nur `server.js`.
+  - Es kommen keine neuen direkten Schreibzugriffe außerhalb von `core/store.js` dazu (bekannt: 15).
+
+  Er prüft sich vorher an Beispielen mit Verstößen selbst.
+- `npm run check` (`scripts/check.js`) prüft jetzt die Syntax aller projekteigenen JS-Dateien statt nur `server.js`; die CI nutzt denselben Befehl.
 
 ## [1.2.0] – 2026-11-26
 
