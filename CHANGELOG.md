@@ -13,12 +13,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - `http.js`: Herkunftsprüfung, CORS, `no-store`, Prüfung auf lokale Aufrufe, HTTP-Protokoll
 
   `server.js` ist rund 190 Zeilen kürzer.
+- Umbau nach ADR 0027, Schritt 2, ohne Änderung des Verhaltens: Module melden sich über `core/modules.js` an. Sie bringen mit:
+  - Endpunkte für Widgets und Webkonsole
+  - Konsolenbefehle mit Hilfezeilen
+  - stille Abrufe im HTTP-Protokoll
+  - ihren Teil der Übersicht
+  - Reaktionen auf `stream.new` und `module.switched`
+
+  Intro-Topics ist das erste Modul (`modules/topics/`). `server.js` ist rund 150 Zeilen kürzer.
 
 ### Documentation
 - ADR 0027: `server.js` wird schrittweise in einen Kern (`core/`) und Module (`modules/<name>/`) aufgeteilt, ohne das Verhalten zu ändern. Reihenfolge, Abhängigkeitsregeln und Umbauregeln stehen im ADR. Neue Funktionen warten, bis ihr Bereich umgezogen ist.
 - FAHRPLAN (vom Nutzer bestätigt, 27.11.2026): Neue Server-Schritte beginnen erst nach dem Umzug von Topics als Modul; Schritt 7 (Clip-Moment) wartet darauf. ARCHITEKTUR mit Abschnitt „Kern“, AGENTS.md mit den Regeln zur Aufteilung.
 
 ### Tests
+- Neuer Test `test/core-test.js` (Kern: Speichern, Bereinigung, Log-Puffer, Fehlerprotokoll, Herkunfts- und Loopback-Prüfung) und `test/modules-test.js` (Anmeldung der Module).
 - Neuer Test `test/bdu-test.js` (Störungsmeldung, Abstand, Rücknahme aller Zähler, Zeitüberschreitung, Erfolg zählt weiter, Funkstille unverändert).
 
 ## [1.2.0] – 2026-11-26

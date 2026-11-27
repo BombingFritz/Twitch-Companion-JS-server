@@ -14,7 +14,6 @@ const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats
 const { createStreamSession } = require('./lib/stream-session');
 const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
 const { createTokenStore, createRateLimiter, createTwitchApi } = require('./lib/twitch-api');
-const { createTopics } = require('./lib/topics');
 const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/prediction-state');
 const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
 const { predictionResultMessage, pollResultMessage, createResultAnnouncer } = require('./lib/result-messages');
@@ -25,6 +24,9 @@ const config = require('./core/config');
 const { writeJsonAtomic } = require('./core/store');
 const { createLog, redactedValues } = require('./core/log');
 const { createAccess } = require('./core/http');
+const { createModuleHost } = require('./core/modules');
+// Module (ADR 0027): melden Endpunkte, Konsolenbefehle und ihren Teil der Webkonsole über core/modules.js an
+const { createTopicsModule } = require('./modules/topics');
 
 const app = express();
 const {
@@ -68,14 +70,8 @@ const STREAM_KARTEI_EXPIRY_WARN_MS = 14 * 24 * 60 * 60 * 1000;   // so lange vor
 const STREAM_KARTEI_REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 const ADMIN_KARTEI_PUBLISH_PATH = '/api/admin/kartei/publish';
 
-// Intro-Topics (ADR 0021, docs/specs/intro-topics.md) und Stream-Deck-Anbindung (ADR 0020, docs/specs/stream-deck.md)
-const TOPICS_FILE = './topics.json';              // Themenliste und Anzeige-Einstellungen; Fortschritt nur im Arbeitsspeicher
-const TOPICS_AUTO_HIDE_MS = 5000;                 // so lange bleibt die fertige Liste stehen
-const TOPICS_SSE_PING_MS = 30 * 1000;             // Lebenszeichen auf der Events-Verbindung der Widgets und des Plugins
-const TOPICS_JSON_LIMIT = '4kb';                  // Liste mit bis zu 10 Themen à 60 Zeichen
-const TOPICS_ACTIONS = ['next', 'back', 'toggle', 'reset'];
+// Stream-Deck-Anbindung (ADR 0020, docs/specs/stream-deck.md); Intro-Topics ist ein Modul (modules/topics, ADR 0027)
 const SILENT_EFFECT_TYPES = new Set(['topic_active', 'topic_done', 'topics_complete']);   // in keinem Log, keine Statistik (Nutzer, 12.11.2026)
-const ADMIN_TOPICS_PATH = '/api/admin/topics';
 const DECK_PATH = '/api/deck';
 
 // !privat: Zuschauer schalten selbst um, ob sie in der Statistik mit Namen erscheinen (ADR 0022)
@@ -331,8 +327,8 @@ function isQuietRequest(req, res) {
   if (req.method === 'GET' && [ADMIN_OVERVIEW_PATH, ADMIN_STATS_PATH, ADMIN_REPORTS_PATH].includes(req.path) && res.statusCode === 200) return true;
   // Widgets fragen ihre Leseendpunkte alle 2–5 s ab: erfolgreiche Abrufe nur im Testmodus (http debug on). Fehler bleiben sichtbar.
   if (req.method === 'GET' && HTTP_QUIET_WIDGET_PATHS.includes(req.path) && res.statusCode < 400 && !httpDebug) return true;
-  // Intro-Topics: Tastendrücke und Widget-Verbindungen nur im Testmodus protokollieren (topics debug on)
-  if (isTopicsPath(req.path) && res.statusCode < 400 && !topicsDebug) return true;
+  // Module legen eigene stille Abrufe fest, z. B. Intro-Topics (Tastendrücke und Widgets nur mit "topics debug on")
+  if (moduleHost.isQuiet(req, res)) return true;
   return false;
 }
 
@@ -827,58 +823,21 @@ function saveModuleSwitches(switches) {
 let moduleSwitches = loadModuleSwitches();
 
 // ═══════════════════════════════════════════════════════════════════
-// INTRO-TOPICS (ADR 0021) – Zustand in lib/topics.js, hier nur Datei, Ereignisse und Effekte
+// MODULE (ADR 0027) – Anmeldung über core/modules.js; Topics ist das erste umgezogene Modul
 // ═══════════════════════════════════════════════════════════════════
 
-let topicsDebug = false;                 // Testschalter "topics debug on": Topic-Effekte und Tastendrücke erscheinen im Log
-const topicsClients = [];                // offene Events-Verbindungen (Widgets, Stream-Deck-Plugin)
-
-function isTopicsPath(p) {
-  const lower = p.toLowerCase();
-  return lower === '/api/topics' || lower.startsWith('/api/topics/') || lower === ADMIN_TOPICS_PATH || lower.startsWith(`${ADMIN_TOPICS_PATH}/`) || lower === DECK_PATH;
-}
-
-function topicsDebugLog(message) {
-  if (topicsDebug) console.log(`[Topics] ${message}`);
-}
-
-function loadTopicsFile() {
-  if (!fs.existsSync(TOPICS_FILE)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(TOPICS_FILE, 'utf8'));
-  } catch {
-    console.warn('[Topics] topics.json ist defekt – Standardliste wird verwendet');
-    return null;
-  }
-}
-
-function saveTopicsFile(data) {
-  fs.writeFileSync(TOPICS_FILE, JSON.stringify(data, null, 2), 'utf8');
-}
-
-function broadcastTopics(state) {
-  const frame = `event: state\ndata: ${JSON.stringify(state)}\n\n`;
-  for (const client of topicsClients) client.res.write(frame);
-}
-
-const topics = createTopics({
-  load: loadTopicsFile,
-  save: saveTopicsFile,
+const moduleHost = createModuleHost();
+moduleHost.add(createTopicsModule({
   isEnabled: () => moduleSwitches.topics,
-  autoHideMs: TOPICS_AUTO_HIDE_MS,
-  warn: message => console.warn(message),
-  onChange: state => {
-    broadcastTopics(state);
-    topicsDebugLog(`Stand ${state.step}/${2 * state.total}, ${state.visible ? 'sichtbar' : `ausgeblendet${state.hide_reason ? ` (${state.hide_reason})` : ''}`}, Revision ${state.revision}`);
-  },
-  onEffect: (type, meta) => {
-    try {
-      scheduleEffect(type, meta);
-    } catch (err) {
-      logIfChanged('topics-effect-error', `[Topics] Effekt konnte nicht eingereiht werden: ${err.message}`, 'error');
-    }
-  },
-});
+  switchModule: on => switchModule('topics', on),
+  stateLabel: () => moduleStateLabel('topics'),
+  scheduleEffect: (type, meta) => scheduleEffect(type, meta),
+  logIfChanged,
+  isLocalWidgetRequest,
+  requireAdminWrite: (req, res, next) => requireAdminWrite(req, res, next),
+  adminJsonLimit: ADMIN_JSON_LIMIT,
+  deckPath: DECK_PATH,
+}));
 
 function moduleStateLabel(key) {
   return moduleSwitches[key] ? 'aktiviert' : `deaktiviert ("${key} activate" schaltet ein)`;
@@ -905,7 +864,7 @@ function switchModule(key, on) {
     for (const [id, p] of bduPending) { clearTimeout(p.timer); bduPending.delete(id); }
     console.log('[BdU] Offene Anfragen verworfen');
   }
-  if (key === 'topics' && changed) topics.notifyEnabledChanged();
+  moduleHost.emit('module.switched', { key, on, changed });   // z. B. Intro-Topics blendet aus bzw. ein
   if (key === 'uboat' && on && !uboatCrew) {
     console.log('[UBOAT] Hinweis: UBOAT_SAVES_DIR ist nicht gesetzt – das Soldbuch antwortet erst, wenn der Ordner in der .env steht (Neustart nötig)');
   }
@@ -957,7 +916,7 @@ function isSilentEffect(type) {
 
 function enqueueEffect(type, count, meta) {
   effectQueue.push({ type, count, meta, queuedAt: Date.now() });
-  if (!isSilentEffect(type) || topicsDebug) console.log(`Effekt eingereiht: ${type} (${count}x) - Queue-Länge jetzt: ${effectQueue.length}`);
+  if (!isSilentEffect(type) || moduleHost.silentEffectsVisible()) console.log(`Effekt eingereiht: ${type} (${count}x) - Queue-Länge jetzt: ${effectQueue.length}`);
   processEffectQueue();
 }
 
@@ -973,7 +932,7 @@ function describeEffect(type, meta, count) {
 async function triggerEffect(job) {
   const { type, count, meta } = job;
   const silent = isSilentEffect(type);
-  if (!silent || topicsDebug) console.log(`Effekt ausgelöst: ${type}${count > 1 ? ` (${count}x gebündelt)` : ''} – ${describeEffect(type, meta, count)}`);
+  if (!silent || moduleHost.silentEffectsVisible()) console.log(`Effekt ausgelöst: ${type}${count > 1 ? ` (${count}x gebündelt)` : ''} – ${describeEffect(type, meta, count)}`);
   if (!silent) {
     stats.count('effects');
     appendEvent(type, { ...meta, count });
@@ -1659,44 +1618,8 @@ app.get('/api/effects/mode', (req, res) => {
 // INTRO-TOPICS UND STREAM DECK (ADR 0020, ADR 0021) – nur vom eigenen Rechner
 // ═══════════════════════════════════════════════════════════════════
 
-// Lesen und Events: Widgets (Herkunft null) und Plugin (ohne Herkunft); fremde Herkünfte lehnt die CORS-Prüfung vorher ab.
-app.get('/api/topics', (req, res) => {
-  if (!isLocalWidgetRequest(req, '/api/topics')) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
-  res.json(topics.getState());
-});
-
-app.get('/api/topics/stream', (req, res) => {
-  if (!isLocalWidgetRequest(req, '/api/topics/stream')) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-store',
-    'Connection': 'keep-alive'
-  });
-  res.write('retry: 5000\n\n');
-  res.write(`event: state\ndata: ${JSON.stringify(topics.getState())}\n\n`);
-  const client = { res, origin: req.headers.origin || '-' };
-  client.ping = setInterval(() => res.write(': ping\n\n'), TOPICS_SSE_PING_MS);
-  topicsClients.push(client);
-  topicsDebugLog(`Widget/Plugin verbunden (Herkunft: ${client.origin}, verbunden: ${topicsClients.length})`);
-  req.on('close', () => {
-    clearInterval(client.ping);
-    const i = topicsClients.indexOf(client);
-    if (i >= 0) topicsClients.splice(i, 1);
-    topicsDebugLog(`Widget/Plugin getrennt (verbunden: ${topicsClients.length})`);
-  });
-});
-
-// Stream-Deck-Tasten: POST mit JSON (Body darf {} sein), nur lokal, Modul muss an sein.
-app.post('/api/topics/:action', express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
-  const action = String(req.params.action).toLowerCase();
-  if (!isLocalWidgetRequest(req, '/api/topics/…')) return res.status(403).json({ ok: false, error: 'Nur für lokale Aufrufe über localhost oder 127.0.0.1' });
-  if (!TOPICS_ACTIONS.includes(action)) return res.status(404).json({ ok: false, error: `Unbekannte Aktion. Erlaubt: ${TOPICS_ACTIONS.join(', ')}` });
-  if (!req.is('application/json')) return res.status(415).json({ ok: false, error: 'Content-Type: application/json erwartet (Body darf {} sein)' });
-  if (!moduleSwitches.topics) return res.status(503).json({ ok: false, error: 'Intro-Topics ist ausgeschaltet' });
-  const state = topics[action]();
-  topicsDebugLog(`Taste ${action}: ${topicsSummary(state)}`);
-  res.json({ ok: true, state });
-});
+// Endpunkte der Module für Widgets und Stream Deck (Intro-Topics: /api/topics, /api/topics/stream, POST /api/topics/:action)
+moduleHost.mountRoutes(app, 'widget');
 
 // Übersicht für das Stream-Deck-Plugin (docs/specs/stream-deck.md)
 app.get(DECK_PATH, (req, res) => {
@@ -1833,7 +1756,7 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
       timestamp: e.timestamp
     })),
     subgoal: { current, target, title, status, lastUpdated },
-    topics: (({ visible, step, total, complete, current }) => ({ visible, step, total, complete, current, clients: topicsClients.length }))(topics.getState())
+    ...moduleHost.overview(),   // je Modul unter seinem Namen, z. B. topics: {visible, step, total, complete, current, clients}
   });
 });
 
@@ -1993,34 +1916,8 @@ app.post(ADMIN_CHAT_RESULTS_PATH, requireAdminWrite, express.json({ limit: ADMIN
   res.json({ ok: true, changed, chat_results: chatResultList() });
 });
 
-app.get(ADMIN_TOPICS_PATH, (req, res) => {
-  res.json({ ...topics.getConfig(), state: topics.getState(), debug: topicsDebug, clients: topicsClients.length });
-});
-
-// Liste und/oder Anzeige-Einstellungen speichern
-app.post(ADMIN_TOPICS_PATH, requireAdminWrite, express.json({ limit: TOPICS_JSON_LIMIT }), (req, res) => {
-  const { items, display } = req.body || {};
-  if (items === undefined && display === undefined) return res.status(400).json({ error: 'items oder display angeben' });
-  if (items !== undefined) {
-    const result = topics.setItems(items);
-    if (result.error) return res.status(400).json({ error: result.error });
-    console.log(`[Webkonsole] Intro-Topics: neue Liste mit ${result.state.total} Themen gespeichert`);
-  }
-  if (display !== undefined) {
-    const result = topics.setDisplay(display);
-    if (result.error) return res.status(400).json({ error: result.error });
-    console.log('[Webkonsole] Intro-Topics: Anzeige-Einstellungen gespeichert');
-  }
-  res.json({ ok: true, ...topics.getConfig(), state: topics.getState() });
-});
-
-// Bedienen aus der Webkonsole (wie die Stream-Deck-Tasten)
-app.post(`${ADMIN_TOPICS_PATH}/action`, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
-  const action = req.body && req.body.action;
-  if (!TOPICS_ACTIONS.includes(action)) return res.status(400).json({ error: `Unbekannte Aktion. Erlaubt: ${TOPICS_ACTIONS.join(', ')}` });
-  if (!moduleSwitches.topics) return res.status(409).json({ error: 'Intro-Topics ist ausgeschaltet' });
-  res.json({ ok: true, state: topics[action]() });
-});
+// Endpunkte der Module für die Webkonsole, nach dem Schutz app.use('/api/admin', …) (Intro-Topics: /api/admin/topics…)
+moduleHost.mountRoutes(app, 'admin');
 
 app.post(ADMIN_EFFECT_MODE_PATH, requireAdminWrite, express.json({ limit: ADMIN_JSON_LIMIT }), (req, res) => {
   const mode = req.body && req.body.mode;
@@ -2239,11 +2136,8 @@ function connectEventSub(reconnectUrl = null) {
           const startedBefore = streamSession.snapshot().started_at;
           streamSession.onOnline({ id: onlineEvent.id, startedAt: onlineEvent.started_at });
           pollStreamViewers();   // erster Wert gleich zu Beginn, danach im festen Takt
-          // Neue Stream-Session (nicht Wiederaufnahme nach Unterbrechung): Intro-Topics von vorn
-          if (streamSession.snapshot().started_at !== startedBefore) {
-            topics.reset();
-            console.log('[Topics] Neuer Stream – Intro-Topics zurückgesetzt');
-          }
+          // Neue Stream-Session (nicht Wiederaufnahme nach Unterbrechung): Module beginnen von vorn, z. B. Intro-Topics
+          if (streamSession.snapshot().started_at !== startedBefore) moduleHost.emit('stream.new');
         }
         shoutedOutThisSession.clear();
         console.log('Stream gestartet – Whitelist-Shoutout-Tracking für diese Session zurückgesetzt');
@@ -3519,19 +3413,6 @@ function printUboatStatus() {
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
-function topicsSummary(state) {
-  const current = state.current === null ? 'noch keins' : `${state.current + 1}/${state.total} „${state.items[state.current].title}“ (${state.items[state.current].status})`;
-  return `Thema ${current}, ${state.visible ? 'sichtbar' : 'ausgeblendet'}${state.complete ? ', alle erledigt' : ''}`;
-}
-
-function printTopicsStatus() {
-  const state = topics.getState();
-  console.log(`[Topics] Modul: ${moduleStateLabel('topics')}, Testmodus: ${topicsDebug ? 'an' : 'aus'}, verbundene Widgets/Plugins: ${topicsClients.length}`);
-  console.log(`[Topics] ${topicsSummary(state)}`);
-  state.items.forEach((item, i) => console.log(`  ${i + 1}. [${item.status === 'erledigt' ? 'x' : item.status === 'aktiv' ? '>' : ' '}] ${item.title}`));
-  console.log(`[Topics] Überschrift: „${state.display.title}“, Design: ${state.display.theme}, Hintergrund horizontal: ${state.display.background.horizontal}, vertikal: ${state.display.background.vertikal}`);
-}
-
 function printKarteiStatus() {
   const o = karteiOverview();
   if (!o.configured) { console.log('Stream-Kartei: nicht eingerichtet (STREAM_KARTEI_REPO und STREAM_KARTEI_TOKEN in .env)'); return; }
@@ -3569,10 +3450,7 @@ function printConsoleHelp() {
   console.log(' uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)');
   console.log(' kartei show|publish        - Stream-Kartei: Stand der Website bzw. jetzt veröffentlichen (nur bei Änderung, Abstand 10 min)');
   console.log(' kartei activate|deactivate - Stream-Kartei ein- bzw. ausschalten (bleibt nach Neustart)');
-  console.log(' topics show                - Intro-Topics: Liste, Stand, Sichtbarkeit, verbundene Widgets');
-  console.log(' topics next|back|toggle|reset - Intro-Topics bedienen (wie die Stream-Deck-Tasten)');
-  console.log(' topics debug on|off        - Intro-Topics: Testmodus, zeigt Effekte und Tastendrücke im Log (bis Neustart)');
-  console.log(' topics activate|deactivate - Intro-Topics ein- bzw. ausschalten (bleibt nach Neustart)');
+  moduleHost.helpLines().forEach(line => console.log(line));   // Befehle der Module, z. B. topics
   console.log(' http debug on|off          - Testmodus: auch erfolgreiche Widget-Abrufe im HTTP-Protokoll zeigen (bis Neustart)');
   console.log(' bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler');
   console.log(' bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)');
@@ -3731,33 +3609,8 @@ rl.on('line', async (input) => {
     return;
   }
 
-  if (cmd === 'topics') {
-    const sub = (parts[1] || '').toLowerCase();
-    if (sub === 'show') {
-      printTopicsStatus();
-      return;
-    }
-    if (TOPICS_ACTIONS.includes(sub)) {
-      if (!moduleSwitches.topics) {
-        console.log('Intro-Topics ist deaktiviert ("topics activate" schaltet ein)');
-        return;
-      }
-      const state = topics[sub]();
-      console.log(`[Topics] ${sub}: ${topicsSummary(state)}`);
-      return;
-    }
-    if (sub === 'debug' && ['on', 'off'].includes((parts[2] || '').toLowerCase())) {
-      topicsDebug = parts[2].toLowerCase() === 'on';
-      console.log(`[Topics] Testmodus ${topicsDebug ? 'an – Topic-Effekte und Tastendrücke erscheinen im Log (bis "topics debug off" oder Neustart)' : 'aus'}`);
-      return;
-    }
-    if (sub === 'activate' || sub === 'deactivate') {
-      switchModule('topics', sub === 'activate');
-      return;
-    }
-    console.log('Nutzung: topics show | topics next|back|toggle|reset | topics debug on|off | topics activate|deactivate');
-    return;
-  }
+  // Befehle der Module (ADR 0027), z. B. "topics …"
+  if (moduleHost.handleConsole(cmd, parts)) return;
 
   if (cmd === 'bdu') {
     const sub = (parts[1] || '').toLowerCase();
