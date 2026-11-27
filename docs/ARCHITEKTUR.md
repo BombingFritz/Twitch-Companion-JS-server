@@ -26,7 +26,7 @@ Browser am Streaming-PC --POST /api/admin/server/shutdown|restart--> server.js -
 
 Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `modules/<name>/`. Was noch nicht umgezogen ist, steht in `server.js`.
 
-**Kern (`core/`), Stand Schritt 3b:**
+**Kern (`core/`), Stand Schritt 3c (Ereignisse):**
 
 | Datei | Inhalt |
 |---|---|
@@ -36,7 +36,8 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | `core/store.js` | `writeJsonAtomic` (erst in eine Hilfsdatei, dann umbenennen; Rückfall, wenn OneDrive die Datei festhält) |
 | `core/log.js` | `createLog` (`installConsole` umhüllt `console.log/info/warn/error`, `logIfChanged`, `sanitize`, `writeEntry`; Puffer `buffer`, Verbindungen `clients`, Fehlerprotokoll `errorLog`; `onError` zählt Fehler in der Statistik), `redactedValues` (Secrets, Webhook-Adresse samt Host und ID) |
 | `core/http.js` | `createAccess` (`isAllowedOrigin`, `isLoopbackRequest`, `hasLoopbackHost`, `requireLocalRequest` mit eigener 403-Antwort, `isLocalWidgetRequest` ohne Antwort, `requestLogger(isQuiet)`, `install` für Herkunftsprüfung, CORS und `Cache-Control: no-store`; `corsAllowAll`, `allowedOrigins`) |
-| `core/modules.js` | `createModuleHost`: Anmeldung der Module. `add(modul)`, `mountRoutes(app, 'widget'\|'admin')`, `handleConsole(cmd, parts)`, `helpLines()`, `isQuiet(req, res)`, `silentEffectsVisible()`, `overview()`, `emit(ereignis, daten)` |
+| `core/modules.js` | `createModuleHost({ events })`: Anmeldung der Module. `add(modul)` (trägt dessen `on` in den Ereignisbus ein), `mountRoutes(app, 'widget'\|'admin')`, `handleConsole(cmd, parts)`, `helpLines()`, `isQuiet(req, res)`, `silentEffectsVisible()`, `overview()`, `events` |
+| `core/events.js` | `createEvents` (Schritt 3c): interner Ereignisbus mit `on(ereignis, besitzer, fn)`, `emit(ereignis, daten)` und `eventNames()`. Fehler fängt er je Empfänger ab, auch abgelehnte Promises (Abschnitt „Interne Ereignisse“) |
 
 `server.js` erzeugt Log und Zugriffsschutz in dieser Reihenfolge: Statistik, dann `createLog` und `installConsole`, dann `requestLogger` und `install`. Welche erfolgreichen Abrufe im HTTP-Protokoll still bleiben, legt `isQuietRequest` in `server.js` fest (Webkonsole, Widget-Leseendpunkte); Module tragen eigene stille Abrufe über `isQuiet` bei.
 
@@ -45,7 +46,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 - `routes.admin(app)`: Endpunkte der Webkonsole, erst nach dem Schutz `app.use('/api/admin', …)` eingehängt.
 - `consoleCommands`: Name, Hilfezeilen, `handle`. Die Hilfezeilen erscheinen in `printConsoleHelp` an fester Stelle; der Befehl wird im `rl.on('line')`-Handler über `handleConsole` verteilt.
 - `isQuiet`, `showsSilentEffects`, `overview`.
-- `on`: Ereignisse `stream.new` (neue Stream-Session, nicht Wiederaufnahme) und `module.switched` (`{key, on, changed}` nach `switchModule`).
+- `on`: Empfänger für interne Ereignisse, z. B. `stream.new` und `module.switched` (Katalog unter „Interne Ereignisse“).
 
 | Modul | Inhalt |
 |---|---|
@@ -61,9 +62,25 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 - Es gibt keine Zyklen.
 - Jedes `require` hat einen festen Pfad.
 - `axios` und `ws` lädt nur `server.js`.
+- Jedes gesendete oder von einem Modul gehörte interne Ereignis steht im Katalog unter „Interne Ereignisse“, und jedes dort genannte wird gesendet.
 - Direkte Schreibzugriffe außerhalb von `core/store.js` gibt es nur an den bekannten Stellen (`KNOWN_WRITES` im Test, Stand 27.11.2026: 15). Die Liste darf nur schrumpfen.
 
 `npm run check` (`scripts/check.js`) prüft die Syntax aller projekteigenen JS-Dateien. Die CI nutzt denselben Befehl.
+
+### Interne Ereignisse
+
+`core/events.js` (`createEvents`, Schritt 3c) ist der interne Ereignisbus.
+- **Ablauf:** `server.js` erzeugt ihn und gibt ihn an `createModuleHost({ events })`. Erzeuger rufen `events.emit(name, daten)`. Module hören über ihr `on` und werden beim Anmelden eingetragen.
+- **Fehler:** Jeder Empfänger läuft für sich. Ein synchroner Fehler oder ein abgelehntes Promise erscheint als `[Module] <name>: Fehler bei Ereignis <ereignis>: <text>` im Log und Fehlerprotokoll. Er hält weder die übrigen Empfänger noch den Aufrufer auf. `emit` wartet nicht auf asynchrone Empfänger.
+- **Regeln** (ADR 0027, Nachtrag, Abschnitt 6):
+  - Ein Ereignis benachrichtigt beliebig viele Empfänger. Eine Anfrage mit Antwort ist ein direkter Aufruf eines Kerndienstes.
+  - Ein Empfänger löst kein weiteres Ereignis aus, außer diese Tabelle nennt die Kette und ihr Ende.
+  - Ein neues Ereignis kommt nur mit einer Zeile hier dazu. Der Architekturtest prüft das: Jedes gesendete und jedes von einem Modul gehörte Ereignis steht hier, und jedes hier genannte wird gesendet.
+
+| Ereignis | Erzeuger | Bedeutung, Daten | Empfänger |
+|---|---|---|---|
+| `stream.new` | `server.js`, EventSub `stream.online` | Eine neue Stream-Session beginnt, keine Wiederaufnahme nach Unterbrechung. Ohne Daten. | `topics`: Intro-Topics von vorn |
+| `module.switched` | `server.js`, `switchModule` (Konsole, Webkonsole) | Ein Modul-Schalter wurde betätigt: `{ key, on, changed }`. `changed` ist `false`, wenn der Schalter schon so stand. | `topics`: blendet bei eigenem Schalter aus bzw. ein |
 
 **Noch in `server.js`:**
 

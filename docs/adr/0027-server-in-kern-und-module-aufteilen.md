@@ -262,6 +262,10 @@ Beide behalten ihren festen Platz in `ctx` (Abschnitt 3 des ADR). Der Vertrag gi
 
 ### 6. Interne Ereignisse
 - **Fehler je Handler:** `core/events.js` (3c) fängt je Handler synchrone Fehler **und abgelehnte Promises** und loggt sie mit dem Modulnamen. Bisher fing `moduleHost.emit` nur synchrone Fehler. Ein abgelehntes Promise hätte den Server beendet, weil es keinen Fänger für `unhandledRejection` gibt. Ein Test sichert das ab.
+- **Eigener Bus statt `EventEmitter`** (präzisiert die Dateitabelle oben, Schritt 3c):
+  - Node-`EventEmitter` hält beim ersten Fehler eines Empfängers die übrigen an.
+  - Abgelehnte Promises leitet er höchstens an ein `'error'`-Ereignis weiter.
+  - `core/events.js` ist deshalb ein eigener Bus von rund 40 Zeilen.
 - **Katalog:** `ARCHITEKTUR.md` bekommt einen Abschnitt „Interne Ereignisse“ mit Ereignis, Erzeuger, Bedeutung und Empfängern. Ein neues Ereignis kommt nur mit Eintrag dort.
 - **Ereignis oder Aufruf:** Ein Ereignis benachrichtigt beliebig viele Empfänger. Eine Anfrage, die eine Antwort braucht, ist ein direkter Aufruf eines Kerndienstes.
 - **Ketten:** Ein Handler löst kein weiteres Ereignis aus, außer der Katalog nennt die Kette und ihr Ende.
