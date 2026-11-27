@@ -37,6 +37,24 @@ module.exports = {
   LOOPBACK_ADDRESSES: ['127.0.0.1', '::1', '::ffff:127.0.0.1'],   // /token nur von diesem Rechner
   LOOPBACK_HOSTNAMES: ['localhost', '127.0.0.1', '[::1]'],        // erlaubte Host-Header für /token
 
+  // Login, Tokens und Bot (ADR 0013, 0017, 0024)
+  TOKEN_FILE: './tokens.json',
+  BOT_FILE: './bot.json',                     // nur ID und Name des Bots, keine Tokens
+  BOT_SCOPES: 'user:bot user:write:chat',     // Freigabe durch das Bot-Konto über /login-bot
+  LOGIN_STATE_TTL_MS: 10 * 60 * 1000,         // so lange gilt ein über /login oder /login-bot begonnener Login (state)
+  APP_TOKEN_REFRESH_MARGIN_MS: 5 * 60 * 1000, // App-Access-Token so lange vor Ablauf neu holen
+  TOKEN_REFRESH_BUFFER_MS: 5 * 60 * 1000,     // so kurz vor Ablauf erneuert eine Anfrage den Token selbst
+  TOKEN_PROACTIVE_REFRESH_MS: 10 * 60 * 1000, // so lange vor Ablauf erneuert der Server den Token von sich aus
+  TOKEN_PROACTIVE_RETRY_MS: 10 * 60 * 1000,   // nach einer gescheiterten Erneuerung erst so viel später wieder
+  TOKEN_CHECK_INTERVAL_MS: 60 * 1000,
+
+  // Twitch-API (ADR 0024, Issue #50): Vorgabe des Nutzers für alle Helix-Anfragen des Servers zusammen
+  TWITCH_API_PER_SECOND: 3,                   // im Schnitt
+  TWITCH_API_BURST: 20,                       // kurze Spitze, z. B. die EventSub-Abos binnen 10 s nach dem Welcome
+  TWITCH_API_PER_MINUTE: 200,                 // hart, in jedem gleitenden 60-s-Fenster
+  TWITCH_API_STARTUP_FREE: 300,               // so viele Anfragen nach dem Start ohne Zeitgrenze (Token, Abos, Ausgangsstände)
+  TWITCH_API_MAX_RETRY_WAIT_MS: 60 * 1000,    // bei 429 höchstens so lange auf den Reset warten
+
   // Log und Fehlerprotokoll (ADR 0018)
   ERROR_LOG_FILE: './error_log.json',     // letzte Fehlermeldungen, überdauert Beenden, Neustart und Absturz
   ERROR_LOG_MAX_ENTRIES: 1000,            // so viele Fehlermeldungen bleiben in error_log.json

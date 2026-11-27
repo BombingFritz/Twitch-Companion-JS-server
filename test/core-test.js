@@ -7,6 +7,7 @@ const { writeJsonAtomic } = require(path.join(root, 'core', 'store'));
 
 const results = []; const check = (name, cond, info = '') => results.push({ name, ok: !!cond, info });
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'core-'));
+process.chdir(dir);   // eigenes Arbeitsverzeichnis: core/config.js liest sonst die echte .env im Projektordner
 
 // store
 const file = path.join(dir, 'x.json');
@@ -61,6 +62,25 @@ check('H4 CORS_ORIGINS=*: jede Herkunft (Notschalter)', all.corsAllowAll && all.
 const listed = createAccess({ port: 4000, corsOrigins: 'http://a.example, http://b.example', defaultOrigins: ['null'], loopbackAddresses: [], loopbackHostnames: [], logIfChanged: () => {} });
 check('H5 Eigene Liste ersetzt die Standard-Herkünfte', listed.isAllowedOrigin('http://b.example') && !listed.isAllowedOrigin('null') && listed.isAllowedOrigin('http://127.0.0.1:4000'));
 
-for (const x of results) realLog(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : `  -> ${x.info}`}`);
-try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* egal */ }
-process.exit(results.every(x => x.ok) ? 0 : 1);
+// createAuth (Schritt 3a): ohne Tokens, Bot-Datei speichern, lesen, entfernen; ohne Server und ohne Netz
+(async () => {
+  const { createAuth } = require(path.join(root, 'core', 'auth'));
+  const cfg = { ...require(path.join(root, 'core', 'config')), TOKEN_FILE: path.join(dir, 'tokens.json'), BOT_FILE: path.join(dir, 'bot.json'), PORT: 3999, TOKEN_CHECK_INTERVAL_MS: 60 * 60 * 1000 };
+  const auth = createAuth({ config: cfg, http: { post: async () => { throw new Error('kein Netz im Test'); }, get: async () => { throw new Error('kein Netz im Test'); } },
+    writeJson: writeJsonAtomic, logIfChanged: () => {}, access, onBroadcasterLogin: () => {}, onBotAuthorized: () => {}, botFeatureLabels: () => 'nichts' });
+  let msg = '';
+  try { await auth.getValidAccessToken(); } catch (err) { msg = err.message; }
+  check('A1 Ohne tokens.json: keine Tokens, Hinweis auf /login mit Port', auth.loadTokens() === null && msg.includes('http://localhost:3999/login'), msg);
+  auth.saveBotConfig({ bot_id: '99', bot_login: 'derbdu' });
+  const bot = auth.loadBotConfig();
+  auth.removeBotConfig();
+  check('A2 Bot-Datei speichern, lesen, entfernen', bot && bot.bot_id === '99' && auth.loadBotConfig() === null);
+  fs.writeFileSync(cfg.BOT_FILE, '{ kaputt');
+  check('A3 Defekte Bot-Datei: kein Bot', auth.loadBotConfig() === null);
+  check('A4 Twitch-Zugriff und Endpunkte angelegt', typeof auth.twitchApi.get === 'function' && typeof auth.routes === 'function');
+
+  for (const x of results) realLog(`${x.ok ? 'OK  ' : 'FAIL'} ${x.name}${x.ok ? '' : `  -> ${x.info}`}`);
+  process.chdir(os.tmpdir());
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* egal */ }
+  process.exit(results.every(x => x.ok) ? 0 : 1);
+})();

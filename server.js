@@ -3,7 +3,6 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const crypto = require('crypto');
 const readline = require('readline');
 const WebSocket = require('ws');
 const { createUboatCrew, normalizeName: normalizeCrewName } = require('./lib/uboat-crew');
@@ -13,7 +12,6 @@ const kartei = require('./lib/stream-kartei');
 const { createStats, streamMetricKeys, streamMetricDefs } = require('./lib/stats');
 const { createStreamSession } = require('./lib/stream-session');
 const { createStreamReports, reportWarnings, isReportId } = require('./lib/stream-reports');
-const { createTokenStore, createRateLimiter, createTwitchApi } = require('./lib/twitch-api');
 const { createPredictionTracker, PREDICTION_EVENT_TYPES } = require('./lib/prediction-state');
 const { createPollTracker, POLL_EVENT_TYPES } = require('./lib/poll-state');
 const { predictionResultMessage, pollResultMessage, createResultAnnouncer } = require('./lib/result-messages');
@@ -24,6 +22,7 @@ const config = require('./core/config');
 const { writeJsonAtomic } = require('./core/store');
 const { createLog, redactedValues } = require('./core/log');
 const { createAccess } = require('./core/http');
+const { createAuth } = require('./core/auth');
 const { createModuleHost } = require('./core/modules');
 // Module (ADR 0027): melden Endpunkte, Konsolenbefehle und ihren Teil der Webkonsole über core/modules.js an
 const { createTopicsModule } = require('./modules/topics');
@@ -45,7 +44,6 @@ const {
   ERROR_LOG_MAX_ENTRIES,
 } = config;
 
-const TOKEN_FILE = './tokens.json';
 const RAID_FILE = './raids.json';
 const WHITELIST_FILE = './whitelist.json';
 const SUBGOAL_FILE = './subgoal_cache.json';
@@ -82,9 +80,7 @@ const PRIVACY_OPTOUTS_PATH = '/api/privacy/optouts';
 const PRIVACY_TEXT_ON = `Privatmodus an: In der Stream-Statistik erscheinst du ab jetzt und rückwirkend nur noch als „${PRIVACY_ANON_NAME}“. Mit ${PRIVACY_COMMAND} schaltest du ihn wieder aus.`;
 const PRIVACY_TEXT_OFF = `Privatmodus aus: In der Stream-Statistik erscheinst du ab jetzt wieder mit Namen. Frühere Einträge bleiben anonym. Mit ${PRIVACY_COMMAND} schaltest du ihn wieder ein.`;
 
-// Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md)
-const BOT_FILE = './bot.json';                    // nur ID und Name des Bots, keine Tokens
-const BOT_SCOPES = 'user:bot user:write:chat';    // Freigabe durch das Bot-Konto über /login-bot
+// Bot-Account „DerBdu“ (ADR 0017, docs/specs/bot-account.md): Datei, Scopes und Freigabe in core/auth.js
 // Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“): Bot oder Broadcaster, einstellbar per Konsole und Webkonsole
 const CHAT_SENDERS_FILE = './chat_senders.json';
 const CHAT_FEATURES = { bdu: 'BdU-Chat', uboat: 'UBOAT-Soldbuch', raid: 'Raid-Begrüßung', whitelist: 'Whitelist-Begrüßung', raidstats: '!raidstats', privacy: '!privat-Antwort',
@@ -111,19 +107,7 @@ const CHAT_RESULTS_FILE = './chat_results.json';
 const CHAT_RESULT_LINES = { prediction: 'Wett-Ergebnis', poll: 'Abstimmungs-Ergebnis' };
 const CHAT_SENDER_DEFAULTS = { bdu: 'bot', uboat: 'bot', rimworld: 'bot' };   // alle übrigen: Broadcaster (rimworld: Nutzer, 20.11.2026)
 const CHAT_SENDER_VALUES = ['bot', 'broadcaster'];
-const LOGIN_STATE_TTL_MS = 10 * 60 * 1000;        // so lange gilt ein über /login oder /login-bot begonnener Login (state)
-const APP_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;   // App-Access-Token so lange vor Ablauf neu holen
-
-// Twitch-API (ADR 0024, Issue #50): Vorgabe des Nutzers für alle Helix-Anfragen des Servers zusammen
-const TWITCH_API_PER_SECOND = 3;                      // im Schnitt
-const TWITCH_API_BURST = 20;                           // kurze Spitze, z. B. die EventSub-Abos binnen 10 s nach dem Welcome
-const TWITCH_API_PER_MINUTE = 200;                     // hart, in jedem gleitenden 60-s-Fenster
-const TWITCH_API_STARTUP_FREE = 300;                   // so viele Anfragen nach dem Start ohne Zeitgrenze (Token, Abos, Ausgangsstände); danach die Grenzen oben
-const TWITCH_API_MAX_RETRY_WAIT_MS = 60 * 1000;        // bei 429 höchstens so lange auf den Reset warten
-const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;         // so kurz vor Ablauf erneuert eine Anfrage den Token selbst
-const TOKEN_PROACTIVE_REFRESH_MS = 10 * 60 * 1000;     // so lange vor Ablauf erneuert der Server den Token von sich aus
-const TOKEN_PROACTIVE_RETRY_MS = 10 * 60 * 1000;       // nach einer gescheiterten Erneuerung erst so viel später wieder
-const TOKEN_CHECK_INTERVAL_MS = 60 * 1000;
+// Login-, Token-, Bot- und Twitch-API-Konstanten (ADR 0013, 0017, 0024) stehen in core/config.js
 
 // Erreichbarkeit (Nutzer, 14.11.2026; ADR 0013, Nachtrag): nur auf diesem PC. Home Assistant bekommt nur Webhooks und fragt nicht ab.
 // IPv6-Loopback zusätzlich, weil manche Programme „localhost“ als ::1 auflösen. Zugang aus dem LAN später nur mit Schlüssel (#57).
@@ -345,89 +329,26 @@ access.install(app);
 const { corsAllowAll, allowedOrigins, isLoopbackRequest, hasLoopbackHost, requireLocalRequest, isLocalWidgetRequest } = access;
 
 // ═══════════════════════════════════════════════════════════════════
-// HILFSFUNKTIONEN – TOKENS
+// TOKENS, LOGIN, BOT-FREIGABE, TWITCH-ZUGRIFF (core/auth.js; ADR 0013, 0017, 0024, 0027)
 // ═══════════════════════════════════════════════════════════════════
 
-// tokens.json wird nur beim Start gelesen; danach liegt der Stand im Arbeitsspeicher (ADR 0024).
-function readTokensFile() {
-  if (!fs.existsSync(TOKEN_FILE)) return null;
-  try { return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8')); } catch { return null; }
-}
-
-const tokenStore = createTokenStore({
-  load: readTokensFile,
-  save: tokens => writeJsonAtomic(TOKEN_FILE, tokens),
+const auth = createAuth({
+  config,
   http: axios,
-  clientId: CLIENT_ID,
-  clientSecret: CLIENT_SECRET,
-  bufferMs: TOKEN_REFRESH_BUFFER_MS,
-  log: (message, level = 'log') => console[level](message),
+  writeJson: writeJsonAtomic,
+  logIfChanged,
+  access,
+  // Nach dem Broadcaster-Login: Abstimmungen dürfen wieder bei Twitch starten (Teil C); EventSub verbinden, falls nötig
+  onBroadcasterLogin: () => {
+    consumerPollScopeMissing = false;
+    if (!eventSubWs) connectEventSub();
+  },
+  onBotAuthorized: () => { botLastError = null; },
+  botFeatureLabels: () => botFeatureLabels(),
 });
+const { tokenStore, twitchApi, loadTokens, getValidAccessToken, loadBotConfig, removeBotConfig } = auth;
 
-function loadTokens() {
-  return tokenStore.get();
-}
-
-function saveTokens(tokens) {
-  tokenStore.set(tokens);
-}
-
-async function getValidAccessToken() {
-  if (!tokenStore.get()) throw new Error(`Keine Tokens gespeichert. Bitte login durchführen: http://localhost:${PORT}/login`);
-  return tokenStore.getValidAccessToken();
-}
-
-// Rechtzeitig vor dem Ablauf erneuern, damit Widgets mit /token nicht in einen abgelaufenen Token laufen.
-// Scheitert es, erst nach TOKEN_PROACTIVE_RETRY_MS wieder versuchen, damit das Fehlerprotokoll nicht volläuft.
-let tokenProactiveRetryAt = 0;
-setInterval(() => {
-  const expiresAt = tokenStore.expiresAt();
-  if (!expiresAt || expiresAt - Date.now() > TOKEN_PROACTIVE_REFRESH_MS || Date.now() < tokenProactiveRetryAt) return;
-  tokenStore.refresh().catch(() => { tokenProactiveRetryAt = Date.now() + TOKEN_PROACTIVE_RETRY_MS; });
-}, TOKEN_CHECK_INTERVAL_MS).unref();
-
-// ═══════════════════════════════════════════════════════════════════
-// HILFSFUNKTIONEN – BOT-ACCOUNT „DerBdu“ (ADR 0017)
-// ═══════════════════════════════════════════════════════════════════
-
-function loadBotConfig() {
-  if (!fs.existsSync(BOT_FILE)) return null;
-  try {
-    const data = JSON.parse(fs.readFileSync(BOT_FILE, 'utf8'));
-    return data && data.bot_id ? data : null;
-  } catch { return null; }
-}
-
-function saveBotConfig(config) {
-  fs.writeFileSync(BOT_FILE, JSON.stringify(config, null, 2), 'utf8');
-}
-
-let appAccessToken = null;          // { token, expiresAt } – nur im RAM (Client-Credentials)
 let botLastError = null;            // { at, text } – letzter Fehler beim Senden über den Bot
-
-async function getAppAccessToken(forceNew = false) {
-  if (!forceNew && appAccessToken && Date.now() < appAccessToken.expiresAt - APP_TOKEN_REFRESH_MARGIN_MS) {
-    return appAccessToken.token;
-  }
-  const params = new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'client_credentials' });
-  const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
-  appAccessToken = { token: response.data.access_token, expiresAt: Date.now() + response.data.expires_in * 1000 };
-  return appAccessToken.token;
-}
-
-// Alle Helix-Anfragen laufen hierüber: Drosselung, Token, 401/429 (ADR 0024, Issue #50)
-const twitchApi = createTwitchApi({
-  http: axios,
-  clientId: CLIENT_ID,
-  tokens: { getValidAccessToken, refresh: () => tokenStore.refresh() },
-  getAppToken: getAppAccessToken,
-  limiter: createRateLimiter({
-    perSecond: TWITCH_API_PER_SECOND, perMinute: TWITCH_API_PER_MINUTE, burst: TWITCH_API_BURST,
-    startupFree: TWITCH_API_STARTUP_FREE,
-  }),
-  maxRetryWaitMs: TWITCH_API_MAX_RETRY_WAIT_MS,
-  log: (message, level = 'log') => logIfChanged(`twitch-api:${message}`, message, level),
-});
 
 // ── Absender je Chat-Funktion (Spec bot-account.md, „Absender je Funktion“) ──
 // Fehlende oder defekte Datei, fehlender oder unbekannter Eintrag: Vorgabe aus CHAT_SENDER_DEFAULTS, sonst Broadcaster
@@ -1071,174 +992,8 @@ function buildClosingMessage() {
 // ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════
 
-// requireLocalRequest (Anmeldung nur vom eigenen Rechner, ADR 0013) liegt in core/http.js
-
-// Offene Logins: state -> { kind: 'broadcaster' | 'bot', createdAt }. Jeder state gilt einmal und LOGIN_STATE_TTL_MS lang.
-const pendingLogins = new Map();
-
-function createLoginState(kind) {
-  const now = Date.now();
-  for (const [value, entry] of pendingLogins) if (now - entry.createdAt > LOGIN_STATE_TTL_MS) pendingLogins.delete(value);
-  const value = crypto.randomBytes(16).toString('hex');
-  pendingLogins.set(value, { kind, createdAt: now });
-  return value;
-}
-
-// Liefert 'broadcaster', 'bot' oder null (unbekannt, abgelaufen, schon benutzt) und verbraucht den state.
-function takeLoginState(value) {
-  if (typeof value !== 'string') return null;
-  const entry = pendingLogins.get(value);
-  if (!entry) return null;
-  pendingLogins.delete(value);
-  return Date.now() - entry.createdAt > LOGIN_STATE_TTL_MS ? null : entry.kind;
-}
-
-app.get('/login', (req, res) => {
-  if (!requireLocalRequest(req, res, '/login')) return;
-  const scope = SCOPES.replace(/\+/g, ' ');
-  const authUrl = `https://id.twitch.tv/oauth2/authorize`
-    + `?response_type=code`
-    + `&client_id=${CLIENT_ID}`
-    + `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`
-    + `&scope=${encodeURIComponent(scope)}`
-    + `&state=${createLoginState('broadcaster')}`;
-  console.log('Leite zu Twitch Login weiter...');
-  res.redirect(authUrl);
-});
-
-// Einmalige Freigabe des Bot-Kontos (ADR 0017). Nur lokal, wie /token.
-app.get('/login-bot', (req, res) => {
-  if (!requireLocalRequest(req, res, '/login-bot')) return;
-  const authUrl = `https://id.twitch.tv/oauth2/authorize`
-    + `?response_type=code`
-    + `&client_id=${CLIENT_ID}`
-    + `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`
-    + `&scope=${encodeURIComponent(BOT_SCOPES)}`
-    + `&force_verify=true`
-    + `&state=${createLoginState('bot')}`;
-  console.log('[Bot] Leite zur Twitch-Freigabe für den Bot-Account weiter (im Browser als DerBdu angemeldet sein)...');
-  res.redirect(authUrl);
-});
-
-// Rückkehr von /login-bot (state schon geprüft): nur ID und Name des Bots speichern, das Bot-Token wird nicht gebraucht (App-Token reicht).
-async function handleBotCallback(req, res) {
-  const { code } = req.query;
-  if (!code) return res.status(400).send('Kein Code erhalten (Freigabe abgebrochen?)');
-  try {
-    const params = new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, code, grant_type: 'authorization_code', redirect_uri: REDIRECT_URI });
-    const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
-    const granted = Array.isArray(response.data.scope) ? response.data.scope : String(response.data.scope || '').split(' ');
-    const userResponse = await twitchApi.get('/users', { auth: { token: response.data.access_token } });
-    const user = userResponse.data.data[0];
-    const tokens = loadTokens();
-    if (tokens && user.id === tokens.broadcaster_id) {
-      console.warn(`[Bot] Freigabe abgelehnt: angemeldet war der Broadcaster ${user.login}, nicht der Bot`);
-      return res.status(400).send(`Du warst bei Twitch als ${user.login} (Broadcaster) angemeldet. Bitte in einem privaten Browserfenster als DerBdu anmelden und /login-bot erneut aufrufen.`);
-    }
-    const missing = BOT_SCOPES.split(' ').filter(s => !granted.includes(s));
-    if (missing.length) {
-      console.warn(`[Bot] Freigabe abgelehnt: es fehlen die Rechte ${missing.join(', ')}`);
-      return res.status(400).send(`Es fehlen die Rechte ${missing.join(', ')}. Bitte /login-bot erneut aufrufen und alles bestätigen.`);
-    }
-    saveBotConfig({ bot_id: user.id, bot_login: user.login, bot_name: user.display_name || user.login, authorized_at: new Date().toISOString() });
-    botLastError = null;
-    console.log(`[Bot] Bot-Account eingerichtet: ${user.display_name || user.login} (ID ${user.id}). Sendet ab jetzt: ${botFeatureLabels()}`);
-    res.send(`\n\nBot-Account eingerichtet: ${user.display_name || user.login}\n\nSendet ab jetzt: ${botFeatureLabels()}\n\nWichtig: DerBdu muss Moderator in deinem Kanal sein (/mod ${user.login}).\n\nDu kannst diesen Tab jetzt schließen.`);
-  } catch (err) {
-    console.error('[Bot] Fehler bei der Freigabe:', err.response?.data || err.message);
-    res.status(500).send(`Fehler: ${err.message}`);
-  }
-}
-
-app.get('/callback', async (req, res) => {
-  if (!requireLocalRequest(req, res, '/callback')) return;
-  // Der state entscheidet, welcher Login zurückkehrt; ohne gültigen state wird nichts gespeichert.
-  const kind = takeLoginState(req.query.state);
-  if (kind === 'bot') return handleBotCallback(req, res);
-  if (kind !== 'broadcaster') {
-    console.warn('[Zugriffsschutz] /callback abgelehnt: unbekannter, abgelaufener oder schon benutzter Login (state) – nichts gespeichert');
-    return res.status(400).send(`Anmeldung ungültig oder abgelaufen. Bitte http://localhost:${PORT}/login bzw. /login-bot erneut aufrufen.`);
-  }
-  const { code } = req.query;
-  if (!code) return res.status(400).send('Kein Code erhalten (Anmeldung abgebrochen?)');
-
-  try {
-    console.log('Tausche Authorization Code gegen Tokens...');
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: REDIRECT_URI,
-    });
-
-    const response = await axios.post('https://id.twitch.tv/oauth2/token', params);
-
-    const userResponse = await twitchApi.get('/users', { auth: { token: response.data.access_token } });
-
-    const userData = userResponse.data.data[0];
-    const broadcasterUserId = userData.id;
-    const broadcasterName = userData.login || userData.display_name;
-
-    console.log('Broadcaster ID extrahiert:', broadcasterUserId);
-    console.log('Broadcaster Name:', broadcasterName);
-
-    const tokens = {
-      access_token: response.data.access_token,
-      refresh_token: response.data.refresh_token,
-      broadcaster_id: broadcasterUserId,
-      broadcaster_name: broadcasterName,
-      obtained_at: Date.now(),
-      expires_in: response.data.expires_in,
-      expires_at: Date.now() + response.data.expires_in * 1000
-    };
-
-    saveTokens(tokens);
-    consumerPollScopeMissing = false;   // neue Anmeldung: Startversuch für Abstimmungen wieder bei Twitch (Teil C)
-    console.log('Tokens gespeichert');
-    console.log(`Token läuft ab in: ${Math.floor(response.data.expires_in / 3600)} Stunden`);
-
-    res.send(`\n\nBroadcaster: ${broadcasterName}\n\nID: ${broadcasterUserId}\n\nToken-Gültigkeit: ${Math.floor(response.data.expires_in / 3600)} Stunden\n\nAuto-Refresh: Aktiviert\n\nDu kannst diesen Tab jetzt schließen.\n\nDer Server ist bereit und die Widgets können geladen werden.`);
-
-    if (!eventSubWs) connectEventSub();
-
-  } catch (err) {
-    console.error('Callback Fehler:', err.response?.data || err.message);
-    res.status(500).send(`Fehler: ${err.message}`);
-  }
-});
-
-app.get('/token', async (req, res) => {
-  // Den Access-Token nur an Aufrufer auf diesem Rechner über localhost/127.0.0.1 herausgeben.
-  if (!isLoopbackRequest(req) || !hasLoopbackHost(req)) {
-    logIfChanged(
-      `token-denied:${req.socket.remoteAddress}|${req.headers.host}`,
-      `[Zugriffsschutz] /token abgelehnt: Aufruf von ${req.socket.remoteAddress} an Host "${req.headers.host}". Erlaubt sind nur lokale Aufrufe über localhost oder 127.0.0.1.`,
-      'warn'
-    );
-    return res.status(403).json({ error: 'Token nur für lokale Aufrufe über localhost oder 127.0.0.1' });
-  }
-
-  try {
-    const accessToken = await getValidAccessToken();
-    const tokens = loadTokens();
-    // Einmal je Herkunft loggen, damit sichtbar wird, welche Origin die Widgets tatsächlich senden.
-    logIfChanged(`token-origin:${req.headers.origin || '-'}`, `[Token] Ausgabe an Widget-Herkunft: ${req.headers.origin || '(keine Origin)'}`);
-    // expires_at: Widgets holen sich rechtzeitig einen neuen Token (der Server erneuert TOKEN_PROACTIVE_REFRESH_MS vor Ablauf)
-    res.json({
-      access_token: accessToken,
-      broadcaster_id: tokens.broadcaster_id,
-      client_id: CLIENT_ID,
-      expires_at: new Date(tokenStore.expiresAt()).toISOString(),
-    });
-  } catch (err) {
-    console.error('Token-Endpoint Fehler:', err.message);
-    res.status(401).json({
-      error: err.message,
-      hint: 'Bitte login durchführen: http://localhost:3000/login'
-    });
-  }
-});
+// Login, Bot-Freigabe, Rückkehr von Twitch und Token für Widgets: /login, /login-bot, /callback, /token (core/auth.js)
+auth.routes(app);
 
 // ── BdU-Chat: Verbindung des Enigma-Widgets (Server-Sent Events); isLocalWidgetRequest liegt in core/http.js ──
 
@@ -3734,7 +3489,7 @@ rl.on('line', async (input) => {
     }
     if (sub === 'remove') {
       if (!loadBotConfig()) { console.log('[Bot] Es ist kein Bot-Account eingerichtet'); return; }
-      fs.unlinkSync(BOT_FILE);
+      removeBotConfig();
       console.log('[Bot] Bot-Account vergessen – alle Nachrichten kommen wieder vom Broadcaster. Die Freigabe bei Twitch entziehst du als DerBdu unter twitch.tv → Einstellungen → Verbindungen.');
       return;
     }
