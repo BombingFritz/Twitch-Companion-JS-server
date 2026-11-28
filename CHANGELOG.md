@@ -84,6 +84,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Es kommen keine neuen direkten Schreibzugriffe außerhalb von `core/store.js` dazu (bekannt: 15).
 
   Er prüft sich vorher an Beispielen mit Verstößen selbst. Seit 3c prüft er auch den Katalog der internen Ereignisse in ARCHITEKTUR.md, in beide Richtungen.
+- Neuer Vertragsschnappschuss `test/vertrag-test.js` (ADR 0027, Nachtrag, Abschnitt 1). Er vergleicht `help`, Routen, EventSub-Abos, die Felder der Übersicht, die Home-Assistant-Payloads und das Startlog mit dem Ausgangsstand des Umbaus `5e44516` (`test/vertrag/5e44516.json`). Abweichungen sind nur mit Eintrag in `ERLAUBT` zulässig, derzeit `unhandled_errors` (PR #113). Ergebnis der ersten Aufnahme: Bis einschließlich Schritt 3c und der kleinen PRs zeigt der Server nach außen dasselbe wie vor dem Umbau.
 - `test/admin-test.js unbehandelt`: Ablehnungen ohne Fänger halten den Server nicht an, werden gezählt, gleicher Text erscheint nur einmal im Log, mit Stack, ohne Secret im Fehlerprotokoll; `/status` ohne neues Feld. Gegenprobe ohne Fänger: Der Testprozess bricht ab.
 - `test/modules-test.js`: gemeinsamer Ereignisbus, Empfänger ohne Funktion, asynchrone Empfänger (Reihenfolge, `emit` wartet nicht, abgelehnte Promises mit Modulname im Log, kein unbehandelter Fehler).
 - `npm run check` (`scripts/check.js`) prüft jetzt die Syntax aller projekteigenen JS-Dateien statt nur `server.js`; die CI nutzt denselben Befehl.

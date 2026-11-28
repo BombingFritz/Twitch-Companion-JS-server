@@ -69,6 +69,17 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 
 `npm run check` (`scripts/check.js`) prüft die Syntax aller projekteigenen JS-Dateien. Die CI nutzt denselben Befehl.
 
+**Vertragsschnappschuss (ADR 0027, Nachtrag, Abschnitt 1):** `test/vertrag-test.js` startet den Server mit Attrappen. Er vergleicht, was der Server nach außen zeigt, mit dem Ausgangsstand des Umbaus `5e44516` (`test/vertrag/5e44516.json`):
+- Ausgabe von `help`
+- Routen mit Methode und Reihenfolge
+- EventSub-Abos mit Typ, Version und Bedingung
+- Felder und Typen von `/api/admin/overview`
+- Home-Assistant-Payloads für `follow`, `sub`, `gift` und `topic_active`
+- das Startlog, mit normalisierten Zahlen, IDs und dem wechselnden Hinweis von dotenv
+
+Eine Abweichung ist nur erlaubt, wenn sie in `ERLAUBT` im Test mit ihrem PR steht. Eine erlaubte Abweichung, die nicht mehr auftritt, macht den Test ebenfalls rot. Stand 28.11.2026 ist nur `unhandled_errors` erlaubt (PR #113).
+- **Neu aufnehmen:** `node test/vertrag-test.js <alter-stand>/server.js aufnehmen <datei>`, zum Beispiel in einem Arbeitsbaum von `5e44516`.
+
 ### Besitz des Zustands
 
 Nach ADR 0027, Nachtrag, Abschnitt 4, bekommt jede veränderliche Variable auf oberster Ebene von `server.js` genau einen Besitzer. Andere Bereiche lesen und ändern sie nur über dessen Funktionen.
