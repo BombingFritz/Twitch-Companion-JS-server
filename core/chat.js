@@ -2,6 +2,7 @@
 // Welche Chat-Funktionen es gibt (features) und ihre Vorgaben gibt server.js mit; der Kern kennt keine Funktion selbst.
 'use strict';
 const fs = require('fs');
+const { writeJsonAtomic } = require('./store');
 
 // ctx: config (CHAT_SENDERS_FILE, CHAT_SENDER_VALUES, CHAT_MAX_CHARS, PORT), features { key: Name }, defaults { key: 'bot' },
 //      logPrefixes { key: '[Präfix] ' } für Logzeilen beim Versand,
@@ -21,7 +22,7 @@ function createChat(ctx) {
   }
 
   function saveChatSenders(senders) {
-    fs.writeFileSync(c.CHAT_SENDERS_FILE, JSON.stringify(senders, null, 2), 'utf8');
+    writeJsonAtomic(c.CHAT_SENDERS_FILE, senders);
   }
 
   let chatSenders = loadChatSenders();

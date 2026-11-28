@@ -13,7 +13,7 @@ const TOPICS_ACTIONS = ['next', 'back', 'toggle', 'reset'];
 const ADMIN_TOPICS_PATH = '/api/admin/topics';
 const LOCAL_ONLY = 'Nur für lokale Aufrufe über localhost oder 127.0.0.1';
 
-// ctx: state (core/state.js, Modul-Schalter 'topics'), scheduleEffect(type, meta), logIfChanged, isLocalWidgetRequest,
+// ctx: state (core/state.js, Modul-Schalter 'topics'), writeJson (writeJsonAtomic, topics.json), scheduleEffect(type, meta), logIfChanged, isLocalWidgetRequest,
 //      requireAdminWrite, adminJsonLimit, deckPath (still im HTTP-Protokoll wie die Topics-Endpunkte)
 function createTopicsModule(ctx) {
   const KEY = 'topics';                    // Schlüssel des Modul-Schalters
@@ -41,7 +41,7 @@ function createTopicsModule(ctx) {
   }
 
   function saveFile(data) {
-    fs.writeFileSync(TOPICS_FILE, JSON.stringify(data, null, 2), 'utf8');
+    ctx.writeJson(TOPICS_FILE, data);
   }
 
   function broadcast(state) {

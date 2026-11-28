@@ -59,7 +59,7 @@ function createAuth(ctx) {
   }
 
   function saveBotConfig(bot) {
-    fs.writeFileSync(c.BOT_FILE, JSON.stringify(bot, null, 2), 'utf8');
+    ctx.writeJson(c.BOT_FILE, bot);
   }
 
   function removeBotConfig() {

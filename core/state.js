@@ -7,7 +7,7 @@ const fs = require('fs');
 // ctx: config (MODULES_FILE, PRIVACY_FILE),
 //      modules { key: Name } in der Reihenfolge der Schalter (Konsole, Webkonsole, modules.json),
 //      offTexts { key: Hinweis beim Ausschalten }, sonst „Befehle im Chat werden ignoriert“,
-//      events (core/events.js) für 'module.switched', writeJson (writeJsonAtomic) für die !privat-Liste,
+//      events (core/events.js) für 'module.switched', writeJson (writeJsonAtomic) für modules.json und die !privat-Liste,
 //      isLive() – Stream läuft (Quelle: Stream-Session, lib/stream-session.js)
 function createState(ctx) {
   const { config: c, modules: names, offTexts = {}, events } = ctx;
@@ -25,7 +25,7 @@ function createState(ctx) {
   }
 
   function saveModuleSwitches(switches) {
-    fs.writeFileSync(c.MODULES_FILE, JSON.stringify(switches, null, 2), 'utf8');
+    ctx.writeJson(c.MODULES_FILE, switches);
   }
 
   let moduleSwitches = loadModuleSwitches();

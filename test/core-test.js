@@ -13,6 +13,12 @@ process.chdir(dir);   // eigenes Arbeitsverzeichnis: core/config.js liest sonst 
 const file = path.join(dir, 'x.json');
 writeJsonAtomic(file, { a: 1 });
 check('S1 writeJsonAtomic schreibt, keine Hilfsdatei bleibt', JSON.parse(fs.readFileSync(file, 'utf8')).a === 1 && !fs.existsSync(`${file}.tmp`));
+// Format wie früher mit fs.writeFileSync(f, JSON.stringify(d, null, 2), 'utf8'): zwei Leerzeichen, kein Zeilenende am Schluss
+check('S2 Format der Laufzeitdateien unverändert', fs.readFileSync(file, 'utf8') === JSON.stringify({ a: 1 }, null, 2));
+const { writeTextAtomic } = require(path.join(root, 'core', 'store'));
+const txt = path.join(dir, 'bericht.txt');
+writeTextAtomic(txt, 'Zeile 1\r\nÄußerung 2');
+check('S3 writeTextAtomic: Text unverändert (auch Umlaute, Windows-Zeilenenden), keine Hilfsdatei', fs.readFileSync(txt, 'utf8') === 'Zeile 1\r\nÄußerung 2' && !fs.existsSync(`${txt}.tmp`));
 
 // redactedValues
 const r = redactedValues({ secrets: ['GEHEIM', undefined], webhookUrl: 'http://ha-host.invalid:8123/api/webhook/hook-id-123', loopbackHostnames: ['localhost'] });
