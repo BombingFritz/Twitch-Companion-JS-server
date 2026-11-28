@@ -1289,6 +1289,32 @@ async function serverNeustart() {
   check('E6 Der Neustart steht in der Konsole', logs.some(l => l.includes(`[Webkonsole] Server wird neu gestartet (PID ${process.pid})`)));
 }
 
+// Unbehandelte asynchrone Fehler (ADR 0027, Nachtrag, Abschnitt 10): Ohne Fänger hätte schon die erste Ablehnung
+// diesen Testprozess beendet (Abbruch statt FAIL-Zeilen).
+async function unbehandelt() {
+  const overview = async () => JSON.parse((await request(OVERVIEW)).body);
+  let d = await overview();
+  check('U1 Ohne Fehler: Zähler 0, kein letzter Fehler', d.unhandled_errors && d.unhandled_errors.count === 0 && d.unhandled_errors.last_at === null && d.unhandled_errors.last_text === null, JSON.stringify(d.unhandled_errors));
+  const before = logs.length;
+  Promise.reject(new Error(`asynchron kaputt ${SECRETS[0]}`));
+  Promise.reject(new Error(`asynchron kaputt ${SECRETS[0]}`));
+  await waitFor(() => logs.slice(before).some(l => l.includes('Unbehandelter asynchroner Fehler')));
+  for (let i = 0; i < 40 && (await overview()).unhandled_errors.count < 2; i++) await sleep(25);
+  d = await overview();
+  const lines = logs.slice(before).filter(l => l.includes('Unbehandelter asynchroner Fehler'));
+  check('U2 Server läuft weiter, beide gezählt, letzter Fehler mit Zeit, Secret entfernt', d.pid === process.pid && d.unhandled_errors.count === 2 && !Number.isNaN(Date.parse(d.unhandled_errors.last_at))
+    && d.unhandled_errors.last_text.startsWith('asynchron kaputt') && !d.unhandled_errors.last_text.includes(SECRETS[0]), JSON.stringify(d.unhandled_errors));
+  check('U3 Gleicher Fehler direkt hintereinander nur einmal im Log, mit Stack', lines.length === 1 && lines[0].includes('der Server läuft weiter: Error: asynchron kaputt') && lines[0].includes('admin-test.js'), JSON.stringify(lines));
+  const errors = JSON.parse((await request(ERROR_LOG)).body).entries;
+  check('U4 Im Fehlerprotokoll, ohne Secret', errors.some(e => e.text.includes('Unbehandelter asynchroner Fehler')) && !JSON.stringify(errors).includes(SECRETS[0]), JSON.stringify(errors.slice(0, 2)));
+  Promise.reject('ohne Fehlerobjekt');
+  for (let i = 0; i < 40 && (await overview()).unhandled_errors.count < 3; i++) await sleep(25);
+  d = await overview();
+  const status = JSON.parse((await request('/status')).body);
+  check('U5 Ablehnung ohne Fehlerobjekt: Text, neue Logzeile; /status ohne neues Feld (ADR 0018)', d.unhandled_errors.count === 3 && d.unhandled_errors.last_text === 'ohne Fehlerobjekt'
+    && logs.slice(before).filter(l => l.includes('Unbehandelter asynchroner Fehler')).length === 2 && status.pid === process.pid && !('unhandled_errors' in status), JSON.stringify({ o: d.unhandled_errors, s: Object.keys(status) }));
+}
+
 async function ohneTokens() {
   let r = await request(OVERVIEW);
   const d = JSON.parse(r.body);
@@ -1322,6 +1348,7 @@ async function ohneTokens() {
   else if (scenario === 'http-log') await httpLog();
   else if (scenario === 'chat-bruecke') await chatBruecke();
   else if (scenario === 'abstimmung-start') await abstimmungStart();
+  else if (scenario === 'unbehandelt') await unbehandelt();
   else await ablauf();
 
   console.log = realLog;
