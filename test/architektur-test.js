@@ -13,16 +13,9 @@ const PRODUCTION = ['server.js', 'core', 'lib', 'modules'];
 // Eine Ausnahme kommt nur mit Begründung im Kommentar dazu.
 const EXTERNAL_ONLY_IN = { axios: ['server.js'], ws: ['server.js'] };
 
-// Schreibzugriffe außerhalb von core/store.js, Stand 27.11.2026 (Altlast, AGENTS.md: writeJsonAtomic).
-// Die Liste darf nur schrumpfen; wer eine Stelle umstellt, setzt die Zahl hier herunter.
-const KNOWN_WRITES = {
-  'server.js': 9,
-  'core/auth.js': 1,            // bot.json
-  'core/chat.js': 1,            // chat_senders.json
-  'core/state.js': 1,           // modules.json (Schritt 3c aus server.js umgezogen)
-  'lib/stream-reports.js': 2,   // Berichte als .txt
-  'modules/topics/index.js': 1, // topics.json
-};
+// Direkte Schreibzugriffe außerhalb von core/store.js (AGENTS.md: writeJsonAtomic). Seit 28.11.2026 keine mehr:
+// Alle Laufzeitdateien gehen über writeJsonAtomic bzw. writeTextAtomic. Eine Ausnahme kommt nur mit Begründung hier dazu.
+const KNOWN_WRITES = {};
 const STORE_FILE = 'core/store.js';
 
 // ── Prüfregeln (rein, ohne Dateisystem) ──

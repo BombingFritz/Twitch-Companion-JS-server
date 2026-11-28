@@ -33,7 +33,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 | `core/config.js` | `.env` (`CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`, `PORT`, `SCOPES`, `HA_WEBHOOK_URL`, `CORS_ORIGINS`, `UBOAT_SAVES_DIR`, `STREAM_KARTEI_*`), `APP_VERSION`, `SERVER_STARTED_AT` und die Konstanten des Kerns (Zugriffsschutz, Login, Tokens, Bot, Twitch-Drosselung, Log, Fehlerprotokoll; Abschnitt 7) |
 | `core/auth.js` | `createAuth` (Schritt 3a): Tokens (`tokenStore` aus `lib/twitch-api.js`, `loadTokens`, `saveTokens`, `getValidAccessToken`, Erneuerung vor Ablauf), Bot-Datei (`loadBotConfig`, `saveBotConfig`, `removeBotConfig`), App-Token (`getAppAccessToken`), zentraler Twitch-Zugriff `twitchApi` (ADR 0024) und `routes(app)` für `/login`, `/login-bot`, `/callback` (mit einmal gültigem `state`, Bot-Freigabe) und `/token`. Rückrufe aus `server.js`: `onBroadcasterLogin` (Scope-Merker der Abstimmungen zurücksetzen, EventSub verbinden), `onBotAuthorized` (letzten Bot-Fehler löschen), `botFeatureLabels` |
 | `core/chat.js` | `createChat` (Schritt 3b): Chat-Versand `sendChatMessage(text, replyTo, feature, {broadcasterPrefix})` über den Bot (App-Token) oder als Broadcaster, Rückfall auf den Broadcaster bei HTTP-Fehler des Bots, Kürzung auf `CHAT_MAX_CHARS`, Prüfung von `is_sent`; Absender je Funktion (`senderOf`, `setChatSender`, `chatSenderList`, Datei `chat_senders.json`), `botFeatures`, `botFeatureLabels`, `printChatSenders`, `printBotStatus`, letzter Bot-Fehler (`clearBotLastError`). Aus `server.js` kommen `features` (`CHAT_FEATURES`), `defaults` (`CHAT_SENDER_DEFAULTS`), `logPrefixes` und `onBotMessageSent` (Statistik) |
-| `core/store.js` | `writeJsonAtomic` (erst in eine Hilfsdatei, dann umbenennen; Rückfall, wenn OneDrive die Datei festhält) |
+| `core/store.js` | `writeJsonAtomic`, `writeTextAtomic`: erst in eine Hilfsdatei `<datei>.tmp`, dann umbenennen. Hält OneDrive die Datei fest, schreibt es sie direkt und entfernt die Hilfsdatei. Seit 28.11.2026 laufen alle Laufzeitdateien hierüber (JSON-Dateien und die `.txt`-Berichte); das Format ist unverändert. |
 | `core/log.js` | `createLog` (`installConsole` umhüllt `console.log/info/warn/error`, `logIfChanged`, `sanitize`, `writeEntry`; Puffer `buffer`, Verbindungen `clients`, Fehlerprotokoll `errorLog`; `onError` zählt Fehler in der Statistik), `redactedValues` (Secrets, Webhook-Adresse samt Host und ID) |
 | `core/http.js` | `createAccess` (`isAllowedOrigin`, `isLoopbackRequest`, `hasLoopbackHost`, `requireLocalRequest` mit eigener 403-Antwort, `isLocalWidgetRequest` ohne Antwort, `requestLogger(isQuiet)`, `install` für Herkunftsprüfung, CORS und `Cache-Control: no-store`; `corsAllowAll`, `allowedOrigins`) |
 | `core/modules.js` | `createModuleHost({ events })`: Anmeldung der Module. `add(modul)` (trägt dessen `on` in den Ereignisbus ein), `mountRoutes(app, 'widget'\|'admin')`, `handleConsole(cmd, parts)`, `helpLines()`, `isQuiet(req, res)`, `silentEffectsVisible()`, `overview()`, `events` |
@@ -65,7 +65,7 @@ Aufteilung nach ADR 0027: Kern in `core/`, Funktionen ziehen nach und nach in `m
 - Jedes `require` hat einen festen Pfad.
 - `axios` und `ws` lädt nur `server.js`.
 - Jedes gesendete oder von einem Modul gehörte interne Ereignis steht im Katalog unter „Interne Ereignisse“, und jedes dort genannte wird gesendet.
-- Direkte Schreibzugriffe außerhalb von `core/store.js` gibt es nur an den bekannten Stellen (`KNOWN_WRITES` im Test, Stand 28.11.2026: 15, davon `modules.json` seit 3c in `core/state.js`). Die Liste darf nur schrumpfen.
+- Außerhalb von `core/store.js` gibt es keine direkten Schreibzugriffe (`writeFileSync`, `writeFile`, `appendFile…`, `createWriteStream`). Seit 28.11.2026 ist die Liste der Ausnahmen (`KNOWN_WRITES` im Test) leer; vorher waren es 15 Altlasten.
 
 `npm run check` (`scripts/check.js`) prüft die Syntax aller projekteigenen JS-Dateien. Die CI nutzt denselben Befehl.
 
@@ -144,6 +144,8 @@ Die `!privat`-Liste (`privacyOptouts`) war eine Konstante mit veränderlichem In
 | Webkonsole (ADR 0018) | `requireAdminPage`, `requireAdminApi`, `requireAdminWrite` (ändernde Aktionen), `endServerFromAdmin`, `parseWhitelistInput`; RAM: `adminOrigins`, `adminExitRequested`. Seite: `public/admin/` (`index.html`, `admin.js` mit Reiterliste `TABS`, `admin.css`) |
 
 ## 3. Persistierte Dateien (Arbeitsverzeichnis)
+
+Alle Dateien schreibt der Server atomar über `core/store.js`: erst `<datei>.tmp`, dann umbenennen. Die Hilfsdateien sind in `.gitignore` (`*.tmp`).
 
 Personenbezug, Zweck und empfohlene Aufbewahrung je Feld: `docs/DATENKATALOG.md`.
 

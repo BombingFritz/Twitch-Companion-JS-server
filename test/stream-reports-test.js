@@ -8,7 +8,8 @@ const dir = path.join(work, 'stream_reports');
 const warnings = [];
 const metrics = [{ key: 'follows', label: 'Follows' }, { key: 'chat_messages', label: 'Chatnachrichten' }];
 const writeJson = (file, data) => fs.writeFileSync(file, JSON.stringify(data));
-const reports = createStreamReports({ dir, metrics, shortSeconds: 3600, writeJson, log: m => warnings.push(m) });
+const writeText = (file, text) => fs.writeFileSync(file, text, 'utf8');
+const reports = createStreamReports({ dir, metrics, shortSeconds: 3600, writeJson, writeText, log: m => warnings.push(m) });
 
 function closed(startedAt, hours, extra = {}) {
   const ended = new Date(Date.parse(startedAt) + hours * 3600000).toISOString();

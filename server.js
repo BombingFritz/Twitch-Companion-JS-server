@@ -19,7 +19,7 @@ const chatBridge = require('./lib/chat-bridge');
 const consumerPolls = require('./lib/consumer-polls');
 // Kern (ADR 0027): Konfiguration, Speichern, Log, HTTP-Zugriffsschutz
 const config = require('./core/config');
-const { writeJsonAtomic } = require('./core/store');
+const { writeJsonAtomic, writeTextAtomic } = require('./core/store');
 const { createLog, redactedValues } = require('./core/log');
 const { createAccess } = require('./core/http');
 const { createAuth } = require('./core/auth');
@@ -258,6 +258,7 @@ const streamReports = createStreamReports({
   metrics: streamMetricDefs(),
   shortSeconds: STREAM_REPORT_SHORT_SECONDS,
   writeJson: writeJsonAtomic,
+  writeText: writeTextAtomic,
   log: (message, level = 'log') => console[level](message),
 });
 
@@ -373,7 +374,7 @@ function loadChatResults() {
 }
 
 function saveChatResults(switches) {
-  fs.writeFileSync(CHAT_RESULTS_FILE, JSON.stringify(switches, null, 2), 'utf8');
+  writeJsonAtomic(CHAT_RESULTS_FILE, switches);
 }
 
 let chatResults = loadChatResults();
@@ -400,7 +401,7 @@ function loadRaidLog() {
 }
 
 function saveRaidLog(log) {
-  fs.writeFileSync(RAID_FILE, JSON.stringify(log, null, 2), 'utf8');
+  writeJsonAtomic(RAID_FILE, log);
 }
 
 // Zeitraum-Schlüssel der Raid-Statistik (ADR 0012):
@@ -477,7 +478,7 @@ function loadWhitelist() {
 }
 
 function saveWhitelist(list) {
-  fs.writeFileSync(WHITELIST_FILE, JSON.stringify(list, null, 2), 'utf8');
+  writeJsonAtomic(WHITELIST_FILE, list);
 }
 
 function addToWhitelist(userId, userName) {
@@ -518,7 +519,7 @@ function loadWhitelistChecks() {
 }
 
 function saveWhitelistChecks(list) {
-  fs.writeFileSync(WHITELIST_CHECKS_FILE, JSON.stringify(list, null, 2), 'utf8');
+  writeJsonAtomic(WHITELIST_CHECKS_FILE, list);
 }
 
 function recordWhitelistCheck(entry) {
@@ -573,7 +574,7 @@ function loadSubGoalCache() {
 }
 
 function saveSubGoalCache(data) {
-  fs.writeFileSync(SUBGOAL_FILE, JSON.stringify(data, null, 2), 'utf8');
+  writeJsonAtomic(SUBGOAL_FILE, data);
 }
 
 // Sub-Goal aus den EventSub-Ereignissen channel.goal.begin/progress/end (Issue #60, ADR 0023): keine Abfrage je Sub mehr.
@@ -647,7 +648,7 @@ function loadEventLog() {
 }
 
 function saveEventLog(log) {
-  fs.writeFileSync(EVENTLOG_FILE, JSON.stringify(log, null, 2), 'utf8');
+  writeJsonAtomic(EVENTLOG_FILE, log);
 }
 
 function appendEvent(type, payload) {
@@ -671,7 +672,7 @@ function loadEffectMode() {
 }
 
 function saveEffectMode(mode) {
-  fs.writeFileSync(EFFECT_MODE_FILE, JSON.stringify({ mode }, null, 2), 'utf8');
+  writeJsonAtomic(EFFECT_MODE_FILE, { mode });
 }
 
 let effectMode = loadEffectMode();       // Startet mit dem zuletzt gespeicherten Modus
@@ -684,6 +685,7 @@ let effectMode = loadEffectMode();       // Startet mit dem zuletzt gespeicherte
 const moduleHost = createModuleHost({ events });
 moduleHost.add(createTopicsModule({
   state,
+  writeJson: writeJsonAtomic,
   scheduleEffect: (type, meta) => scheduleEffect(type, meta),
   logIfChanged,
   isLocalWidgetRequest,
@@ -2682,7 +2684,7 @@ function loadUboatHistory() {
   catch { return uboatHistoryLib.emptyHistory(); }
 }
 function saveUboatHistory(h) {
-  fs.writeFileSync(UBOAT_HISTORY_FILE, JSON.stringify(h, null, 2));
+  writeJsonAtomic(UBOAT_HISTORY_FILE, h);
 }
 let uboatHistory = loadUboatHistory();
 let uboatHistoryPreview = null;   // Nachlesen: Vorschau bis "uboat nachlesen übernehmen" (nur im Arbeitsspeicher)
@@ -2904,7 +2906,7 @@ function loadUboatCrewMap() {
 }
 
 function saveUboatCrewMap(map) {
-  fs.writeFileSync(UBOAT_CREW_MAP_FILE, JSON.stringify(map, null, 2));
+  writeJsonAtomic(UBOAT_CREW_MAP_FILE, map);
 }
 
 function isUboatCategoryActive() {

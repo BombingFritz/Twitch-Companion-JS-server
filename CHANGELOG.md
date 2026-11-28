@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 ## [Unreleased]
 
 ### Changed
+- Atomar schreiben (ADR 0027, Nachtrag, Abschnitt 8; AGENTS.md): Alle Laufzeitdateien gehen jetzt über `core/store.js`, erst in `<datei>.tmp`, dann per Umbenennen. Bisher schrieben 15 Stellen direkt, sodass ein Absturz oder ein Sync von OneDrive mitten im Schreiben die Datei zerstören konnte:
+  - `chat_results.json`, `raids.json`, `whitelist.json`, `whitelist_checks.json`, `subgoal_cache.json`, `events.json`, `effect_mode.json`
+  - `uboat_crew_history.json`, `uboat_crew_map.json`
+  - `bot.json`, `chat_senders.json`, `modules.json`, `topics.json`
+  - die `.txt`-Berichte über das neue `writeTextAtomic`
+
+  Das Format der Dateien bleibt gleich. Der Architekturtest lässt jetzt keine direkten Schreibzugriffe außerhalb von `core/store.js` mehr zu. `.gitignore` enthält `*.tmp`, damit eine liegen gebliebene Hilfsdatei wie `tokens.json.tmp` nie ins Repository gerät.
 - Unbehandelte asynchrone Fehler (ADR 0027, Nachtrag, Abschnitt 10; Entscheidung des Nutzers: lieber Stabilität, wenn der Zustand erkennbar bleibt): Ein abgelehntes Promise, das niemand abfängt, beendet den Server nicht mehr. Bisher endete er dann, und `AuthServer.cmd` startete ihn nicht neu.
   - Jetzt erscheint `[Fehler] Unbehandelter asynchroner Fehler, der Server läuft weiter: …` mit Stack im Log und im Fehlerprotokoll.
   - Der Fehler wird gezählt. Gleicher Text direkt hintereinander wird nur einmal geloggt.
