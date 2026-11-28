@@ -27,6 +27,7 @@ const { createChat } = require('./core/chat');
 const { createModuleHost } = require('./core/modules');
 const { createEvents } = require('./core/events');
 const { createState } = require('./core/state');
+const { createRejectionGuard } = require('./core/guard');
 // Module (ADR 0027): melden Endpunkte, Konsolenbefehle und ihren Teil der Webkonsole über core/modules.js an
 const { createTopicsModule } = require('./modules/topics');
 
@@ -297,6 +298,10 @@ const log = createLog({
 });
 log.installConsole();
 const { buffer: logBuffer, clients: logClients, errorLog, writeEntry: writeLogEntry, logIfChanged } = log;
+
+// Unbehandelte asynchrone Fehler (core/guard.js, ADR 0027, Nachtrag, Abschnitt 10): loggen und zählen statt beenden
+const rejectionGuard = createRejectionGuard({ sanitize: log.sanitize });
+rejectionGuard.install();
 
 // HTTP-Protokoll und Zugriffsschutz (core/http.js, ADR 0013): Herkunft, CORS, no-store, nur lokale Aufrufe.
 // Welche erfolgreichen Abrufe still bleiben, legt diese Regel fest; sie zieht mit den Modulen um (ADR 0027).
@@ -1406,6 +1411,8 @@ app.get(ADMIN_OVERVIEW_PATH, (req, res) => {
     can_restart: SERVER_SUPERVISED,
     ha_webhook_configured: Boolean(HA_WEBHOOK_URL),
     category: state.category(),
+    // Unbehandelte asynchrone Fehler seit Start (core/guard.js); nur hier, /status bekommt keine neuen Felder (ADR 0018)
+    unhandled_errors: rejectionGuard.stats(),
     stream: overviewStream(),
     twitch_api: twitchApi.stats(),
     chat_senders: chatSenderList(),

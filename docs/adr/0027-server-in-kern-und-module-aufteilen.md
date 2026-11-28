@@ -325,8 +325,9 @@ Ergänzt „Während des Umbaus“:
 - **Abfangen statt Beenden:** Ein abgelehntes Promise, das niemand abfängt (`unhandledRejection`), beendet den Server nicht mehr. Heute endet er dann; `AuthServer.cmd` startet ihn nur nach einem Neustart aus der Webkonsole (Code 75) neu, nach einem Absturz nicht. Der Stream liefe also ohne Server weiter.
 - **Erkennbar:**
   - Der Fehler kommt mit Meldung und Stack ins Fehlerprotokoll und ins Live-Log.
-  - Die Übersicht der Webkonsole zeigt, wie viele solcher Fehler es seit dem Start gab und wann der letzte war. Das ist ein neues Feld, rückwärtskompatibel, und steht in der Spec der Webkonsole.
-  - Die Konsole zeigt dasselbe bei `status`.
-  - Gleiche Fehler kurz hintereinander erscheinen über `logIfChanged` nur einmal im Log, werden aber alle gezählt.
+  - Die Übersicht der Webkonsole zeigt, wie viele solcher Fehler es seit dem Start gab und wann der letzte war (Karte „Server“). Das neue Feld `unhandled_errors` ist rückwärtskompatibel und steht in der Spec der Webkonsole.
+  - Präzisiert bei der Umsetzung (`core/guard.js`, 28.11.2026):
+    - Statt „die Konsole zeigt dasselbe bei `status`“: Einen Konsolenbefehl `status` gibt es nicht. `/status` bekommt nach ADR 0018 keine neuen Felder.
+    - Gleiche Fehler direkt hintereinander erscheinen nur einmal im Log, werden aber alle gezählt. Verglichen wird der Fehlertext ohne Stack, weil derselbe Fehler oft aus verschiedenen Zeilen kommt.
 - **Nicht für `uncaughtException`:** Ein synchroner Fehler außerhalb jedes Fängers beendet den Server weiter. Danach ist der Zustand nach der Node.js-Doku nicht mehr verlässlich.
 - **Eigener kleiner PR:** Das ist eine Verhaltensänderung, kein Umzug, und hat einen eigenen Test. Der Fänger je Handler in `core/events.js` (Abschnitt 6) bleibt trotzdem: Er nennt das Modul.

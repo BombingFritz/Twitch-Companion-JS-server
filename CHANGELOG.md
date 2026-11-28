@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
 ## [Unreleased]
 
 ### Changed
+- Unbehandelte asynchrone Fehler (ADR 0027, Nachtrag, Abschnitt 10; Entscheidung des Nutzers: lieber Stabilität, wenn der Zustand erkennbar bleibt): Ein abgelehntes Promise, das niemand abfängt, beendet den Server nicht mehr. Bisher endete er dann, und `AuthServer.cmd` startete ihn nicht neu.
+  - Jetzt erscheint `[Fehler] Unbehandelter asynchroner Fehler, der Server läuft weiter: …` mit Stack im Log und im Fehlerprotokoll.
+  - Der Fehler wird gezählt. Gleicher Text direkt hintereinander wird nur einmal geloggt.
+  - Die Karte „Server“ der Webkonsole zeigt Anzahl, Uhrzeit und Text des letzten Fehlers (`unhandled_errors` in `/api/admin/overview`, nicht in `/status`).
+  - Synchrone Fehler außerhalb jedes Fängers beenden den Server weiter.
+  - Neuer Kernteil `core/guard.js`.
 - BdU-Chat (Issue #99, Spec `bdu-chat.md`, „Gescheiterte Anfrage“): Meldet das Enigma-Widget einen Fehler, etwa eine überlastete KI, oder antwortet es nicht binnen 120 s, postet der BdU als Antwort „Funkspruch nicht durchgekommen, Störung im Äther. Später erneut funken!“. Höchstens eine solche Meldung kommt je 2 min, keine während der Funkstille. Die Anfrage wird nicht angerechnet: Globales Limit, Nutzerlimit und Tageszähler werden zurückgenommen, der Zuschauer kann gleich erneut fragen. Vorher kam keine Rückmeldung, und die Anfrage zählte trotzdem (Teststream 25.11.2026).
 - Umbau nach ADR 0027, Schritt 1, ohne Änderung des Verhaltens: Die Kern-Grundlagen liegen in `core/`:
   - `config.js`: `.env`, Version, Konstanten des Kerns
@@ -71,6 +77,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach
   - Es kommen keine neuen direkten Schreibzugriffe außerhalb von `core/store.js` dazu (bekannt: 15).
 
   Er prüft sich vorher an Beispielen mit Verstößen selbst. Seit 3c prüft er auch den Katalog der internen Ereignisse in ARCHITEKTUR.md, in beide Richtungen.
+- `test/admin-test.js unbehandelt`: Ablehnungen ohne Fänger halten den Server nicht an, werden gezählt, gleicher Text erscheint nur einmal im Log, mit Stack, ohne Secret im Fehlerprotokoll; `/status` ohne neues Feld. Gegenprobe ohne Fänger: Der Testprozess bricht ab.
 - `test/modules-test.js`: gemeinsamer Ereignisbus, Empfänger ohne Funktion, asynchrone Empfänger (Reihenfolge, `emit` wartet nicht, abgelehnte Promises mit Modulname im Log, kein unbehandelter Fehler).
 - `npm run check` (`scripts/check.js`) prüft jetzt die Syntax aller projekteigenen JS-Dateien statt nur `server.js`; die CI nutzt denselben Befehl.
 

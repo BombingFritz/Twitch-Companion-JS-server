@@ -30,7 +30,7 @@ Der Knopf „Streamlog beenden“ sitzt auf der Hauptseite in der Karte „Strea
 ### Inhalt der Übersicht
 | Karte | Angezeigt | Quelle |
 |---|---|---|
-| Server | Prozess-ID, läuft seit, Port | `pid`, `started_at` |
+| Server | Prozess-ID, läuft seit, Port, unbehandelte asynchrone Fehler seit Start (grün „keine“, sonst gelb mit Anzahl, Uhrzeit und Text des letzten; der Server läuft dabei weiter, Details im Fehlerprotokoll) | `pid`, `started_at`, `unhandled_errors` |
 | Stream | Streamlog läuft / offline mit Frist / abgeschlossen (Uhrzeit, Grund), Link zum Bericht oder „gelöscht“, Hinweise, Knopf „Streamlog beenden“ mit Rückfrage (Statistik Stufe 3) | `stream` |
 | Twitch | Konto, Token gültig, EventSub verbunden, aktuelle Kategorie | Status, Kategorie aus `core/state.js` |
 | Bot | DerBdu eingerichtet, Funktionen über den Bot | `bot_*` |
@@ -65,7 +65,7 @@ Ohne Twitch-Login zeigt die Karte „Twitch“ einen Link auf `/login`, die übr
 - Ist der Server nicht erreichbar: Anzeige „Server nicht erreichbar“, letzte Werte bleiben ausgegraut stehen, die Abfrage läuft weiter. Kommt der Server zurück und hat sich `pid` geändert, zeigt die Kopfzeile das kurz an.
 
 ### `GET /api/admin/overview`
-- Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `ha_webhook_configured`, `category`, `recent_effects` (letzte 5), `subgoal`.
+- Antwort: Felder wie `/status` (ohne `allowed_origins`, ohne `broadcaster_id`), dazu `version`, `port`, `poll_ms`, `can_restart`, `ha_webhook_configured`, `category`, `recent_effects` (letzte 5), `subgoal`. Dazu kommt `unhandled_errors` (seit 28.11.2026, ADR 0027, Nachtrag, Abschnitt 10): `{ count, last_at, last_text }`, das sind die unbehandelten asynchronen Fehler seit dem Start. `last_at` (ISO) und `last_text` (bereinigt wie das Log) sind `null`, solange es keinen gab. Das Feld gibt es nur hier, nicht in `/status`.
 - `/status` bleibt unverändert; beide nutzen dieselben Hilfsfunktionen (`buildAuthStatus`, `buildRuntimeStatus`), damit die Werte nicht auseinanderlaufen.
 - Erfolgreiche Abrufe erscheinen nicht im HTTP-Protokoll der Konsole, sonst stünde dort alle 5 s eine Zeile. Abgelehnte Abrufe erscheinen weiterhin.
 - Ebenso seit 15.11.2026 die Leseendpunkte, die Widgets im Takt abfragen (Wette, Abstimmung, Zuschauer, Sub-Goal, Privat-Liste, Glückspilz). Im Off-Stream-Test vom 14.11.2026 waren das zusammen etwa eine Zeile je Sekunde, in einem Stream von 4–5 Stunden über 15.000 Zeilen in Konsole und Live-Log. Mit `http debug on` erscheinen sie bis zum Neustart wieder. `/token` und Antworten ab 400 erscheinen immer.

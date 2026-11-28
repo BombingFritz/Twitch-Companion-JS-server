@@ -1280,11 +1280,19 @@ function serverActions() {
 }
 
 // ── Übersicht ───────────────────────────────────────────────────────
+// Unbehandelte asynchrone Fehler seit Start (ADR 0027, Nachtrag, Abschnitt 10): Der Server läuft weiter, das soll auffallen
+function unhandledErrorsText(u) {
+  if (!u || !u.count) return null;
+  return `${u.count} seit Start, zuletzt ${clock(u.last_at)} Uhr: ${u.last_text} – Server läuft weiter, Details im Fehlerprotokoll`;
+}
+
 function serverCard(d) {
+  const unhandled = unhandledErrorsText(d.unhandled_errors);
   return card('Server', rows(
     row('Läuft', el('span', { text: `${uptime(d.started_at)}, Start ${dateTime(d.started_at)}` })),
     row('Prozess-ID', el('span', { class: 'mono', text: String(d.pid) })),
     row('Port', el('span', { class: 'mono', text: String(d.port) })),
+    row('Unbehandelte Fehler', unhandled ? indicator('warn', unhandled) : indicator('ok', 'keine')),
   ), serverActions());
 }
 
