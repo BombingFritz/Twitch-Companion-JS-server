@@ -1,0 +1,506 @@
+{
+  "help": [
+    "",
+    "Verfügbare Konsolenbefehle:",
+    " whitelist add <id> <name>  - Nutzer per ID zur Whitelist hinzufügen",
+    " whitelist add <id>         - Nutzer per ID zur Whitelist hinzufügen (löst Namen automatisch auf)",
+    " whitelist add @<name>      - Nutzer per Namen zur Whitelist hinzufügen (löst ID automatisch auf)",
+    " whitelist remove <id>      - Nutzer per ID aus der Whitelist entfernen",
+    " whitelist list             - Aktuelle Whitelist anzeigen",
+    " whitelist checks           - Auffälligkeiten der Aktivitätsprüfung anzeigen (live beim Chatten, inaktiv, unklar)",
+    " subgoal refresh            - Sub-Goal-Stand jetzt von Twitch laden",
+    " subgoal show               - Aktuellen gecachten Sub-Goal-Stand anzeigen",
+    " events show                - Letzte 10 Follow/Sub/Gift-Ereignisse anzeigen",
+    " effects mode <auto|off>   - Effekte ein- bzw. ausschalten",
+    " effects show               - Aktuellen Effekt-Modus & Queue-Status anzeigen",
+    " bdu show                   - BdU-Chat: Widget-Verbindung, Funkstille, Limits anzeigen",
+    " bdu silence off            - BdU-Chat: Funkstille sofort aufheben",
+    " bdu activate|deactivate    - BdU-Chat ein- bzw. ausschalten (bleibt nach Neustart)",
+    " uboat show                 - UBOAT: gelesener Spielstand, Kategorie, Crew und Zuordnungen anzeigen",
+    " uboat reload               - UBOAT: neuesten Spielstand sofort einlesen",
+    " uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen",
+    " uboat nachlesen            - UBOAT: ältere Spielstände der Kampagne lesen (Feindfahrten, Lebensläufe), nur Vorschau",
+    " uboat nachlesen übernehmen - UBOAT: Vorschau in den Verlauf speichern (… verwerfen: Vorschau verwerfen)",
+    " uboat verlauf <Name>       - UBOAT: frühere Namen, Feindfahrten und Lebenslauf einer Person (aus der Vorschau, sonst dem Verlauf)",
+    " uboat unmap <login>        - UBOAT: Zuordnung entfernen",
+    " uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)",
+    " kartei show|publish        - Stream-Kartei: Stand der Website bzw. jetzt veröffentlichen (nur bei Änderung, Abstand 10 min)",
+    " kartei activate|deactivate - Stream-Kartei ein- bzw. ausschalten (bleibt nach Neustart)",
+    " topics show                - Intro-Topics: Liste, Stand, Sichtbarkeit, verbundene Widgets",
+    " topics next|back|toggle|reset - Intro-Topics bedienen (wie die Stream-Deck-Tasten)",
+    " topics debug on|off        - Intro-Topics: Testmodus, zeigt Effekte und Tastendrücke im Log (bis Neustart)",
+    " topics activate|deactivate - Intro-Topics ein- bzw. ausschalten (bleibt nach Neustart)",
+    " http debug on|off          - Testmodus: auch erfolgreiche Widget-Abrufe im HTTP-Protokoll zeigen (bis Neustart)",
+    " bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler",
+    " bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)",
+    " bot sender [<f> bot|broadcaster] - Absender je Chat-Funktion zeigen bzw. umstellen",
+    " results show | results <prediction|poll> on|off - Ergebniszeilen für Wette/Abstimmung über den Server",
+    " help                      - Diese Hilfe anzeigen",
+    ""
+  ],
+  "routes": [
+    "GET /login",
+    "GET /login-bot",
+    "GET /callback",
+    "GET /token",
+    "GET /api/chat/active",
+    "GET /api/twitch/channel",
+    "GET /api/chat/stream",
+    "POST /api/chat/send",
+    "GET /api/bdu/stream",
+    "GET /api/privacy/optouts",
+    "POST /api/bdu/answer",
+    "GET /api/twitch/prediction/current",
+    "GET /api/twitch/poll/current",
+    "POST /api/twitch/poll/start",
+    "GET /api/twitch/stream",
+    "GET /api/stream/lucky",
+    "GET /api/twitch/subcounter",
+    "GET /api/homeassistant/events",
+    "GET /api/effects/mode",
+    "GET /api/topics",
+    "GET /api/topics/stream",
+    "POST /api/topics/:action",
+    "GET /api/deck",
+    "GET /api/uboat/crew",
+    "GET /status",
+    "GET /api/admin/overview",
+    "GET /api/admin/log/stream",
+    "GET /api/admin/log/errors",
+    "GET /api/admin/stats",
+    "GET /api/admin/reports",
+    "GET /api/admin/reports/:id",
+    "POST /api/admin/reports/delete",
+    "POST /api/admin/stream/close",
+    "GET /api/admin/whitelist",
+    "POST /api/admin/whitelist/add",
+    "POST /api/admin/whitelist/remove",
+    "POST /api/admin/modules",
+    "POST /api/admin/kartei/publish",
+    "POST /api/admin/chat/sender",
+    "POST /api/admin/chat/results",
+    "GET /api/admin/topics",
+    "POST /api/admin/topics",
+    "POST /api/admin/topics/action",
+    "POST /api/admin/effects/mode",
+    "POST /api/admin/server/shutdown",
+    "POST /api/admin/server/restart"
+  ],
+  "subscriptions": [
+    {
+      "type": "channel.raid",
+      "version": "1",
+      "condition": {
+        "to_broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.raid",
+      "version": "1",
+      "condition": {
+        "from_broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.chat.message",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711",
+        "user_id": "4711"
+      }
+    },
+    {
+      "type": "stream.online",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "stream.offline",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.poll.begin",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.poll.progress",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.poll.end",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.prediction.begin",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.prediction.progress",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.prediction.lock",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.prediction.end",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.shoutout.create",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711",
+        "moderator_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.subscribe",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.subscription.gift",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.subscription.message",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.chat.notification",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711",
+        "user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.follow",
+      "version": "2",
+      "condition": {
+        "broadcaster_user_id": "4711",
+        "moderator_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.update",
+      "version": "2",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.goal.begin",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.goal.progress",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    },
+    {
+      "type": "channel.goal.end",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "4711"
+      }
+    }
+  ],
+  "overview": {
+    "authenticated": "boolean",
+    "auto_refresh": "boolean",
+    "bdu_silence_until": "null",
+    "bdu_widget_connected": "boolean",
+    "bot_configured": "boolean",
+    "bot_features": [
+      "string"
+    ],
+    "bot_login": "null",
+    "broadcaster_name": "string",
+    "can_restart": "boolean",
+    "category": "null",
+    "chat_bridge": {
+      "clients": []
+    },
+    "chat_results": [
+      {
+        "enabled": "boolean",
+        "line": "string",
+        "name": "string"
+      }
+    ],
+    "chat_senders": [
+      {
+        "feature": "string",
+        "name": "string",
+        "sender": "string"
+      }
+    ],
+    "effect_mode": "string",
+    "effect_queue_length": "number",
+    "eventsub_connected": "boolean",
+    "expires_in_minutes": "number",
+    "expires_in_seconds": "number",
+    "ha_webhook_configured": "boolean",
+    "kartei": {
+      "auth_failed": "boolean",
+      "configured": "boolean",
+      "last_error": "null",
+      "last_published_at": "null",
+      "last_skip": "null",
+      "pending": "boolean",
+      "repo": "null",
+      "site_url": "null",
+      "token_expires_at": "null",
+      "token_expiring": "boolean"
+    },
+    "modules": {
+      "bdu": "boolean",
+      "kartei": "boolean",
+      "topics": "boolean",
+      "uboat": "boolean"
+    },
+    "pid": "number",
+    "poll_ms": "number",
+    "port": "number",
+    "raid_queue_length": "number",
+    "recent_effects": [],
+    "started_at": "string",
+    "stream": {
+      "close_reason": "null",
+      "closes_at": "null",
+      "ended_at": "null",
+      "report_deleted": "boolean",
+      "report_id": "null",
+      "started_at": "null",
+      "status": "string",
+      "viewers": {
+        "average": "null",
+        "current": "null",
+        "peak": "null",
+        "updated_at": "null"
+      },
+      "warnings": []
+    },
+    "subgoal": {
+      "current": "null",
+      "lastUpdated": "null",
+      "status": "null",
+      "target": "null",
+      "title": "null"
+    },
+    "token_valid": "boolean",
+    "topics": {
+      "clients": "number",
+      "complete": "boolean",
+      "current": "null",
+      "step": "number",
+      "total": "number",
+      "visible": "boolean"
+    },
+    "twitch_api": {
+      "burst": "number",
+      "last_minute": "number",
+      "per_minute": "number",
+      "per_second": "number",
+      "queued": "number",
+      "startup_free": "number",
+      "startup_used": "number",
+      "twitch": "null",
+      "waited": "number"
+    },
+    "uboat_active": "boolean",
+    "uboat_enabled": "boolean",
+    "uboat_save": "null",
+    "uboat_saved_at": "null",
+    "version": "string",
+    "whitelist_count": "number"
+  },
+  "ha": [
+    {
+      "type": "follow",
+      "fields": [
+        "count",
+        "meta",
+        "timestamp",
+        "type"
+      ],
+      "meta": [
+        "userId",
+        "userName"
+      ],
+      "count": "number",
+      "timestamp": "string"
+    },
+    {
+      "type": "gift",
+      "fields": [
+        "count",
+        "meta",
+        "timestamp",
+        "type"
+      ],
+      "meta": [
+        "giftCount",
+        "userName"
+      ],
+      "count": "number",
+      "timestamp": "string"
+    },
+    {
+      "type": "sub",
+      "fields": [
+        "count",
+        "meta",
+        "timestamp",
+        "type"
+      ],
+      "meta": [
+        "userName"
+      ],
+      "count": "number",
+      "timestamp": "string"
+    },
+    {
+      "type": "topic_active",
+      "fields": [
+        "count",
+        "meta",
+        "timestamp",
+        "type"
+      ],
+      "meta": [
+        "index",
+        "title",
+        "total"
+      ],
+      "count": "number",
+      "timestamp": "string"
+    }
+  ],
+  "startlog": [
+    "◇ injected env (#) from .env // tip: <wechselnder Hinweis von dotenv>",
+    "",
+    "═════════════════════════════════════════════",
+    "Twitch Companion JS server",
+    "═════════════════════════════════════════════",
+    "Server läuft auf: http://localhost:# (nur auf diesem PC erreichbar)",
+    "Prozess-ID: # (zum Beenden: taskkill /PID # /F)",
+    "Login: http://localhost:#/login",
+    "Status: http://localhost:#/status",
+    "Webkonsole: http://localhost:#/TwitchCompanionAdmin",
+    "═════════════════════════════════════════════",
+    "Effekt-Modus beim Start: AUTO",
+    "Erlaubte Widget-Herkünfte: http://absolute, null, http://localhost:#, http://#.#.#.#:#",
+    "Home-Assistant-Webhook: eingetragen",
+    "Bot-Account: nicht eingerichtet – http://localhost:#/login-bot (vorher /mod DerBdu im Chat)",
+    "BdU-Chat: aktiviert",
+    "UBOAT-Soldbuch: aus (UBOAT_SAVES_DIR in .env)",
+    "═════════════════════════════════════════════",
+    "Authentifiziert als: testkanal",
+    "Token gültig für: # Minuten",
+    "Auto-Refresh: Aktiviert",
+    "═════════════════════════════════════════════",
+    "",
+    "Verfügbare Konsolenbefehle:",
+    " whitelist add <id> <name>  - Nutzer per ID zur Whitelist hinzufügen",
+    " whitelist add <id>         - Nutzer per ID zur Whitelist hinzufügen (löst Namen automatisch auf)",
+    " whitelist add @<name>      - Nutzer per Namen zur Whitelist hinzufügen (löst ID automatisch auf)",
+    " whitelist remove <id>      - Nutzer per ID aus der Whitelist entfernen",
+    " whitelist list             - Aktuelle Whitelist anzeigen",
+    " whitelist checks           - Auffälligkeiten der Aktivitätsprüfung anzeigen (live beim Chatten, inaktiv, unklar)",
+    " subgoal refresh            - Sub-Goal-Stand jetzt von Twitch laden",
+    " subgoal show               - Aktuellen gecachten Sub-Goal-Stand anzeigen",
+    " events show                - Letzte # Follow/Sub/Gift-Ereignisse anzeigen",
+    " effects mode <auto|off>   - Effekte ein- bzw. ausschalten",
+    " effects show               - Aktuellen Effekt-Modus & Queue-Status anzeigen",
+    " bdu show                   - BdU-Chat: Widget-Verbindung, Funkstille, Limits anzeigen",
+    " bdu silence off            - BdU-Chat: Funkstille sofort aufheben",
+    " bdu activate|deactivate    - BdU-Chat ein- bzw. ausschalten (bleibt nach Neustart)",
+    " uboat show                 - UBOAT: gelesener Spielstand, Kategorie, Crew und Zuordnungen anzeigen",
+    " uboat reload               - UBOAT: neuesten Spielstand sofort einlesen",
+    " uboat map <login> <Name>   - UBOAT: Twitch-Login einem Crewmitglied (Name im Spiel) zuordnen",
+    " uboat nachlesen            - UBOAT: ältere Spielstände der Kampagne lesen (Feindfahrten, Lebensläufe), nur Vorschau",
+    " uboat nachlesen übernehmen - UBOAT: Vorschau in den Verlauf speichern (… verwerfen: Vorschau verwerfen)",
+    " uboat verlauf <Name>       - UBOAT: frühere Namen, Feindfahrten und Lebenslauf einer Person (aus der Vorschau, sonst dem Verlauf)",
+    " uboat unmap <login>        - UBOAT: Zuordnung entfernen",
+    " uboat activate|deactivate  - UBOAT-Soldbuch ein- bzw. ausschalten (bleibt nach Neustart)",
+    " kartei show|publish        - Stream-Kartei: Stand der Website bzw. jetzt veröffentlichen (nur bei Änderung, Abstand # min)",
+    " kartei activate|deactivate - Stream-Kartei ein- bzw. ausschalten (bleibt nach Neustart)",
+    " topics show                - Intro-Topics: Liste, Stand, Sichtbarkeit, verbundene Widgets",
+    " topics next|back|toggle|reset - Intro-Topics bedienen (wie die Stream-Deck-Tasten)",
+    " topics debug on|off        - Intro-Topics: Testmodus, zeigt Effekte und Tastendrücke im Log (bis Neustart)",
+    " topics activate|deactivate - Intro-Topics ein- bzw. ausschalten (bleibt nach Neustart)",
+    " http debug on|off          - Testmodus: auch erfolgreiche Widget-Abrufe im HTTP-Protokoll zeigen (bis Neustart)",
+    " bot show                   - Bot-Account DerBdu: eingerichtet?, was er sendet, letzter Fehler",
+    " bot remove                 - Bot-Account vergessen (danach sendet wieder der Broadcaster)",
+    " bot sender [<f> bot|broadcaster] - Absender je Chat-Funktion zeigen bzw. umstellen",
+    " results show | results <prediction|poll> on|off - Ergebniszeilen für Wette/Abstimmung über den Server",
+    " help                      - Diese Hilfe anzeigen",
+    "",
+    "EventSub WebSocket verbunden, Session: <id>",
+    "Raid-Subscription aktiv",
+    "Subscription für ausgehende Raids aktiv",
+    "Chat-Message-Subscription aktiv (für Mod-Befehle & Whitelist)",
+    "Stream-Online-Subscription aktiv (für Whitelist-Reset & Sub-Goal-Refresh)",
+    "Stream-Offline-Subscription aktiv (für die Statistik)",
+    "channel.poll.begin-Subscription aktiv",
+    "channel.poll.progress-Subscription aktiv",
+    "channel.poll.end-Subscription aktiv",
+    "channel.prediction.begin-Subscription aktiv",
+    "channel.prediction.progress-Subscription aktiv",
+    "channel.prediction.lock-Subscription aktiv",
+    "channel.prediction.end-Subscription aktiv",
+    "channel.shoutout.create-Subscription aktiv (für die Statistik)",
+    "channel.subscribe-Subscription aktiv",
+    "channel.subscription.gift-Subscription aktiv",
+    "channel.subscription.message-Subscription aktiv",
+    "Chat-Notification-Subscription aktiv (löst Sub-/Gift-Effekte aus, sobald die Meldung im Chat erscheint)",
+    "Follow-Subscription aktiv",
+    "Channel-Update-Subscription aktiv (Kategorie für das UBOAT-Soldbuch)",
+    "Goal-Subscriptions aktiv (Sub-Goal ohne Abfrage je Sub)",
+    "Kein aktiver Sub-Goal bei Twitch gefunden.",
+    "[Wette] keine Wette bekannt – Status: WAITING",
+    "[Abstimmung] keine Abstimmung bekannt – Status: WAITING"
+  ]
+}
